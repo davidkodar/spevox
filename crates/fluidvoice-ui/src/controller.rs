@@ -278,10 +278,14 @@ impl ffi::FluidVoiceController {
                             )));
                         }
                         Ok(_) => {
-                            controller.as_mut().set_transcript_text(QString::from(
-                                "No speech was recognized. Try speaking closer to the microphone.",
-                            ));
-                            controller.set_status_text(QString::from("No speech recognized"));
+                            controller.as_mut().set_transcript_text(QString::from(&format!(
+                                "No speech recognized (ASR peak {:.0}%). Increase the Scarlett hardware gain if this persists.",
+                                asr_peak * 100.0
+                            )));
+                            controller.set_status_text(QString::from(&format!(
+                                "No speech recognized · ASR peak {:.0}%",
+                                asr_peak * 100.0
+                            )));
                         }
                         Err(error) => {
                             controller
@@ -341,7 +345,7 @@ fn automatic_asr_gain(peak: f32) -> f32 {
     if !peak.is_finite() || peak <= 0.000_5 {
         return 1.0;
     }
-    (0.5 / peak).clamp(1.0, 32.0)
+    (0.8 / peak).clamp(1.0, 64.0)
 }
 
 #[cfg(test)]
@@ -366,8 +370,8 @@ mod tests {
     #[test]
     fn normalizes_quiet_asr_audio_conservatively() {
         assert_eq!(automatic_asr_gain(0.0), 1.0);
-        assert_eq!(automatic_asr_gain(0.01), 32.0);
-        assert!((automatic_asr_gain(0.1) - 5.0).abs() < f32::EPSILON);
+        assert_eq!(automatic_asr_gain(0.01), 64.0);
+        assert!((automatic_asr_gain(0.1) - 8.0).abs() < f32::EPSILON);
         assert_eq!(automatic_asr_gain(0.8), 1.0);
     }
 }
