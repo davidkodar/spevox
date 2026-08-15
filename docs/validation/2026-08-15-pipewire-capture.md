@@ -20,6 +20,10 @@ Both native captures converted successfully to the application ASR contract: mon
 
 Signal levels were near silence during validation (peak 0.0002 or lower), so this validates graph connection, source selection, bounded capture, negotiated-format handling, and resampling—not microphone gain or speech intelligibility. Speech recognition validation belongs to the transcription milestone.
 
+## Chunk-offset correction
+
+Follow-up testing against Reaper revealed that Input 1 was known to be active while FluidVoice reported near-silence. The capture callback honored `spa_chunk.size` but initially ignored `spa_chunk.offset`, causing it to decode the wrong part of mapped PipeWire buffers. After correcting the slice to use both fields, Input 1 produced a peak of 0.0062 during a five-second capture. A regression test now covers non-zero PipeWire chunk offsets.
+
 ## Commands
 
 ```bash

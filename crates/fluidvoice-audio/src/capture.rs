@@ -180,11 +180,11 @@ impl PipeWireCapture {
                 let Some(data) = buffer.datas_mut().first_mut() else {
                     return;
                 };
-                let size = usize::try_from(data.chunk().size()).unwrap_or(usize::MAX);
+                let chunk = data.chunk();
+                let offset = usize::try_from(chunk.offset()).unwrap_or(usize::MAX);
+                let size = usize::try_from(chunk.size()).unwrap_or(usize::MAX);
                 if let Some(bytes) = data.data() {
-                    sample_output
-                        .borrow_mut()
-                        .append(&bytes[..size.min(bytes.len())]);
+                    sample_output.borrow_mut().append_chunk(bytes, offset, size);
                 }
             })
             .register()
@@ -286,6 +286,13 @@ impl CapturedSamples {
                 .push(f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]));
         }
     }
+
+    fn append_chunk(&mut self, bytes: &[u8], offset: usize, size: usize) {
+        let Some(available) = bytes.get(offset..) else {
+            return;
+        };
+        self.append(&available[..size.min(available.len())]);
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -362,5 +369,16 @@ mod tests {
         output.append(&bytes);
         assert_eq!(output.samples, vec![1.0, -0.5]);
         assert!(output.truncated);
+    }
+
+    #[test]
+    fn honors_pipewire_chunk_offset_and_size() {
+        let mut output = CapturedSamples::new(4);
+        let bytes = [99.0_f32, 1.0, -0.5, 88.0]
+            .into_iter()
+            .flat_map(f32::to_le_bytes)
+            .collect::<Vec<_>>();
+        output.append_chunk(&bytes, 4, 8);
+        assert_eq!(output.samples, vec![1.0, -0.5]);
     }
 }
