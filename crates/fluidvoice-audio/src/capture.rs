@@ -297,7 +297,8 @@ impl CapturedSamples {
                 self.truncated = true;
                 break;
             }
-            let sample = f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
+            let decoded = f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
+            let sample = if decoded.is_finite() { decoded } else { 0.0 };
             peak = peak.max(sample.abs());
             self.samples.push(sample);
         }
@@ -397,5 +398,17 @@ mod tests {
             .collect::<Vec<_>>();
         output.append_chunk(&bytes, 4, 8);
         assert_eq!(output.samples, vec![1.0, -0.5]);
+    }
+
+    #[test]
+    fn replaces_non_finite_samples_with_silence() {
+        let mut output = CapturedSamples::new(3);
+        let bytes = [f32::NAN, f32::INFINITY, 0.25]
+            .into_iter()
+            .flat_map(f32::to_le_bytes)
+            .collect::<Vec<_>>();
+        let peak = output.append(&bytes);
+        assert_eq!(output.samples, vec![0.0, 0.0, 0.25]);
+        assert!((peak - 0.25).abs() < f32::EPSILON);
     }
 }

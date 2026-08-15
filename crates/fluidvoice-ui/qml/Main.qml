@@ -25,6 +25,8 @@ ApplicationWindow {
         id: controller
     }
 
+    Component.onCompleted: controller.initializeAudio()
+
     Platform.SystemTrayIcon {
         visible: true
         icon.name: "audio-input-microphone"

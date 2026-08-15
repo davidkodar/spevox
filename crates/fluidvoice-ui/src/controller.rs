@@ -24,6 +24,10 @@ pub mod ffi {
         fn toggle_recording(self: Pin<&mut Self>);
 
         #[qinvokable]
+        #[cxx_name = "initializeAudio"]
+        fn initialize_audio(self: Pin<&mut Self>);
+
+        #[qinvokable]
         #[cxx_name = "setOverlayPreview"]
         fn set_overlay_preview(self: Pin<&mut Self>, visible: bool);
     }
@@ -48,23 +52,61 @@ pub struct FluidVoiceControllerRust {
     overlay_visible: bool,
     audio_level: f32,
     stop_token: Option<CaptureStopToken>,
+    capture_target: Option<String>,
 }
 
 impl Default for FluidVoiceControllerRust {
     fn default() -> Self {
         Self {
             status_text: QString::from("Ready"),
-            microphone_name: QString::from("PipeWire default input"),
+            microphone_name: QString::from("Detecting PipeWire inputs…"),
             model_name: QString::from("Whisper Tiny · Multilingual"),
             recording: false,
             overlay_visible: false,
             audio_level: 0.0,
             stop_token: None,
+            capture_target: None,
         }
     }
 }
 
 impl ffi::FluidVoiceController {
+    pub fn initialize_audio(self: Pin<&mut Self>) {
+        let qt_thread = self.qt_thread();
+        std::thread::spawn(move || {
+            let result = PipeWireCapture::devices();
+            qt_thread
+                .queue(move |mut controller| match result {
+                    Ok(devices) => {
+                        let preferred = devices.iter().find(|device| {
+                            device.description.contains("Input 1")
+                                || device.description.contains("Mic 1")
+                        });
+                        let selected = preferred.or_else(|| devices.first());
+                        if let Some(device) = selected {
+                            controller.as_mut().rust_mut().get_mut().capture_target =
+                                Some(device.node_name.clone());
+                            controller.set_microphone_name(QString::from(&device.description));
+                        } else {
+                            controller
+                                .as_mut()
+                                .set_microphone_name(QString::from("No PipeWire input found"));
+                            controller.set_status_text(QString::from("No microphone available"));
+                        }
+                    }
+                    Err(error) => {
+                        controller
+                            .as_mut()
+                            .set_microphone_name(QString::from("PipeWire unavailable"));
+                        controller.set_status_text(QString::from(&format!(
+                            "Input detection failed: {error}"
+                        )));
+                    }
+                })
+                .ok();
+        });
+    }
+
     pub fn toggle_recording(mut self: Pin<&mut Self>) {
         if *self.as_ref().recording() {
             if let Some(token) = self.as_ref().rust().stop_token.as_ref() {
@@ -75,6 +117,7 @@ impl ffi::FluidVoiceController {
         }
 
         let stop_token = CaptureStopToken::new();
+        let capture_target = self.as_ref().rust().capture_target.clone();
         self.as_mut().rust_mut().get_mut().stop_token = Some(stop_token.clone());
         self.as_mut().set_audio_level(0.0);
         self.as_mut().set_recording(true);
@@ -87,7 +130,7 @@ impl ffi::FluidVoiceController {
             let mut last_level_report: Option<Instant> = None;
             let result = PipeWireCapture::capture_with_levels(
                 Duration::from_mins(2),
-                None,
+                capture_target.as_deref(),
                 &stop_token,
                 move |level| {
                     if last_level_report
