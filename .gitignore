@@ -1,0 +1,9 @@
+/build/
+/cmake-build-*/
+/.cache/
+/.clangd/
+/.idea/
+/.vscode/
+*.user
+compile_commands.json
+
