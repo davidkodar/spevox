@@ -28,11 +28,12 @@ Reliable automatic insertion into Wayland applications is a separate validation 
 - whisper.cpp through Rust bindings, with a CPU baseline and optional acceleration
 - AT-SPI and consented Wayland interfaces for text-delivery research
 
-## Build the foundation
+## Build and run
 
 Requirements for the current foundation:
 
 - Rust 1.85 or newer with Cargo, rustfmt, and Clippy
+- Qt 6 with Core, GUI, QML, Quick Controls 2, Network, and `qmake6`
 
 ```bash
 cargo fmt --all --check
@@ -40,6 +41,14 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 cargo run -p fluidvoice-app
 ```
+
+Launch the first Qt Quick desktop shell with:
+
+```bash
+QMAKE=/usr/bin/qmake6 cargo run -p fluidvoice-ui
+```
+
+The shell includes the settings surface, KDE tray menu, macOS-inspired compact recording overlay, and a Rust-backed CXX-Qt state controller. The preview button exercises QML state transitions; connecting those states to the already validated dictation pipeline is the next integration slice.
 
 On KDE Plasma Wayland, the current shortcut diagnostic creates a portal-managed binding and prints separate press/release events:
 
@@ -77,7 +86,7 @@ The application ID is `io.github.davidkodar.FluidVoiceLinux`. The development di
 
 ## Status
 
-The current workspace establishes the platform-independent dictation state machine, KDE global-shortcut integration, PipeWire microphone capture, the mono 16 kHz ASR boundary, local `whisper.cpp` transcription, and verified KDE Wayland clipboard recovery. Qt/QML and automatic text insertion have not yet been implemented.
+The current workspace establishes the platform-independent dictation state machine, KDE global-shortcut integration, PipeWire microphone capture, the mono 16 kHz ASR boundary, local `whisper.cpp` transcription, verified KDE Wayland clipboard recovery, and a launchable Qt Quick/CXX-Qt desktop shell. Connecting the GUI to the runtime pipeline and automatic text insertion remain to be implemented.
 
 ## Upstream relationship and licensing
 

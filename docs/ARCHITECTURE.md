@@ -20,9 +20,7 @@ crates/fluidvoice-asr/      provider interface and whisper.cpp adapter
 crates/fluidvoice-portal/   XDG Global Shortcuts and permission adapters
 crates/fluidvoice-delivery/ AT-SPI, consented input, clipboard recovery
 crates/fluidvoice-storage/  XDG settings, history, and migrations
-ui/                         Qt Quick/QML tray, overlay, settings, onboarding
-ui/tokens/                  shared parity colors, typography, spacing, motion
-ui/reference/               approved visual baselines and comparison notes
+crates/fluidvoice-ui/       CXX-Qt bridge, Qt Quick tray, overlay, settings
 tests/                      desktop integration and compatibility harness
 ```
 
@@ -41,4 +39,4 @@ No platform integration should call directly across subsystem boundaries. The Ru
 1. Demonstrate portal shortcut, PipeWire capture, whisper.cpp transcription, and clipboard output fully offline. KDE Global Shortcuts produced reliable press/release pairs for `Ctrl+Alt+D`, including release-driven PipeWire shutdown. PipeWire capture has source discovery, bounded native F32 capture, and a mono 16 kHz ASR conversion boundary. CPU-only `whisper.cpp` inference transcribed the official test sample successfully. Clipboard output was read back by both the application and KDE Klipper. A non-empty physical shortcut-to-clipboard run remains pending because the connected Scarlett input supplied silence. Evidence is recorded under `docs/validation/`.
 2. Measure AT-SPI and consented Wayland input behavior across KDE, terminal, browser, Electron, office, GTK, and XWayland applications.
 
-Full UI and feature-parity work begins only after these gates establish a reliable core workflow.
+The first Cargo-native Qt Quick shell is now implemented. Runtime integration proceeds without weakening either technical gate.
