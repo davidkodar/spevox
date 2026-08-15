@@ -163,6 +163,23 @@ impl MonoAudioBuffer {
             .map(f32::abs)
             .fold(0.0, f32::max)
     }
+
+    /// Returns a copy with finite samples amplified and clamped to the ASR range.
+    #[must_use]
+    pub fn amplified(&self, gain: f32) -> Self {
+        let gain = if gain.is_finite() {
+            gain.clamp(0.0, 64.0)
+        } else {
+            1.0
+        };
+        Self {
+            samples: self
+                .samples
+                .iter()
+                .map(|sample| (sample * gain).clamp(-1.0, 1.0))
+                .collect(),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -245,5 +262,13 @@ mod tests {
 
         assert!((input.peak() - 1.0).abs() < f32::EPSILON);
         assert!((input.rms() - 1.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn amplifies_and_clamps_mono_audio() {
+        let audio = AudioBuffer::new(vec![0.1, -0.75], ASR_SAMPLE_RATE, 1, false)
+            .unwrap()
+            .to_asr_mono();
+        assert_eq!(audio.amplified(2.0).samples(), &[0.2, -1.0]);
     }
 }

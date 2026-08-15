@@ -252,10 +252,14 @@ impl ffi::FluidVoiceController {
                 })
                 .ok();
 
+            let mono = audio.to_asr_mono();
+            let normalization_gain = automatic_asr_gain(mono.peak());
+            let asr_audio = mono.amplified(gain * normalization_gain);
+            let asr_peak = asr_audio.peak();
             let transcription = find_whisper_model().and_then(|model| {
                 WhisperTranscriber::load(&model, TranscriptionConfig::default())
                     .map_err(|error| error.to_string())?
-                    .transcribe(&audio.to_asr_mono())
+                    .transcribe(&asr_audio)
                     .map_err(|error| error.to_string())
             });
             qt_thread
@@ -268,8 +272,9 @@ impl ffi::FluidVoiceController {
                                 .as_mut()
                                 .set_transcript_text(QString::from(&transcript.text));
                             controller.set_status_text(QString::from(&format!(
-                                "Transcribed {:.1}s locally",
-                                duration.as_secs_f32()
+                                "Transcribed {:.1}s locally · ASR peak {:.0}%",
+                                duration.as_secs_f32(),
+                                asr_peak * 100.0
                             )));
                         }
                         Ok(_) => {
@@ -332,9 +337,16 @@ fn peak_db(peak: f32) -> f32 {
     (20.0 * peak.log10()).clamp(-60.0, 0.0)
 }
 
+fn automatic_asr_gain(peak: f32) -> f32 {
+    if !peak.is_finite() || peak <= 0.000_5 {
+        return 1.0;
+    }
+    (0.5 / peak).clamp(1.0, 32.0)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{meter_level, peak_db};
+    use super::{automatic_asr_gain, meter_level, peak_db};
 
     #[test]
     fn maps_audio_peak_to_logarithmic_meter() {
@@ -349,5 +361,13 @@ mod tests {
         assert_eq!(peak_db(0.0), -60.0);
         assert!((peak_db(0.01) + 40.0).abs() < 0.001);
         assert_eq!(peak_db(1.0), 0.0);
+    }
+
+    #[test]
+    fn normalizes_quiet_asr_audio_conservatively() {
+        assert_eq!(automatic_asr_gain(0.0), 1.0);
+        assert_eq!(automatic_asr_gain(0.01), 32.0);
+        assert!((automatic_asr_gain(0.1) - 5.0).abs() < f32::EPSILON);
+        assert_eq!(automatic_asr_gain(0.8), 1.0);
     }
 }
