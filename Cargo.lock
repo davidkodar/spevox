@@ -672,6 +672,7 @@ dependencies = [
  "cxx-qt-lib",
  "fluidvoice-audio",
  "fluidvoice-transcription",
+ "hound",
 ]
 
 [[package]]

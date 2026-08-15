@@ -253,9 +253,10 @@ impl ffi::FluidVoiceController {
                 .ok();
 
             let mono = audio.to_asr_mono();
-            let normalization_gain = automatic_asr_gain(mono.peak());
-            let asr_audio = mono.amplified(gain * normalization_gain);
+            let combined_gain = asr_gain(mono.peak(), gain);
+            let asr_audio = mono.amplified(combined_gain);
             let asr_peak = asr_audio.peak();
+            let diagnostic_dump = dump_asr_audio(&asr_audio);
             let transcription = find_whisper_model().and_then(|model| {
                 WhisperTranscriber::load(&model, TranscriptionConfig::default())
                     .map_err(|error| error.to_string())?
@@ -266,6 +267,9 @@ impl ffi::FluidVoiceController {
                 .queue(move |mut controller| {
                     controller.as_mut().set_transcribing(false);
                     controller.as_mut().set_overlay_visible(false);
+                    if let Err(error) = diagnostic_dump {
+                        eprintln!("Failed to save FLUIDVOICE_ASR_DUMP: {error}");
+                    }
                     match transcription {
                         Ok(transcript) if !transcript.text.is_empty() => {
                             controller
@@ -327,6 +331,27 @@ fn find_whisper_model() -> Result<PathBuf, String> {
     }
 }
 
+fn dump_asr_audio(audio: &fluidvoice_audio::MonoAudioBuffer) -> Result<(), String> {
+    let Some(path) = std::env::var_os("FLUIDVOICE_ASR_DUMP").map(PathBuf::from) else {
+        return Ok(());
+    };
+    let specification = hound::WavSpec {
+        channels: 1,
+        sample_rate: audio.sample_rate(),
+        bits_per_sample: 16,
+        sample_format: hound::SampleFormat::Int,
+    };
+    let mut writer = hound::WavWriter::create(&path, specification)
+        .map_err(|error| format!("{}: {error}", path.display()))?;
+    for &sample in audio.samples() {
+        let value = (sample.clamp(-1.0, 1.0) * f32::from(i16::MAX)).round() as i16;
+        writer
+            .write_sample(value)
+            .map_err(|error| error.to_string())?;
+    }
+    writer.finalize().map_err(|error| error.to_string())
+}
+
 fn meter_level(peak: f32) -> f32 {
     if !peak.is_finite() || peak <= 0.0 {
         return 0.0;
@@ -341,16 +366,22 @@ fn peak_db(peak: f32) -> f32 {
     (20.0 * peak.log10()).clamp(-60.0, 0.0)
 }
 
-fn automatic_asr_gain(peak: f32) -> f32 {
+fn asr_gain(peak: f32, user_gain: f32) -> f32 {
     if !peak.is_finite() || peak <= 0.000_5 {
         return 1.0;
     }
-    (0.8 / peak).clamp(1.0, 64.0)
+    // Normalize ordinary speech to a conservative peak, then treat the UI gain
+    // as an adjustment. Always retain headroom so a high setting cannot turn
+    // the buffer sent to Whisper into a clipped square wave.
+    let automatic = (0.35 / peak).clamp(1.0, 64.0);
+    let requested = automatic * user_gain.max(0.0);
+    let headroom_limit = 0.85 / peak;
+    requested.clamp(1.0, headroom_limit.min(64.0))
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{automatic_asr_gain, meter_level, peak_db};
+    use super::{asr_gain, meter_level, peak_db};
 
     #[test]
     fn maps_audio_peak_to_logarithmic_meter() {
@@ -369,9 +400,10 @@ mod tests {
 
     #[test]
     fn normalizes_quiet_asr_audio_conservatively() {
-        assert_eq!(automatic_asr_gain(0.0), 1.0);
-        assert_eq!(automatic_asr_gain(0.01), 64.0);
-        assert!((automatic_asr_gain(0.1) - 8.0).abs() < f32::EPSILON);
-        assert_eq!(automatic_asr_gain(0.8), 1.0);
+        assert_eq!(asr_gain(0.0, 1.0), 1.0);
+        assert_eq!(asr_gain(0.01, 1.0), 35.0);
+        assert_eq!(asr_gain(0.01, 16.0), 64.0);
+        assert!((asr_gain(0.1, 1.0) - 3.5).abs() < f32::EPSILON);
+        assert_eq!(asr_gain(0.8, 1.0), 1.0);
     }
 }
