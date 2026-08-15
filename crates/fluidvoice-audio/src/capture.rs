@@ -128,11 +128,24 @@ impl PipeWireCapture {
     ///
     /// # Errors
     /// Returns an error for invalid durations, `PipeWire` failures, or empty audio.
-    #[allow(clippy::too_many_lines)]
     pub fn capture_until_stopped(
         maximum_duration: Duration,
         target: Option<&str>,
         stop_token: &CaptureStopToken,
+    ) -> Result<AudioBuffer, AudioCaptureError> {
+        Self::capture_with_levels(maximum_duration, target, stop_token, |_| {})
+    }
+
+    /// Captures until stopped and reports the peak of each received audio chunk.
+    ///
+    /// # Errors
+    /// Returns an error for invalid durations, `PipeWire` failures, or empty audio.
+    #[allow(clippy::too_many_lines)]
+    pub fn capture_with_levels(
+        maximum_duration: Duration,
+        target: Option<&str>,
+        stop_token: &CaptureStopToken,
+        mut report_level: impl FnMut(f32) + 'static,
     ) -> Result<AudioBuffer, AudioCaptureError> {
         validate_duration(maximum_duration)?;
         let capacity = capture_capacity(maximum_duration)?;
@@ -184,7 +197,8 @@ impl PipeWireCapture {
                 let offset = usize::try_from(chunk.offset()).unwrap_or(usize::MAX);
                 let size = usize::try_from(chunk.size()).unwrap_or(usize::MAX);
                 if let Some(bytes) = data.data() {
-                    sample_output.borrow_mut().append_chunk(bytes, offset, size);
+                    let peak = sample_output.borrow_mut().append_chunk(bytes, offset, size);
+                    report_level(peak);
                 }
             })
             .register()
@@ -276,22 +290,25 @@ impl CapturedSamples {
         }
     }
 
-    fn append(&mut self, bytes: &[u8]) {
+    fn append(&mut self, bytes: &[u8]) -> f32 {
+        let mut peak = 0.0_f32;
         for chunk in bytes.chunks_exact(mem::size_of::<f32>()) {
             if self.samples.len() == self.samples.capacity() {
                 self.truncated = true;
                 break;
             }
-            self.samples
-                .push(f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]));
+            let sample = f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
+            peak = peak.max(sample.abs());
+            self.samples.push(sample);
         }
+        peak
     }
 
-    fn append_chunk(&mut self, bytes: &[u8], offset: usize, size: usize) {
+    fn append_chunk(&mut self, bytes: &[u8], offset: usize, size: usize) -> f32 {
         let Some(available) = bytes.get(offset..) else {
-            return;
+            return 0.0;
         };
-        self.append(&available[..size.min(available.len())]);
+        self.append(&available[..size.min(available.len())])
     }
 }
 

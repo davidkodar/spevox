@@ -670,6 +670,7 @@ dependencies = [
  "cxx-qt",
  "cxx-qt-build",
  "cxx-qt-lib",
+ "fluidvoice-audio",
 ]
 
 [[package]]

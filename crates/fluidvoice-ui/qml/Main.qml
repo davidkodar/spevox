@@ -39,8 +39,8 @@ ApplicationWindow {
                 }
             }
             Platform.MenuItem {
-                text: qsTr("Preview recording")
-                onTriggered: controller.toggleRecordingPreview()
+                text: controller.recording ? qsTr("Stop recording") : qsTr("Start recording")
+                onTriggered: controller.toggleRecording()
             }
             Platform.MenuSeparator {}
             Platform.MenuItem {
@@ -318,12 +318,12 @@ ApplicationWindow {
                         ColumnLayout {
                             Layout.fillWidth: true
                             spacing: 3
-                            Text { text: qsTr("Preview the interaction"); color: root.primaryText; font.pixelSize: 14; font.weight: Font.DemiBold }
-                            Text { text: qsTr("This UI-only control demonstrates recording and overlay states."); color: root.secondaryText; font.pixelSize: 12 }
+                            Text { text: controller.recording ? qsTr("Microphone is live") : qsTr("Test microphone capture"); color: root.primaryText; font.pixelSize: 14; font.weight: Font.DemiBold }
+                            Text { text: controller.recording ? qsTr("Input level: %1%").arg(Math.round(controller.audioLevel * 100)) : qsTr("Capture audio through PipeWire without transcription."); color: root.secondaryText; font.pixelSize: 12 }
                         }
                         Button {
-                            text: controller.recording ? qsTr("Stop preview") : qsTr("Start preview")
-                            onClicked: controller.toggleRecordingPreview()
+                            text: controller.recording ? qsTr("Stop recording") : qsTr("Start recording")
+                            onClicked: controller.toggleRecording()
                         }
                     }
                 }
