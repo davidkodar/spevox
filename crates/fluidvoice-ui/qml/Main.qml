@@ -323,6 +323,22 @@ ApplicationWindow {
                             spacing: 3
                             Text { text: controller.recording ? qsTr("Microphone is live") : qsTr("Test microphone capture"); color: root.primaryText; font.pixelSize: 14; font.weight: Font.DemiBold }
                             Text { text: controller.recording ? qsTr("Input level: %1%").arg(Math.round(controller.audioLevel * 100)) : qsTr("Capture audio through PipeWire without transcription."); color: root.secondaryText; font.pixelSize: 12 }
+                            Rectangle {
+                                Layout.fillWidth: true
+                                Layout.maximumWidth: 240
+                                height: 6
+                                radius: 3
+                                color: "#32333d"
+
+                                Rectangle {
+                                    width: parent.width * controller.audioLevel
+                                    height: parent.height
+                                    radius: parent.radius
+                                    color: controller.audioLevel > 0.82 ? "#ff8f9c" : root.accent
+                                    Behavior on width { NumberAnimation { duration: 55 } }
+                                    Behavior on color { ColorAnimation { duration: 100 } }
+                                }
+                            }
                         }
                         Button {
                             text: controller.recording ? qsTr("Stop recording") : qsTr("Start recording")
@@ -375,12 +391,14 @@ ApplicationWindow {
                             model: 13
                             Rectangle {
                                 required property int index
+                                readonly property var barShape: [0.28, 0.42, 0.58, 0.76, 0.92, 0.72, 1.0, 0.72, 0.92, 0.76, 0.58, 0.42, 0.28]
                                 width: 3
-                                height: controller.recording ? 8 + ((index * 7) % 17) : 3
+                                height: controller.recording ? 3 + controller.audioLevel * 25 * barShape[index] : 3
                                 radius: 2
-                                color: controller.recording ? "#a99dff" : "#777681"
+                                color: controller.recording && controller.audioLevel > 0.02 ? "#b5aaff" : "#777681"
                                 anchors.verticalCenter: parent.verticalCenter
-                                Behavior on height { NumberAnimation { duration: 160 } }
+                                Behavior on height { NumberAnimation { duration: 55; easing.type: Easing.OutQuad } }
+                                Behavior on color { ColorAnimation { duration: 100 } }
                             }
                         }
                     }
