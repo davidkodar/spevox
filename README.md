@@ -65,11 +65,19 @@ cargo run -p fluidvoice-app -- --diagnose-transcription /path/to/ggml-tiny.bin 5
 
 The current baseline deliberately uses CPU inference. Model download/selection, hardware acceleration, and language controls will become application settings rather than being hard-coded into the engine.
 
+The first complete recovery workflow waits for the KDE shortcut, records a bounded capture, transcribes locally, and copies verified non-empty text to the clipboard:
+
+```bash
+cargo run -p fluidvoice-app -- --diagnose-workflow /path/to/ggml-tiny.bin 5 [PIPEWIRE_NODE]
+```
+
+This diagnostic uses one activation followed by a fixed recording window. Release behavior will stop capture on shortcut release. The process intentionally remains alive after copying so it can continue serving the Wayland clipboard selection until the text is pasted or replaced.
+
 The application ID is `io.github.davidkodar.FluidVoiceLinux`. The development diagnostic registers this host identity with the portal before requesting a shortcut; release packaging will install the matching desktop entry from `data/`.
 
 ## Status
 
-The current workspace establishes the platform-independent dictation state machine, KDE global-shortcut integration, PipeWire microphone capture, the mono 16 kHz ASR boundary, and local `whisper.cpp` transcription. Qt/QML and text delivery have not yet been implemented.
+The current workspace establishes the platform-independent dictation state machine, KDE global-shortcut integration, PipeWire microphone capture, the mono 16 kHz ASR boundary, local `whisper.cpp` transcription, and verified KDE Wayland clipboard recovery. Qt/QML and automatic text insertion have not yet been implemented.
 
 ## Upstream relationship and licensing
 

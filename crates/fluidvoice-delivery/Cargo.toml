@@ -1,0 +1,13 @@
+[package]
+name = "fluidvoice-delivery"
+description = "Recoverable transcript delivery for KDE Plasma Wayland"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+arboard = { version = "3.6.1", default-features = false, features = ["wayland-data-control"] }
+
+[lints]
+workspace = true

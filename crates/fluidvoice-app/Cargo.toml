@@ -9,6 +9,7 @@ publish.workspace = true
 [dependencies]
 fluidvoice-audio = { path = "../fluidvoice-audio" }
 fluidvoice-core = { path = "../fluidvoice-core" }
+fluidvoice-delivery = { path = "../fluidvoice-delivery" }
 fluidvoice-portal = { path = "../fluidvoice-portal" }
 fluidvoice-transcription = { path = "../fluidvoice-transcription" }
 hound = "3.5.1"

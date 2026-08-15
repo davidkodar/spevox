@@ -3,6 +3,7 @@ members = [
     "crates/fluidvoice-app",
     "crates/fluidvoice-audio",
     "crates/fluidvoice-core",
+    "crates/fluidvoice-delivery",
     "crates/fluidvoice-portal",
     "crates/fluidvoice-transcription",
 ]

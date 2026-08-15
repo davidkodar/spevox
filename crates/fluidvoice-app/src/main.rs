@@ -2,13 +2,56 @@ use std::time::Duration;
 
 use fluidvoice_audio::{AudioBuffer, PipeWireCapture};
 use fluidvoice_core::{DictationCoordinator, DictationState};
-use fluidvoice_portal::{GlobalShortcutBinding, GlobalShortcutConfig};
+use fluidvoice_delivery::ClipboardDelivery;
+use fluidvoice_portal::{GlobalShortcutBinding, GlobalShortcutConfig, GlobalShortcutEvent};
 use fluidvoice_transcription::{TranscriptionConfig, WhisperTranscriber};
 use tokio::sync::mpsc;
 
 #[tokio::main]
+#[allow(clippy::too_many_lines)]
 async fn main() {
     let arguments = std::env::args().skip(1).collect::<Vec<_>>();
+    if arguments
+        .first()
+        .is_some_and(|argument| argument == "--diagnose-workflow")
+    {
+        let Some(model_path) = arguments.get(1).cloned() else {
+            eprintln!("Usage: --diagnose-workflow MODEL [SECONDS] [PIPEWIRE_NODE]");
+            std::process::exit(2);
+        };
+        let seconds = arguments
+            .get(2)
+            .map_or(Ok(5), |value| value.parse::<u64>())
+            .unwrap_or_else(|error| {
+                eprintln!("Invalid duration: {error}");
+                std::process::exit(2);
+            });
+        let target = arguments.get(3).cloned();
+        if let Err(error) = diagnose_workflow(model_path, seconds, target).await {
+            eprintln!("Workflow diagnostic failed: {error}");
+            std::process::exit(1);
+        }
+        return;
+    }
+    if arguments
+        .first()
+        .is_some_and(|argument| argument == "--diagnose-clipboard")
+    {
+        let text = arguments
+            .get(1)
+            .map_or("FluidVoice Linux clipboard diagnostic", String::as_str);
+        let mut delivery = ClipboardDelivery::connect().unwrap_or_else(|error| {
+            eprintln!("Clipboard diagnostic failed: {error}");
+            std::process::exit(1);
+        });
+        delivery.copy_transcript(text).unwrap_or_else(|error| {
+            eprintln!("Clipboard diagnostic failed: {error}");
+            std::process::exit(1);
+        });
+        println!("Clipboard verified: {text}");
+        std::thread::sleep(Duration::from_secs(5));
+        return;
+    }
     if arguments
         .first()
         .is_some_and(|argument| argument == "--diagnose-transcription-file")
@@ -81,6 +124,55 @@ async fn main() {
     println!(
         "FluidVoice Linux foundation ready: Rust core initialized; Qt/QML shell and Linux adapters are next."
     );
+}
+
+async fn diagnose_workflow(
+    model_path: String,
+    seconds: u64,
+    target: Option<String>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let config = GlobalShortcutConfig::new(
+        "dictate_hold",
+        "Hold to dictate with FluidVoice Linux",
+        Some("CTRL+ALT+D"),
+    )?;
+    println!("Binding KDE shortcut; press Ctrl+Alt+D to start the diagnostic.");
+    let binding = GlobalShortcutBinding::bind(&config).await?;
+    let (sender, mut receiver) = mpsc::channel(16);
+    let event_task = tokio::spawn(binding.forward_events(sender));
+    loop {
+        match receiver.recv().await {
+            Some(GlobalShortcutEvent::Activated { .. }) => break,
+            Some(GlobalShortcutEvent::Deactivated { .. }) => {}
+            None => return Err("global shortcut event stream closed unexpectedly".into()),
+        }
+    }
+
+    println!("Recording for {seconds} seconds. Speak now…");
+    let audio = tokio::task::spawn_blocking(move || {
+        PipeWireCapture::capture_for(Duration::from_secs(seconds), target.as_deref())
+            .map(|capture| capture.to_asr_mono())
+    })
+    .await??;
+    println!("Transcribing locally…");
+    let transcript = tokio::task::spawn_blocking(move || {
+        let transcriber = WhisperTranscriber::load(
+            std::path::Path::new(&model_path),
+            TranscriptionConfig::default(),
+        )?;
+        transcriber.transcribe(&audio)
+    })
+    .await??;
+    if transcript.text.is_empty() {
+        return Err("Whisper returned an empty transcript; clipboard was left unchanged".into());
+    }
+    let mut delivery = ClipboardDelivery::connect()?;
+    delivery.copy_transcript(&transcript.text)?;
+    println!("Copied and verified: {}", transcript.text);
+    println!("Paste it now, or press Ctrl+C to exit.");
+    tokio::signal::ctrl_c().await?;
+    event_task.abort();
+    Ok(())
 }
 
 async fn diagnose_transcription_file(

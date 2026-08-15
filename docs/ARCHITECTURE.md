@@ -38,7 +38,7 @@ No platform integration should call directly across subsystem boundaries. The Ru
 
 ## First two technical gates
 
-1. Demonstrate portal shortcut, PipeWire capture, whisper.cpp transcription, and clipboard output fully offline. KDE Global Shortcuts produced reliable press/release pairs for `Ctrl+Alt+D`. PipeWire capture has source discovery, bounded native F32 capture, and a mono 16 kHz ASR conversion boundary. CPU-only `whisper.cpp` inference has transcribed the official test sample successfully. Hardware validation is recorded under `docs/validation/`.
+1. Demonstrate portal shortcut, PipeWire capture, whisper.cpp transcription, and clipboard output fully offline. KDE Global Shortcuts produced reliable press/release pairs for `Ctrl+Alt+D`. PipeWire capture has source discovery, bounded native F32 capture, and a mono 16 kHz ASR conversion boundary. CPU-only `whisper.cpp` inference transcribed the official test sample successfully. Clipboard output was read back by both the application and KDE Klipper. The combined path is implemented; one physical shortcut-to-clipboard run remains pending because no activation arrived during its interactive validation window. Evidence is recorded under `docs/validation/`.
 2. Measure AT-SPI and consented Wayland input behavior across KDE, terminal, browser, Electron, office, GTK, and XWayland applications.
 
 Full UI and feature-parity work begins only after these gates establish a reliable core workflow.
