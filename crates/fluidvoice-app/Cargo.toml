@@ -8,7 +8,8 @@ publish.workspace = true
 
 [dependencies]
 fluidvoice-core = { path = "../fluidvoice-core" }
+fluidvoice-portal = { path = "../fluidvoice-portal" }
+tokio = { version = "1.53.1", features = ["macros", "rt-multi-thread", "signal", "sync"] }
 
 [lints]
 workspace = true
-

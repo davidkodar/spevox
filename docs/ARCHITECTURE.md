@@ -38,7 +38,7 @@ No platform integration should call directly across subsystem boundaries. The Ru
 
 ## First two technical gates
 
-1. Demonstrate portal shortcut, PipeWire capture, whisper.cpp transcription, and clipboard output fully offline.
+1. Demonstrate portal shortcut, PipeWire capture, whisper.cpp transcription, and clipboard output fully offline. The KDE Global Shortcuts portion is validated: portal version 2 produced reliable press/release pairs for `Ctrl+Alt+D`.
 2. Measure AT-SPI and consented Wayland input behavior across KDE, terminal, browser, Electron, office, GTK, and XWayland applications.
 
 Full UI and feature-parity work begins only after these gates establish a reliable core workflow.

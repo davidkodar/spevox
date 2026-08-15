@@ -2,6 +2,7 @@
 members = [
     "crates/fluidvoice-app",
     "crates/fluidvoice-core",
+    "crates/fluidvoice-portal",
 ]
 resolver = "3"
 
@@ -22,4 +23,3 @@ pedantic = "warn"
 lto = "thin"
 codegen-units = 1
 strip = "symbols"
-

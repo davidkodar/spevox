@@ -41,6 +41,16 @@ cargo test --workspace
 cargo run -p fluidvoice-app
 ```
 
+On KDE Plasma Wayland, the current shortcut diagnostic creates a portal-managed binding and prints separate press/release events:
+
+```bash
+cargo run -p fluidvoice-app -- --diagnose-shortcut
+```
+
+Plasma may display a shortcut configuration dialog the first time. The suggested trigger is `Ctrl+Alt+D`; the desktop remains authoritative and may let the user choose another binding.
+
+The application ID is `io.github.davidkodar.FluidVoiceLinux`. The development diagnostic registers this host identity with the portal before requesting a shortcut; release packaging will install the matching desktop entry from `data/`.
+
 ## Status
 
 The current workspace establishes the platform-independent dictation state machine and a thin application binary. Qt/QML, audio, shortcuts, transcription, and text delivery have not yet been implemented.
