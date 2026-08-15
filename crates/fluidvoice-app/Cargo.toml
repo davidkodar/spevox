@@ -7,6 +7,7 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+fluidvoice-audio = { path = "../fluidvoice-audio" }
 fluidvoice-core = { path = "../fluidvoice-core" }
 fluidvoice-portal = { path = "../fluidvoice-portal" }
 tokio = { version = "1.53.1", features = ["macros", "rt-multi-thread", "signal", "sync"] }

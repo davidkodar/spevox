@@ -1,0 +1,13 @@
+[package]
+name = "fluidvoice-audio"
+description = "PipeWire audio capture and ASR format conversion for FluidVoice Linux"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+pipewire = { version = "0.10.0", features = ["v1_0_0"] }
+
+[lints]
+workspace = true

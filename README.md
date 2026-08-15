@@ -49,11 +49,19 @@ cargo run -p fluidvoice-app -- --diagnose-shortcut
 
 Plasma may display a shortcut configuration dialog the first time. The suggested trigger is `Ctrl+Alt+D`; the desktop remains authoritative and may let the user choose another binding.
 
+The audio diagnostic lists available PipeWire microphone sources, captures three seconds from the default source, and reports both the native signal and normalized mono 16 kHz ASR boundary:
+
+```bash
+cargo run -p fluidvoice-app -- --diagnose-audio 3
+```
+
+To select a specific microphone, append its PipeWire node name as the final argument.
+
 The application ID is `io.github.davidkodar.FluidVoiceLinux`. The development diagnostic registers this host identity with the portal before requesting a shortcut; release packaging will install the matching desktop entry from `data/`.
 
 ## Status
 
-The current workspace establishes the platform-independent dictation state machine and a thin application binary. Qt/QML, audio, shortcuts, transcription, and text delivery have not yet been implemented.
+The current workspace establishes the platform-independent dictation state machine, KDE global-shortcut integration, PipeWire microphone capture, and the mono 16 kHz ASR boundary. Qt/QML, transcription, and text delivery have not yet been implemented.
 
 ## Upstream relationship and licensing
 

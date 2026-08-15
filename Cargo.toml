@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "crates/fluidvoice-app",
+    "crates/fluidvoice-audio",
     "crates/fluidvoice-core",
     "crates/fluidvoice-portal",
 ]
