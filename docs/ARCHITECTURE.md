@@ -4,20 +4,26 @@
 
 The Linux client is a native implementation for KDE Plasma on Wayland. The macOS FluidVoice source is a behavioral and algorithmic reference, not a portable application shell.
 
+## Experience parity
+
+Qt Quick/QML will reproduce the macOS client's visual language rather than defaulting to a generic utility UI. Shared design tokens will cover color, type scale, spacing, radii, shadows, translucency, animation curves, and status colors. Reference views will be compared at fixed sizes during UI review.
+
+Platform metaphors are translated rather than copied blindly: the notch overlay becomes a non-focusable Plasma overlay, the macOS menu-bar experience becomes a StatusNotifierItem tray experience, and permission prompts follow KDE/portal conventions. Visual parity must never require bypassing Wayland security or breaking Plasma window behavior.
+
 ## Planned modules
 
 ```text
-app/                 application lifecycle and composition
-ui/                  tray, overlay, settings, onboarding
-core/                dictation state machine and domain events
-audio/               PipeWire devices, capture, conversion, buffering
-asr/                 provider interface and whisper.cpp adapter
-shortcuts/            XDG Global Shortcuts portal adapter
-delivery/             AT-SPI, consented input, clipboard recovery
-text/                 deterministic formatting and dictionaries
-persistence/          XDG settings, history, and migrations
-platform/kde/         versioned KDE-specific adapters
-tests/                unit and desktop integration tests
+crates/fluidvoice-core/     dependency-light state machine and domain events
+crates/fluidvoice-app/      application lifecycle and composition
+crates/fluidvoice-audio/    PipeWire devices, capture, conversion, buffering
+crates/fluidvoice-asr/      provider interface and whisper.cpp adapter
+crates/fluidvoice-portal/   XDG Global Shortcuts and permission adapters
+crates/fluidvoice-delivery/ AT-SPI, consented input, clipboard recovery
+crates/fluidvoice-storage/  XDG settings, history, and migrations
+ui/                         Qt Quick/QML tray, overlay, settings, onboarding
+ui/tokens/                  shared parity colors, typography, spacing, motion
+ui/reference/               approved visual baselines and comparison notes
+tests/                      desktop integration and compatibility harness
 ```
 
 ## State machine
@@ -28,7 +34,7 @@ Idle → Recording → Transcribing → Delivering → Complete → Idle
    Error/Cancelled/RecoverableClipboard
 ```
 
-No platform integration should call directly across subsystem boundaries. The dictation coordinator owns state transitions and consumes interface-level events.
+No platform integration should call directly across subsystem boundaries. The Rust dictation coordinator owns state transitions and consumes interface-level events. Qt types remain at the CXX-Qt/QML boundary and do not enter the domain crates.
 
 ## First two technical gates
 
@@ -36,4 +42,3 @@ No platform integration should call directly across subsystem boundaries. The di
 2. Measure AT-SPI and consented Wayland input behavior across KDE, terminal, browser, Electron, office, GTK, and XWayland applications.
 
 Full UI and feature-parity work begins only after these gates establish a reliable core workflow.
-

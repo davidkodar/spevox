@@ -1,0 +1,11 @@
+[package]
+name = "fluidvoice-core"
+description = "Platform-independent dictation domain and state machine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
