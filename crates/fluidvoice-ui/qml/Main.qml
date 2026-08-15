@@ -363,8 +363,36 @@ ApplicationWindow {
                         }
                         Button {
                             text: controller.recording ? qsTr("Stop test") : qsTr("Test input")
-                            enabled: controller.selectedInput >= 0
+                            enabled: controller.selectedInput >= 0 && !controller.transcribing
                             onClicked: controller.toggleRecording()
+                        }
+                    }
+                }
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    implicitHeight: transcriptColumn.implicitHeight + 36
+                    radius: 18
+                    color: root.panel
+                    border.color: "#2d2e37"
+
+                    ColumnLayout {
+                        id: transcriptColumn
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.top: parent.top
+                        anchors.margins: 18
+                        spacing: 8
+
+                        Text { text: qsTr("LATEST TRANSCRIPT"); color: "#777581"; font.pixelSize: 10; font.letterSpacing: 1.2 }
+                        Text {
+                            Layout.fillWidth: true
+                            text: controller.transcriptText.length > 0
+                                  ? controller.transcriptText
+                                  : qsTr("Your local transcript will appear here after stopping the input test.")
+                            color: controller.transcriptText.length > 0 ? root.primaryText : root.secondaryText
+                            font.pixelSize: 13
+                            wrapMode: Text.Wrap
                         }
                     }
                 }
@@ -406,7 +434,7 @@ ApplicationWindow {
                 ColumnLayout {
                     Layout.fillWidth: true
                     spacing: 3
-                    Text { text: controller.recording ? qsTr("Listening…") : qsTr("Ready to dictate"); color: "#faf8ff"; font.pixelSize: 14; font.weight: Font.DemiBold }
+                    Text { text: controller.recording ? qsTr("Listening…") : controller.transcribing ? qsTr("Transcribing…") : qsTr("Ready to dictate"); color: "#faf8ff"; font.pixelSize: 14; font.weight: Font.DemiBold }
                     Row {
                         spacing: 4
                         Repeater {
@@ -427,7 +455,7 @@ ApplicationWindow {
                 }
 
                 Text {
-                    text: controller.recording ? qsTr("Release to finish") : "Ctrl Alt D"
+                    text: controller.recording ? qsTr("Release to finish") : controller.transcribing ? qsTr("On-device") : "Ctrl Alt D"
                     color: "#aaa8b5"
                     font.pixelSize: 10
                 }

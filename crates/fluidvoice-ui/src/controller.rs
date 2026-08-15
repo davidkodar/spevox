@@ -24,6 +24,8 @@ pub mod ffi {
         #[qproperty(QStringList, input_sources, cxx_name = "inputSources")]
         #[qproperty(i32, selected_input, cxx_name = "selectedInput")]
         #[qproperty(f32, gain_db, cxx_name = "gainDb")]
+        #[qproperty(bool, transcribing)]
+        #[qproperty(QString, transcript_text, cxx_name = "transcriptText")]
         type FluidVoiceController = super::FluidVoiceControllerRust;
 
         #[qinvokable]
@@ -47,6 +49,7 @@ pub mod ffi {
 }
 
 use std::{
+    path::PathBuf,
     pin::Pin,
     time::{Duration, Instant},
 };
@@ -54,6 +57,7 @@ use std::{
 use cxx_qt::{CxxQtType, Threading};
 use cxx_qt_lib::{QString, QStringList};
 use fluidvoice_audio::{AudioDevice, CaptureStopToken, PipeWireCapture};
+use fluidvoice_transcription::{TranscriptionConfig, WhisperTranscriber};
 
 pub struct FluidVoiceControllerRust {
     status_text: QString,
@@ -67,6 +71,8 @@ pub struct FluidVoiceControllerRust {
     input_sources: QStringList,
     selected_input: i32,
     gain_db: f32,
+    transcribing: bool,
+    transcript_text: QString,
     stop_token: Option<CaptureStopToken>,
     capture_target: Option<String>,
     devices: Vec<AudioDevice>,
@@ -86,6 +92,8 @@ impl Default for FluidVoiceControllerRust {
             input_sources: QStringList::default(),
             selected_input: -1,
             gain_db: 0.0,
+            transcribing: false,
+            transcript_text: QString::default(),
             stop_token: None,
             capture_target: None,
             devices: Vec::new(),
@@ -146,6 +154,9 @@ impl ffi::FluidVoiceController {
         if *self.as_ref().recording() {
             return;
         }
+        if *self.as_ref().transcribing() {
+            return;
+        }
         let Ok(index_usize) = usize::try_from(index) else {
             return;
         };
@@ -159,6 +170,7 @@ impl ffi::FluidVoiceController {
         self.set_status_text(QString::from("Input selected · ready to test"));
     }
 
+    #[allow(clippy::too_many_lines)]
     pub fn toggle_recording(mut self: Pin<&mut Self>) {
         if *self.as_ref().recording() {
             if let Some(token) = self.as_ref().rust().stop_token.as_ref() {
@@ -175,6 +187,7 @@ impl ffi::FluidVoiceController {
         self.as_mut().set_audio_level(0.0);
         self.as_mut().set_input_db(-60.0);
         self.as_mut().set_audio_updates(0);
+        self.as_mut().set_transcript_text(QString::default());
         self.as_mut().set_recording(true);
         self.as_mut().set_status_text(QString::from("Listening…"));
         self.as_mut().set_overlay_visible(true);
@@ -206,30 +219,72 @@ impl ffi::FluidVoiceController {
                 },
             );
 
-            qt_thread
-                .queue(move |mut controller| {
-                    controller.as_mut().rust_mut().get_mut().stop_token = None;
-                    controller.as_mut().set_recording(false);
-                    controller.as_mut().set_overlay_visible(false);
-                    match result {
-                        Ok(audio) => {
-                            controller
-                                .as_mut()
-                                .set_audio_level(meter_level(audio.peak() * gain));
-                            controller
-                                .as_mut()
-                                .set_input_db(peak_db(audio.peak() * gain));
-                            controller.set_status_text(QString::from(&format!(
-                                "Captured {:.1}s · peak {:.0}%",
-                                audio.duration().as_secs_f32(),
-                                audio.peak() * 100.0
-                            )));
-                        }
-                        Err(error) => {
+            let audio = match result {
+                Ok(audio) => audio,
+                Err(error) => {
+                    qt_thread
+                        .queue(move |mut controller| {
+                            controller.as_mut().rust_mut().get_mut().stop_token = None;
+                            controller.as_mut().set_recording(false);
+                            controller.as_mut().set_overlay_visible(false);
                             controller.as_mut().set_audio_level(0.0);
                             controller.set_status_text(QString::from(&format!(
                                 "Capture failed: {error}"
                             )));
+                        })
+                        .ok();
+                    return;
+                }
+            };
+
+            let peak = audio.peak();
+            let duration = audio.duration();
+            qt_thread
+                .queue(move |mut controller| {
+                    controller.as_mut().rust_mut().get_mut().stop_token = None;
+                    controller.as_mut().set_recording(false);
+                    controller.as_mut().set_transcribing(true);
+                    controller
+                        .as_mut()
+                        .set_audio_level(meter_level(peak * gain));
+                    controller.as_mut().set_input_db(peak_db(peak * gain));
+                    controller.set_status_text(QString::from("Transcribing locally…"));
+                })
+                .ok();
+
+            let transcription = find_whisper_model().and_then(|model| {
+                WhisperTranscriber::load(&model, TranscriptionConfig::default())
+                    .map_err(|error| error.to_string())?
+                    .transcribe(&audio.to_asr_mono())
+                    .map_err(|error| error.to_string())
+            });
+            qt_thread
+                .queue(move |mut controller| {
+                    controller.as_mut().set_transcribing(false);
+                    controller.as_mut().set_overlay_visible(false);
+                    match transcription {
+                        Ok(transcript) if !transcript.text.is_empty() => {
+                            controller
+                                .as_mut()
+                                .set_transcript_text(QString::from(&transcript.text));
+                            controller.set_status_text(QString::from(&format!(
+                                "Transcribed {:.1}s locally",
+                                duration.as_secs_f32()
+                            )));
+                        }
+                        Ok(_) => {
+                            controller.as_mut().set_transcript_text(QString::from(
+                                "No speech was recognized. Try speaking closer to the microphone.",
+                            ));
+                            controller.set_status_text(QString::from("No speech recognized"));
+                        }
+                        Err(error) => {
+                            controller
+                                .as_mut()
+                                .set_transcript_text(QString::from(&format!(
+                                    "Transcription failed: {error}"
+                                )));
+                            controller.set_status_text(QString::from("Transcription failed"));
                         }
                     }
                 })
@@ -245,6 +300,21 @@ impl ffi::FluidVoiceController {
             }
             self.set_status_text(QString::from("Finishing…"));
         }
+    }
+}
+
+fn find_whisper_model() -> Result<PathBuf, String> {
+    let configured = std::env::var_os("FLUIDVOICE_WHISPER_MODEL").map(PathBuf::from);
+    let development =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../work/models/ggml-tiny.bin");
+    let path = configured.unwrap_or(development);
+    if path.is_file() {
+        Ok(path)
+    } else {
+        Err(format!(
+            "Whisper model not found at {}. Set FLUIDVOICE_WHISPER_MODEL.",
+            path.display()
+        ))
     }
 }
 
