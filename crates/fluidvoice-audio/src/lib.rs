@@ -4,4 +4,4 @@ mod buffer;
 mod capture;
 
 pub use buffer::{AudioBuffer, AudioFormatError, MonoAudioBuffer};
-pub use capture::{AudioCaptureError, AudioDevice, PipeWireCapture};
+pub use capture::{AudioCaptureError, AudioDevice, CaptureStopToken, PipeWireCapture};

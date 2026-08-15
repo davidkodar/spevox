@@ -1,4 +1,16 @@
-use std::{cell::RefCell, error::Error, fmt, io::Cursor, mem, rc::Rc, time::Duration};
+use std::{
+    cell::RefCell,
+    error::Error,
+    fmt,
+    io::Cursor,
+    mem,
+    rc::Rc,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::{Duration, Instant},
+};
 
 use pipewire as pw;
 use pw::{properties::properties, spa};
@@ -23,6 +35,26 @@ pub struct AudioDevice {
 }
 
 pub struct PipeWireCapture;
+
+/// Thread-safe signal used to end an active microphone capture.
+#[derive(Clone, Debug, Default)]
+pub struct CaptureStopToken(Arc<AtomicBool>);
+
+impl CaptureStopToken {
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn stop(&self) {
+        self.0.store(true, Ordering::Release);
+    }
+
+    #[must_use]
+    pub fn is_stopped(&self) -> bool {
+        self.0.load(Ordering::Acquire)
+    }
+}
 
 impl PipeWireCapture {
     /// Lists microphone sources currently exposed by `PipeWire`.
@@ -82,13 +114,28 @@ impl PipeWireCapture {
     ///
     /// # Errors
     /// Returns an error for invalid durations, `PipeWire` failures, or empty audio.
-    #[allow(clippy::too_many_lines)]
     pub fn capture_for(
         duration: Duration,
         target: Option<&str>,
     ) -> Result<AudioBuffer, AudioCaptureError> {
-        validate_duration(duration)?;
-        let capacity = capture_capacity(duration)?;
+        Self::capture_until_stopped(duration, target, &CaptureStopToken::new())
+    }
+
+    /// Captures until `stop_token` is signalled, with a maximum safety duration.
+    ///
+    /// The token may be signalled from the portal event task while `PipeWire` is
+    /// running on its dedicated blocking thread.
+    ///
+    /// # Errors
+    /// Returns an error for invalid durations, `PipeWire` failures, or empty audio.
+    #[allow(clippy::too_many_lines)]
+    pub fn capture_until_stopped(
+        maximum_duration: Duration,
+        target: Option<&str>,
+        stop_token: &CaptureStopToken,
+    ) -> Result<AudioBuffer, AudioCaptureError> {
+        validate_duration(maximum_duration)?;
+        let capacity = capture_capacity(maximum_duration)?;
         pw::init();
         let main_loop = pw::main_loop::MainLoopRc::new(None).map_err(AudioCaptureError::pw)?;
         let context =
@@ -170,9 +217,16 @@ impl PipeWireCapture {
             )
             .map_err(AudioCaptureError::pw)?;
         let loop_clone = main_loop.clone();
-        let timer = main_loop.loop_().add_timer(move |_| loop_clone.quit());
+        let stop_token = stop_token.clone();
+        let started = Instant::now();
+        let timer = main_loop.loop_().add_timer(move |_| {
+            if stop_token.is_stopped() || started.elapsed() >= maximum_duration {
+                loop_clone.quit();
+            }
+        });
+        let poll_interval = Duration::from_millis(10);
         timer
-            .update_timer(Some(duration), None)
+            .update_timer(Some(poll_interval), Some(poll_interval))
             .into_result()
             .map_err(AudioCaptureError::pw)?;
         main_loop.run();
@@ -276,12 +330,21 @@ fn capture_capacity(duration: Duration) -> Result<usize, AudioCaptureError> {
 
 #[cfg(test)]
 mod tests {
-    use super::{CapturedSamples, capture_capacity, validate_duration};
+    use super::{CaptureStopToken, CapturedSamples, capture_capacity, validate_duration};
     use std::time::Duration;
 
     #[test]
     fn rejects_zero_duration() {
         assert!(validate_duration(Duration::ZERO).is_err());
+    }
+
+    #[test]
+    fn stop_token_is_shared_across_threads() {
+        let token = CaptureStopToken::new();
+        let callback_token = token.clone();
+        assert!(!callback_token.is_stopped());
+        token.stop();
+        assert!(callback_token.is_stopped());
     }
 
     #[test]

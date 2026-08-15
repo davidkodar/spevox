@@ -71,7 +71,7 @@ The first complete recovery workflow waits for the KDE shortcut, records a bound
 cargo run -p fluidvoice-app -- --diagnose-workflow /path/to/ggml-tiny.bin 5 [PIPEWIRE_NODE]
 ```
 
-This diagnostic uses one activation followed by a fixed recording window. Release behavior will stop capture on shortcut release. The process intentionally remains alive after copying so it can continue serving the Wayland clipboard selection until the text is pasted or replaced.
+This diagnostic records while the shortcut is held and stops PipeWire capture on release, with a configurable safety ceiling. Captures shorter than 300 ms are treated as accidental taps and leave the clipboard unchanged. The process intentionally remains alive after copying so it can continue serving the Wayland clipboard selection until the text is pasted or replaced.
 
 The application ID is `io.github.davidkodar.FluidVoiceLinux`. The development diagnostic registers this host identity with the portal before requesting a shortcut; release packaging will install the matching desktop entry from `data/`.
 

@@ -1,11 +1,13 @@
 use std::time::Duration;
 
-use fluidvoice_audio::{AudioBuffer, PipeWireCapture};
+use fluidvoice_audio::{AudioBuffer, CaptureStopToken, PipeWireCapture};
 use fluidvoice_core::{DictationCoordinator, DictationState};
 use fluidvoice_delivery::ClipboardDelivery;
 use fluidvoice_portal::{GlobalShortcutBinding, GlobalShortcutConfig, GlobalShortcutEvent};
 use fluidvoice_transcription::{TranscriptionConfig, WhisperTranscriber};
 use tokio::sync::mpsc;
+
+const MIN_DICTATION_DURATION: Duration = Duration::from_millis(300);
 
 #[tokio::main]
 #[allow(clippy::too_many_lines)]
@@ -148,13 +150,39 @@ async fn diagnose_workflow(
         }
     }
 
-    println!("Recording for {seconds} seconds. Speak now…");
-    let audio = tokio::task::spawn_blocking(move || {
-        PipeWireCapture::capture_for(Duration::from_secs(seconds), target.as_deref())
-            .map(|capture| capture.to_asr_mono())
-    })
-    .await??;
-    println!("Transcribing locally…");
+    println!("Recording while held (maximum {seconds} seconds). Speak now…");
+    let stop_token = CaptureStopToken::new();
+    let capture_stop_token = stop_token.clone();
+    let capture_task = tokio::task::spawn_blocking(move || {
+        PipeWireCapture::capture_until_stopped(
+            Duration::from_secs(seconds),
+            target.as_deref(),
+            &capture_stop_token,
+        )
+        .map(|capture| capture.to_asr_mono())
+    });
+    loop {
+        match receiver.recv().await {
+            Some(GlobalShortcutEvent::Deactivated { .. }) => {
+                stop_token.stop();
+                break;
+            }
+            Some(GlobalShortcutEvent::Activated { .. }) => {}
+            None => {
+                stop_token.stop();
+                return Err("global shortcut event stream closed during capture".into());
+            }
+        }
+    }
+    let audio = capture_task.await??;
+    println!(
+        "Released after {:.2?}; transcribing {} samples locally…",
+        audio.duration(),
+        audio.samples().len()
+    );
+    if audio.duration() < MIN_DICTATION_DURATION {
+        return Err("shortcut was released too quickly; clipboard was left unchanged".into());
+    }
     let transcript = tokio::task::spawn_blocking(move || {
         let transcriber = WhisperTranscriber::load(
             std::path::Path::new(&model_path),
