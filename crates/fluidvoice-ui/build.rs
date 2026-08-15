@@ -6,6 +6,8 @@ fn main() {
     )
     .qt_module("Network")
     .qt_module("QuickControls2")
-    .files(["src/controller.rs"])
+    .qt_module("Widgets")
+    .files(["src/application.rs", "src/controller.rs"])
+    .cpp_file("src/application.cpp")
     .build();
 }

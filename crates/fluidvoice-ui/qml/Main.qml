@@ -344,7 +344,7 @@ ApplicationWindow {
             anchors.fill: parent
             anchors.margins: 5
             radius: 25
-            color: "#ebdd1e2028"
+            color: "#eb1e2028"
             border.color: controller.recording ? "#7769d8" : "#3c3d48"
             border.width: 1
 

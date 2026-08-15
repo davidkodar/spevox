@@ -1,10 +1,11 @@
+mod application;
 mod controller;
 
 use cxx_qt::casting::Upcast;
-use cxx_qt_lib::{QGuiApplication, QQmlApplicationEngine, QQmlEngine, QUrl};
+use cxx_qt_lib::{QQmlApplicationEngine, QQmlEngine, QUrl};
 
 fn main() {
-    let mut application = QGuiApplication::new();
+    let mut application = application::new_application();
     let mut engine = QQmlApplicationEngine::new();
 
     if let Some(mut engine) = engine.as_mut() {
@@ -22,6 +23,6 @@ fn main() {
     }
 
     if let Some(application) = application.as_mut() {
-        application.exec();
+        application::exec_application(application);
     }
 }
