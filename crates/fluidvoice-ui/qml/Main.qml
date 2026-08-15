@@ -221,7 +221,7 @@ ApplicationWindow {
 
                 Rectangle {
                     Layout.fillWidth: true
-                    height: 138
+                    height: 196
                     radius: 18
                     color: root.panel
                     border.color: "#2d2e37"
@@ -232,20 +232,35 @@ ApplicationWindow {
                         spacing: 14
                         Text { text: qsTr("INPUT & MODEL"); color: "#777581"; font.pixelSize: 10; font.letterSpacing: 1.2 }
 
-                        RowLayout {
+                        ColumnLayout {
                             Layout.fillWidth: true
-                            ColumnLayout {
+                            spacing: 6
+                            Text { text: qsTr("Microphone source"); color: root.primaryText; font.pixelSize: 13; font.weight: Font.Medium }
+                            ComboBox {
                                 Layout.fillWidth: true
-                                spacing: 3
-                                Text { text: qsTr("Microphone"); color: root.primaryText; font.pixelSize: 13; font.weight: Font.Medium }
-                                Text { text: controller.microphoneName; color: root.secondaryText; font.pixelSize: 12; elide: Text.ElideRight; Layout.fillWidth: true }
+                                model: controller.inputSources
+                                currentIndex: controller.selectedInput
+                                enabled: !controller.recording && count > 0
+                                onActivated: function(index) { controller.selectInput(index) }
                             }
-                            Rectangle { width: 1; height: 38; color: "#34353e" }
-                            ColumnLayout {
+                            RowLayout {
                                 Layout.fillWidth: true
-                                spacing: 3
-                                Text { text: qsTr("Local model"); color: root.primaryText; font.pixelSize: 13; font.weight: Font.Medium }
-                                Text { text: controller.modelName; color: root.secondaryText; font.pixelSize: 12; elide: Text.ElideRight; Layout.fillWidth: true }
+                                Text { text: qsTr("Software gain"); color: root.secondaryText; font.pixelSize: 12 }
+                                Slider {
+                                    Layout.fillWidth: true
+                                    from: -12
+                                    to: 24
+                                    stepSize: 1
+                                    value: controller.gainDb
+                                    enabled: !controller.recording
+                                    onMoved: controller.gainDb = value
+                                }
+                                Text {
+                                    text: (controller.gainDb >= 0 ? "+" : "") + Math.round(controller.gainDb) + " dB"
+                                    color: root.primaryText
+                                    font.pixelSize: 11
+                                    font.family: "monospace"
+                                }
                             }
                         }
                     }
@@ -322,7 +337,13 @@ ApplicationWindow {
                             Layout.fillWidth: true
                             spacing: 3
                             Text { text: controller.recording ? qsTr("Microphone is live") : qsTr("Test microphone capture"); color: root.primaryText; font.pixelSize: 14; font.weight: Font.DemiBold }
-                            Text { text: controller.recording ? qsTr("Input level: %1%").arg(Math.round(controller.audioLevel * 100)) : qsTr("Capture audio through PipeWire without transcription."); color: root.secondaryText; font.pixelSize: 12 }
+                            Text {
+                                text: controller.recording
+                                      ? qsTr("%1 dBFS · %2 live updates").arg(controller.inputDb.toFixed(1)).arg(controller.audioUpdates)
+                                      : qsTr("Press Test input, then speak into the selected microphone.")
+                                color: controller.recording && controller.audioUpdates > 0 ? "#82dda9" : root.secondaryText
+                                font.pixelSize: 12
+                            }
                             Rectangle {
                                 Layout.fillWidth: true
                                 Layout.maximumWidth: 240
@@ -341,7 +362,8 @@ ApplicationWindow {
                             }
                         }
                         Button {
-                            text: controller.recording ? qsTr("Stop recording") : qsTr("Start recording")
+                            text: controller.recording ? qsTr("Stop test") : qsTr("Test input")
+                            enabled: controller.selectedInput >= 0
                             onClicked: controller.toggleRecording()
                         }
                     }
