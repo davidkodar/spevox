@@ -10,6 +10,8 @@ publish.workspace = true
 fluidvoice-audio = { path = "../fluidvoice-audio" }
 fluidvoice-core = { path = "../fluidvoice-core" }
 fluidvoice-portal = { path = "../fluidvoice-portal" }
+fluidvoice-transcription = { path = "../fluidvoice-transcription" }
+hound = "3.5.1"
 tokio = { version = "1.53.1", features = ["macros", "rt-multi-thread", "signal", "sync"] }
 
 [lints]

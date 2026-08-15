@@ -57,11 +57,19 @@ cargo run -p fluidvoice-app -- --diagnose-audio 3
 
 To select a specific microphone, append its PipeWire node name as the final argument.
 
+Local transcription uses a `whisper.cpp` GGML model supplied by path. After downloading a model from the official `whisper.cpp` model repository, capture and transcribe five seconds with:
+
+```bash
+cargo run -p fluidvoice-app -- --diagnose-transcription /path/to/ggml-tiny.bin 5 [PIPEWIRE_NODE]
+```
+
+The current baseline deliberately uses CPU inference. Model download/selection, hardware acceleration, and language controls will become application settings rather than being hard-coded into the engine.
+
 The application ID is `io.github.davidkodar.FluidVoiceLinux`. The development diagnostic registers this host identity with the portal before requesting a shortcut; release packaging will install the matching desktop entry from `data/`.
 
 ## Status
 
-The current workspace establishes the platform-independent dictation state machine, KDE global-shortcut integration, PipeWire microphone capture, and the mono 16 kHz ASR boundary. Qt/QML, transcription, and text delivery have not yet been implemented.
+The current workspace establishes the platform-independent dictation state machine, KDE global-shortcut integration, PipeWire microphone capture, the mono 16 kHz ASR boundary, and local `whisper.cpp` transcription. Qt/QML and text delivery have not yet been implemented.
 
 ## Upstream relationship and licensing
 

@@ -4,6 +4,7 @@ members = [
     "crates/fluidvoice-audio",
     "crates/fluidvoice-core",
     "crates/fluidvoice-portal",
+    "crates/fluidvoice-transcription",
 ]
 resolver = "3"
 

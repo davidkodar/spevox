@@ -4,5 +4,6 @@ target/
 /.cache/
 /.idea/
 /.vscode/
+/work/
 *.profraw
 *.profdata
