@@ -14,6 +14,7 @@ ApplicationWindow {
     visible: true
     title: qsTr("FluidVoice")
     color: "#111216"
+    onClosing: Qt.quit()
 
     readonly property color accent: "#8b7cff"
     readonly property color panel: "#1a1b21"

@@ -141,7 +141,7 @@ impl ffi::FluidVoiceController {
                     last_level_report = Some(Instant::now());
                     level_thread
                         .queue(move |mut controller| {
-                            controller.as_mut().set_audio_level(level.clamp(0.0, 1.0));
+                            controller.as_mut().set_audio_level(meter_level(level));
                         })
                         .ok();
                 },
@@ -156,7 +156,7 @@ impl ffi::FluidVoiceController {
                         Ok(audio) => {
                             controller
                                 .as_mut()
-                                .set_audio_level(audio.peak().clamp(0.0, 1.0));
+                                .set_audio_level(meter_level(audio.peak()));
                             controller.set_status_text(QString::from(&format!(
                                 "Captured {:.1}s · peak {:.0}%",
                                 audio.duration().as_secs_f32(),
@@ -183,5 +183,25 @@ impl ffi::FluidVoiceController {
             }
             self.set_status_text(QString::from("Finishing…"));
         }
+    }
+}
+
+fn meter_level(peak: f32) -> f32 {
+    if !peak.is_finite() || peak <= 0.0 {
+        return 0.0;
+    }
+    ((20.0 * peak.log10() + 60.0) / 60.0).clamp(0.0, 1.0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::meter_level;
+
+    #[test]
+    fn maps_audio_peak_to_logarithmic_meter() {
+        assert_eq!(meter_level(0.0), 0.0);
+        assert!((meter_level(0.01) - 1.0 / 3.0).abs() < 0.001);
+        assert_eq!(meter_level(1.0), 1.0);
+        assert_eq!(meter_level(f32::NAN), 0.0);
     }
 }
