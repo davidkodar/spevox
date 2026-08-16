@@ -120,9 +120,15 @@ ApplicationWindow {
             spacing: 10
 
             Image {
-                width: 28
-                height: 28
+                Layout.preferredWidth: 28
+                Layout.preferredHeight: 28
+                Layout.minimumWidth: 28
+                Layout.minimumHeight: 28
+                Layout.maximumWidth: 28
+                Layout.maximumHeight: 28
                 source: "qrc:/qt/qml/io/github/davidkodar/FluidVoiceLinux/assets/fluidvoice-app.png"
+                sourceSize.width: 56
+                sourceSize.height: 56
                 fillMode: Image.PreserveAspectFit
                 smooth: true
                 mipmap: true
@@ -702,9 +708,15 @@ ApplicationWindow {
                     Layout.fillWidth: true
                     spacing: 10
                     Image {
-                        width: 22
-                        height: 22
+                        Layout.preferredWidth: 22
+                        Layout.preferredHeight: 22
+                        Layout.minimumWidth: 22
+                        Layout.minimumHeight: 22
+                        Layout.maximumWidth: 22
+                        Layout.maximumHeight: 22
                         source: "qrc:/qt/qml/io/github/davidkodar/FluidVoiceLinux/assets/fluidvoice-app.png"
+                        sourceSize.width: 44
+                        sourceSize.height: 44
                         fillMode: Image.PreserveAspectFit
                         smooth: true
                     }
