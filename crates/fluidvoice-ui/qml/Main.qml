@@ -447,34 +447,64 @@ ApplicationWindow {
                                             }
                                         }
                                         Item {
-                                            Layout.preferredWidth: 278
+                                            Layout.preferredWidth: 186
                                             Layout.fillHeight: true
 
                                             RowLayout {
                                                 anchors.fill: parent
                                                 spacing: 10
-                                                Button {
+                                                StackLayout {
                                                     Layout.preferredWidth: 134
-                                                    text: controller.downloadingModel === index ? qsTr("Cancel")
-                                                          : controller.modelStates[index] !== "Downloaded" ? qsTr("Download")
-                                                          : index === controller.selectedModel ? qsTr("Active") : qsTr("Activate")
-                                                    enabled: !controller.recording && !controller.transcribing
-                                                             && (controller.downloadingModel < 0 || controller.downloadingModel === index)
-                                                             && !(controller.modelStates[index] === "Downloaded" && index === controller.selectedModel)
-                                                    onClicked: {
-                                                        if (controller.downloadingModel === index)
-                                                            controller.cancelModelDownload()
-                                                        else if (controller.modelStates[index] !== "Downloaded")
-                                                            controller.downloadModel(index)
-                                                        else
-                                                            controller.selectModel(index)
+                                                    currentIndex: controller.modelStates[index] === "Downloaded"
+                                                                  && index === controller.selectedModel ? 1 : 0
+
+                                                    Button {
+                                                        Layout.fillWidth: true
+                                                        text: controller.downloadingModel === index ? qsTr("Cancel")
+                                                              : controller.modelStates[index] !== "Downloaded" ? qsTr("Download")
+                                                              : qsTr("Activate")
+                                                        enabled: !controller.recording && !controller.transcribing
+                                                                 && (controller.downloadingModel < 0 || controller.downloadingModel === index)
+                                                        onClicked: {
+                                                            if (controller.downloadingModel === index)
+                                                                controller.cancelModelDownload()
+                                                            else if (controller.modelStates[index] !== "Downloaded")
+                                                                controller.downloadModel(index)
+                                                            else
+                                                                controller.selectModel(index)
+                                                        }
+                                                    }
+                                                    Item {
+                                                        Layout.fillWidth: true
+                                                        Rectangle {
+                                                            anchors.centerIn: parent
+                                                            width: activeLabel.implicitWidth + 22
+                                                            height: 30
+                                                            radius: 15
+                                                            color: "#234b3b"
+                                                            border.color: "#39755a"
+                                                            Text {
+                                                                id: activeLabel
+                                                                anchors.centerIn: parent
+                                                                text: qsTr("Active")
+                                                                color: "#70d59b"
+                                                                font.pixelSize: 12
+                                                                font.weight: Font.DemiBold
+                                                            }
+                                                        }
                                                     }
                                                 }
-                                                Button {
-                                                    Layout.preferredWidth: 134
-                                                    text: qsTr("Delete")
+                                                ToolButton {
+                                                    Layout.preferredWidth: 42
+                                                    Layout.preferredHeight: 38
                                                     visible: controller.modelStates[index] === "Downloaded" && index !== controller.selectedModel
                                                     enabled: controller.downloadingModel < 0 && !controller.recording && !controller.transcribing
+                                                    icon.source: "qrc:/qt/qml/io/github/davidkodar/FluidVoiceLinux/assets/trash.svg"
+                                                    icon.width: 20
+                                                    icon.height: 20
+                                                    display: AbstractButton.IconOnly
+                                                    ToolTip.visible: hovered
+                                                    ToolTip.text: qsTr("Delete downloaded model")
                                                     onClicked: controller.deleteModel(index)
                                                 }
                                             }

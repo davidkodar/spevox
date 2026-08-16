@@ -4,7 +4,11 @@ fn main() {
     CxxQtBuilder::new_qml_module(
         QmlModule::new("io.github.davidkodar.FluidVoiceLinux").qml_file("qml/Main.qml"),
     )
-    .qrc_resources(["assets/fluidvoice-app.png", "assets/fluidvoice-tray.png"])
+    .qrc_resources([
+        "assets/fluidvoice-app.png",
+        "assets/fluidvoice-tray.png",
+        "assets/trash.svg",
+    ])
     .qt_module("Network")
     .qt_module("QuickControls2")
     .qt_module("Widgets")
