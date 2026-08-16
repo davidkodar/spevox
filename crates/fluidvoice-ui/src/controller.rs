@@ -65,6 +65,8 @@ pub mod ffi {
             file_transcription_status,
             cxx_name = "fileTranscriptionStatus"
         )]
+        #[qproperty(f32, meeting_progress, cxx_name = "meetingProgress")]
+        #[qproperty(QStringList, meeting_segments, cxx_name = "meetingSegments")]
         #[qproperty(QStringList, compute_backends, cxx_name = "computeBackends")]
         #[qproperty(i32, selected_compute_backend, cxx_name = "selectedComputeBackend")]
         #[qproperty(QStringList, theme_options, cxx_name = "themeOptions")]
@@ -246,6 +248,14 @@ pub mod ffi {
         #[qinvokable]
         #[cxx_name = "transcribeFile"]
         fn transcribe_file(self: Pin<&mut Self>, path: &QString);
+
+        #[qinvokable]
+        #[cxx_name = "cancelMeetingTranscription"]
+        fn cancel_meeting_transcription(self: Pin<&mut Self>);
+
+        #[qinvokable]
+        #[cxx_name = "exportMeeting"]
+        fn export_meeting(self: Pin<&mut Self>, path: &QString, format: &QString);
 
         #[qinvokable]
         #[cxx_name = "selectComputeBackend"]
@@ -436,6 +446,10 @@ pub struct FluidVoiceControllerRust {
     pending_desktop_action: Option<DesktopAction>,
     command_history: QStringList,
     file_transcription_status: QString,
+    meeting_progress: f32,
+    meeting_segments: QStringList,
+    meeting_results: Vec<MeetingSegment>,
+    meeting_cancel: Option<Arc<AtomicBool>>,
     compute_backends: QStringList,
     selected_compute_backend: i32,
     theme_options: QStringList,
@@ -646,6 +660,10 @@ impl Default for FluidVoiceControllerRust {
                 .map(QString::from)
                 .collect(),
             file_transcription_status: QString::from("Choose a WAV file to transcribe locally."),
+            meeting_progress: 0.0,
+            meeting_segments: QStringList::default(),
+            meeting_results: Vec::new(),
+            meeting_cancel: None,
             compute_backends: ["Automatic (Vulkan)", "GPU preferred (Vulkan)", "CPU"]
                 .into_iter()
                 .map(QString::from)
@@ -2461,33 +2479,72 @@ impl ffi::FluidVoiceController {
         let language = selected_language_code(self.as_ref().rust());
         let use_gpu = self.as_ref().rust().selected_compute_backend != 2;
         let ai_config = self.as_ref().rust().ai_config();
+        let cancel = Arc::new(AtomicBool::new(false));
+        self.as_mut().rust_mut().get_mut().meeting_cancel = Some(cancel.clone());
         let qt_thread = self.qt_thread();
         self.as_mut().set_transcribing(true);
+        self.as_mut().set_meeting_progress(0.0);
+        self.as_mut().set_meeting_segments(QStringList::default());
         self.as_mut()
-            .set_file_transcription_status(QString::from("Transcribing locally…"));
+            .set_file_transcription_status(QString::from("Decoding long recording locally…"));
         std::thread::spawn(move || {
-            let result = transcribe_audio_file(&path, &model, language, use_gpu).map(|text| {
-                let raw_text = text.clone();
+            let progress_thread = qt_thread.clone();
+            let result = transcribe_long_audio_file(
+                &path,
+                &model,
+                language,
+                use_gpu,
+                &cancel,
+                move |progress, completed, total| {
+                    progress_thread
+                        .queue(move |mut controller| {
+                            controller.as_mut().set_meeting_progress(progress);
+                            controller
+                                .as_mut()
+                                .set_file_transcription_status(QString::from(&format!(
+                                    "Transcribing segment {completed} of {total}…"
+                                )));
+                        })
+                        .ok();
+                },
+            )
+            .map(|meeting| {
+                let raw_text = meeting.text.clone();
                 let started = Instant::now();
-                if ai_config.enabled {
-                    match ai::enhance(&ai_config, &text) {
-                        Ok(enhanced) => (enhanced, raw_text, None, started.elapsed().as_millis()),
-                        Err(error) => (text, raw_text, Some(error), started.elapsed().as_millis()),
-                    }
-                } else {
-                    (text, raw_text, None, 0)
-                }
+                let (text, ai_error, ai_duration_ms) =
+                    if ai_config.enabled && meeting.text.len() <= 20_000 {
+                        match ai::enhance(&ai_config, &meeting.text) {
+                            Ok(enhanced) => (enhanced, None, started.elapsed().as_millis()),
+                            Err(error) => (
+                                meeting.text.clone(),
+                                Some(error),
+                                started.elapsed().as_millis(),
+                            ),
+                        }
+                    } else {
+                        (meeting.text.clone(), None, 0)
+                    };
+                (text, raw_text, meeting.segments, ai_error, ai_duration_ms)
             });
             qt_thread
                 .queue(move |mut controller| {
                     controller.as_mut().set_transcribing(false);
+                    controller.as_mut().rust_mut().get_mut().meeting_cancel = None;
                     match result {
-                        Ok((text, raw_text, ai_error, ai_duration_ms)) => {
+                        Ok((text, raw_text, mut segments, ai_error, ai_duration_ms)) => {
+                            let dictionary = load_lines(&dictionary_path());
                             let processed = process_transcript(
                                 &text,
                                 controller.as_ref().rust().command_mode_enabled,
-                                &load_lines(&dictionary_path()),
+                                &dictionary,
                             );
+                            for segment in &mut segments {
+                                segment.text = process_transcript(
+                                    &segment.text,
+                                    controller.as_ref().rust().command_mode_enabled,
+                                    &dictionary,
+                                );
+                            }
                             let provider = ai_provider_name(&ai_config);
                             let ai_status = if ai_config.enabled {
                                 if ai_error.is_some() {
@@ -2514,11 +2571,16 @@ impl ffi::FluidVoiceController {
                             controller
                                 .as_mut()
                                 .set_transcript_text(QString::from(&processed));
+                            controller.as_mut().set_meeting_progress(1.0);
+                            controller.as_mut().set_meeting_segments(
+                                segments.iter().map(meeting_segment_qstring).collect(),
+                            );
+                            controller.as_mut().rust_mut().get_mut().meeting_results = segments;
                             controller
                                 .as_mut()
                                 .set_file_transcription_status(QString::from(
                                 ai_error.map_or_else(
-                                    || "Complete — transcript added to History.".to_owned(),
+                                    || "Complete — timestamped transcript added to History and ready to export.".to_owned(),
                                     |error| {
                                         format!(
                                             "AI enhancement failed; raw transcript saved. {error}"
@@ -2530,6 +2592,7 @@ impl ffi::FluidVoiceController {
                                 .set_status_text(QString::from("File transcription complete"));
                         }
                         Err(error) => {
+                            controller.as_mut().set_meeting_progress(0.0);
                             controller
                                 .as_mut()
                                 .set_file_transcription_status(QString::from(&error));
@@ -2539,6 +2602,33 @@ impl ffi::FluidVoiceController {
                 })
                 .ok();
         });
+    }
+
+    pub fn cancel_meeting_transcription(mut self: Pin<&mut Self>) {
+        if let Some(cancel) = self.as_ref().rust().meeting_cancel.as_ref() {
+            cancel.store(true, Ordering::Relaxed);
+            self.as_mut().set_file_transcription_status(QString::from(
+                "Cancelling after the current segment…",
+            ));
+        }
+    }
+
+    pub fn export_meeting(mut self: Pin<&mut Self>, path: &QString, format: &QString) {
+        let path = PathBuf::from(decode_file_url(&path.to_string()));
+        let format = format.to_string();
+        match write_meeting_export(&path, &format, &self.as_ref().rust().meeting_results) {
+            Ok(()) => self
+                .as_mut()
+                .set_file_transcription_status(QString::from(&format!(
+                    "Meeting transcript exported as {}.",
+                    format.to_uppercase()
+                ))),
+            Err(error) => self
+                .as_mut()
+                .set_file_transcription_status(QString::from(&format!(
+                    "Meeting export failed: {error}"
+                ))),
+        }
     }
 
     #[allow(clippy::too_many_lines)]
@@ -4024,24 +4114,182 @@ fn decode_file_url(value: &str) -> String {
     String::from_utf8_lossy(&result).into_owned()
 }
 
-fn transcribe_audio_file(
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct MeetingSegment {
+    start_milliseconds: u64,
+    end_milliseconds: u64,
+    speaker: Option<String>,
+    text: String,
+}
+
+struct MeetingTranscript {
+    text: String,
+    segments: Vec<MeetingSegment>,
+}
+
+fn transcribe_long_audio_file(
     path: &PathBuf,
     model: &PathBuf,
     language: String,
     use_gpu: bool,
-) -> Result<String, String> {
+    cancel: &AtomicBool,
+    mut progress: impl FnMut(f32, usize, usize),
+) -> Result<MeetingTranscript, String> {
+    const CHUNK_SAMPLES: usize = 16_000 * 30;
     let audio = decode_audio_file(path)?;
     let config = TranscriptionConfig::default()
         .with_language(Some(language))
         .with_gpu(use_gpu);
-    let transcript = WhisperTranscriber::load(model, config)
-        .map_err(|error| error.to_string())?
-        .transcribe(&audio)
-        .map_err(|error| error.to_string())?;
-    if transcript.text.trim().is_empty() {
+    let transcriber = WhisperTranscriber::load(model, config).map_err(|error| error.to_string())?;
+    let total = audio.samples().len().div_ceil(CHUNK_SAMPLES);
+    let mut segments = Vec::new();
+    for (index, samples) in audio.samples().chunks(CHUNK_SAMPLES).enumerate() {
+        if cancel.load(Ordering::Relaxed) {
+            return Err("Meeting transcription cancelled".to_owned());
+        }
+        let chunk = AudioBuffer::new(samples.to_vec(), 16_000, 1, false)
+            .map_err(|error| error.to_string())?
+            .to_asr_mono();
+        let transcript = transcriber
+            .transcribe(&chunk)
+            .map_err(|error| error.to_string())?;
+        let chunk_offset_ms = u64::try_from(index)
+            .unwrap_or(u64::MAX)
+            .saturating_mul(30_000);
+        for segment in transcript.segments {
+            let start = u64::try_from(segment.start_centiseconds.max(0)).unwrap_or_default() * 10;
+            let end = u64::try_from(segment.end_centiseconds.max(0)).unwrap_or_default() * 10;
+            segments.push(MeetingSegment {
+                start_milliseconds: chunk_offset_ms.saturating_add(start),
+                end_milliseconds: chunk_offset_ms.saturating_add(end),
+                speaker: None,
+                text: segment.text,
+            });
+        }
+        let completed = index + 1;
+        progress(completed as f32 / total.max(1) as f32, completed, total);
+    }
+    let text = segments
+        .iter()
+        .map(|segment| segment.text.as_str())
+        .collect::<Vec<_>>()
+        .join(" ");
+    if text.trim().is_empty() {
         return Err("No speech was recognized in this file.".to_owned());
     }
-    Ok(transcript.text)
+    Ok(MeetingTranscript { text, segments })
+}
+
+fn meeting_segment_qstring(segment: &MeetingSegment) -> QString {
+    QString::from(&format!(
+        "{}\t{}\t{}\t{}",
+        segment.start_milliseconds,
+        segment.end_milliseconds,
+        segment.speaker.as_deref().unwrap_or(""),
+        history_value(&segment.text)
+    ))
+}
+
+fn timestamp_srt(milliseconds: u64, decimal: char) -> String {
+    let hours = milliseconds / 3_600_000;
+    let minutes = (milliseconds / 60_000) % 60;
+    let seconds = (milliseconds / 1_000) % 60;
+    let millis = milliseconds % 1_000;
+    format!("{hours:02}:{minutes:02}:{seconds:02}{decimal}{millis:03}")
+}
+
+fn write_meeting_export(
+    path: &PathBuf,
+    format: &str,
+    segments: &[MeetingSegment],
+) -> Result<(), String> {
+    if segments.is_empty() {
+        return Err("No timestamped meeting transcript is available".to_owned());
+    }
+    let format = format.to_ascii_lowercase();
+    let contents = match format.as_str() {
+        "json" => serde_json::to_string_pretty(
+            &segments
+                .iter()
+                .map(|segment| {
+                    serde_json::json!({
+                        "start_ms": segment.start_milliseconds,
+                        "end_ms": segment.end_milliseconds,
+                        "speaker": segment.speaker,
+                        "text": segment.text,
+                    })
+                })
+                .collect::<Vec<_>>(),
+        )
+        .map_err(|error| error.to_string())?,
+        "srt" => segments
+            .iter()
+            .enumerate()
+            .map(|(index, segment)| {
+                format!(
+                    "{}\n{} --> {}\n{}{}\n",
+                    index + 1,
+                    timestamp_srt(segment.start_milliseconds, ','),
+                    timestamp_srt(segment.end_milliseconds, ','),
+                    segment
+                        .speaker
+                        .as_deref()
+                        .map_or(String::new(), |speaker| format!("{speaker}: ")),
+                    segment.text
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n"),
+        "vtt" => format!(
+            "WEBVTT\n\n{}",
+            segments
+                .iter()
+                .map(|segment| format!(
+                    "{} --> {}\n{}{}\n",
+                    timestamp_srt(segment.start_milliseconds, '.'),
+                    timestamp_srt(segment.end_milliseconds, '.'),
+                    segment
+                        .speaker
+                        .as_deref()
+                        .map_or(String::new(), |speaker| format!("{speaker}: ")),
+                    segment.text
+                ))
+                .collect::<Vec<_>>()
+                .join("\n")
+        ),
+        "md" | "markdown" => segments
+            .iter()
+            .map(|segment| {
+                format!(
+                    "- **{}**{} {}",
+                    timestamp_srt(segment.start_milliseconds, '.'),
+                    segment
+                        .speaker
+                        .as_deref()
+                        .map_or(String::new(), |speaker| format!(" · {speaker}:")),
+                    segment.text
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n"),
+        "txt" => segments
+            .iter()
+            .map(|segment| {
+                format!(
+                    "[{}] {}{}",
+                    timestamp_srt(segment.start_milliseconds, '.'),
+                    segment
+                        .speaker
+                        .as_deref()
+                        .map_or(String::new(), |speaker| format!("{speaker}: ")),
+                    segment.text
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n"),
+        _ => return Err(format!("Unsupported meeting export format: {format}")),
+    };
+    fs::write(path, contents).map_err(|error| error.to_string())
 }
 
 fn decode_audio_file(path: &PathBuf) -> Result<fluidvoice_audio::MonoAudioBuffer, String> {
@@ -4472,11 +4720,12 @@ mod tests {
     use std::{fs, time::Duration};
 
     use super::{
-        AiProfile, DesktopAction, DictionaryEntry, asr_gain, decode_audio_file, decode_file_url,
-        history_clipboard_text, meter_level, parse_csv_record, parse_desktop_action, peak_db,
-        process_transcript, profile_matches_application, read_dictionary_import,
-        supported_languages, suspicious_single_word, valid_ollama_model_name, version_tuple,
-        whisper_model_catalog, write_dictionary_csv, write_history_export,
+        AiProfile, DesktopAction, DictionaryEntry, MeetingSegment, asr_gain, decode_audio_file,
+        decode_file_url, history_clipboard_text, meter_level, parse_csv_record,
+        parse_desktop_action, peak_db, process_transcript, profile_matches_application,
+        read_dictionary_import, supported_languages, suspicious_single_word, timestamp_srt,
+        valid_ollama_model_name, version_tuple, whisper_model_catalog, write_dictionary_csv,
+        write_history_export, write_meeting_export,
     };
 
     #[test]
@@ -4703,5 +4952,32 @@ mod tests {
             decode_file_url("file:///tmp/Voice%20Sample.wav"),
             "/tmp/Voice Sample.wav"
         );
+    }
+
+    #[test]
+    fn exports_diarization_ready_meeting_formats() {
+        let segments = [MeetingSegment {
+            start_milliseconds: 1_234,
+            end_milliseconds: 65_678,
+            speaker: None,
+            text: "Hello meeting".into(),
+        }];
+        assert_eq!(timestamp_srt(3_661_007, ','), "01:01:01,007");
+        for format in ["txt", "md", "srt", "vtt", "json"] {
+            let path = std::env::temp_dir().join(format!(
+                "fluidvoice-meeting-export-{}.{format}",
+                std::process::id()
+            ));
+            write_meeting_export(&path, format, &segments).expect("write meeting export");
+            let contents = fs::read_to_string(&path).expect("read meeting export");
+            assert!(contents.contains("Hello meeting"));
+            if format == "json" {
+                let value: serde_json::Value =
+                    serde_json::from_str(&contents).expect("parse meeting JSON");
+                assert!(value[0]["speaker"].is_null());
+                assert_eq!(value[0]["start_ms"], 1_234);
+            }
+            fs::remove_file(path).expect("remove meeting export");
+        }
     }
 }

@@ -30,6 +30,11 @@ All notable changes to FluidVoice Linux are documented here. The project uses
   optional weekend-neutral streaks, 7/30-day activity views, milestones,
   peak-time insights, personal records, 30-day source/activity summaries,
   measured AI edit deltas, and confirmation-gated statistics reset.
+- Added meeting and long-recording transcription with bounded 30-second local
+  Whisper passes, timestamped segments, visible progress, cancellation, and
+  TXT, Markdown, SRT, WebVTT, and JSON exports. The segment schema carries an
+  optional speaker field for future diarization and labels it unassigned today
+  rather than inventing speaker identities.
 - Added AI enhancement analytics for usage, success/fallback rate, average
   latency, and provider/model activity.
 - Added per-entry raw/final visual diffs, word and character deltas, and copy

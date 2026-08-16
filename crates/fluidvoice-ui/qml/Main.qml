@@ -164,6 +164,17 @@ ApplicationWindow {
         var fields = entry.split("\t")
         return fields.length > 8 ? fields[8] : ""
     }
+    function meetingSegmentField(entry, index) {
+        var fields = entry.split("\t")
+        return fields.length > index ? fields[index] : ""
+    }
+    function meetingTimestamp(milliseconds) {
+        var total = Math.max(0, Math.floor(Number(milliseconds) / 1000))
+        var hours = Math.floor(total / 3600)
+        var minutes = Math.floor(total / 60) % 60
+        var seconds = total % 60
+        return ("0" + hours).slice(-2) + ":" + ("0" + minutes).slice(-2) + ":" + ("0" + seconds).slice(-2)
+    }
     function audioBudgetIndex() {
         var budgets = [100, 500, 1000, 2500, 5000, 10000]
         var index = budgets.indexOf(controller.audioHistoryBudgetMb)
@@ -469,6 +480,15 @@ ApplicationWindow {
         defaultSuffix: "csv"
         nameFilters: [qsTr("CSV files (*.csv)")]
         onAccepted: controller.exportDictionary(selectedFile.toString())
+    }
+
+    FileDialog {
+        id: meetingExportDialog
+        title: qsTr("Export timestamped transcript")
+        fileMode: FileDialog.SaveFile
+        defaultSuffix: meetingExportFormat.currentText.toLowerCase()
+        nameFilters: [qsTr("Transcript files (*.%1)").arg(meetingExportFormat.currentText.toLowerCase())]
+        onAccepted: controller.exportMeeting(selectedFile.toString(), meetingExportFormat.currentText.toLowerCase())
     }
 
     Dialog {
@@ -1575,10 +1595,31 @@ ApplicationWindow {
                         Layout.fillWidth: true; implicitHeight: fileContent.implicitHeight + 40; radius: 16; color: root.panel; border.color: root.hairline
                         ColumnLayout {
                             id: fileContent; anchors.fill: parent; anchors.margins: 20; spacing: 12
-                            Text { text: qsTr("TRANSCRIBE AUDIO"); color: root.tertiaryText; font.pixelSize: 11; font.weight: Font.Medium }
-                            Text { Layout.fillWidth: true; text: qsTr("Uses the active Whisper model and language. Audio remains on this computer."); color: root.secondaryText; font.pixelSize: 13; wrapMode: Text.Wrap }
-                            Button { text: controller.transcribing ? qsTr("Transcribing…") : qsTr("Choose audio file"); enabled: !controller.transcribing && !controller.recording; onClicked: audioFileDialog.open() }
+                            Text { text: qsTr("MEETING & LONG-RECORDING TRANSCRIPTION"); color: root.tertiaryText; font.pixelSize: 11; font.weight: Font.Medium }
+                            Text { Layout.fillWidth: true; text: qsTr("Uses the active Whisper model and language. Long audio is decoded locally and processed in bounded 30-second segments with timestamps. Speaker fields are preserved for future diarization, but remain unassigned until a real diarization backend is configured."); color: root.secondaryText; font.pixelSize: 13; wrapMode: Text.Wrap }
+                            RowLayout { Layout.fillWidth: true
+                                Button { text: controller.transcribing ? qsTr("Transcribing…") : qsTr("Choose audio or video"); enabled: !controller.transcribing && !controller.recording; onClicked: audioFileDialog.open() }
+                                Button { visible: controller.transcribing; text: qsTr("Cancel"); onClicked: controller.cancelMeetingTranscription() }
+                                Item { Layout.fillWidth: true }
+                                ComboBox { id: meetingExportFormat; model: ["TXT", "MD", "SRT", "VTT", "JSON"]; currentIndex: 2 }
+                                Button { text: qsTr("Export"); enabled: controller.meetingSegments.length > 0 && !controller.transcribing; onClicked: meetingExportDialog.open() }
+                            }
+                            ProgressBar { visible: controller.transcribing || controller.meetingProgress > 0; Layout.fillWidth: true; from: 0; to: 1; value: controller.meetingProgress }
                             Text { Layout.fillWidth: true; text: controller.fileTranscriptionStatus; color: controller.transcribing ? root.accent : root.secondaryText; font.pixelSize: 12; wrapMode: Text.Wrap }
+                            ListView {
+                                visible: controller.meetingSegments.length > 0
+                                Layout.fillWidth: true; Layout.preferredHeight: Math.min(320, contentHeight); clip: true; spacing: 6
+                                model: controller.meetingSegments
+                                delegate: Rectangle {
+                                    required property string modelData; required property int index
+                                    width: ListView.view.width; height: segmentText.implicitHeight + 24; radius: 8; color: root.panelRaised; border.color: root.hairline
+                                    RowLayout { anchors.fill: parent; anchors.margins: 10; spacing: 12
+                                        Text { text: root.meetingTimestamp(root.meetingSegmentField(modelData, 0)); color: root.accent; font.pixelSize: 10; font.family: "monospace"; Layout.alignment: Qt.AlignTop }
+                                        Text { text: root.meetingSegmentField(modelData, 2).length > 0 ? root.meetingSegmentField(modelData, 2) : qsTr("Speaker unassigned"); color: root.tertiaryText; font.pixelSize: 10; Layout.preferredWidth: 110; Layout.alignment: Qt.AlignTop }
+                                        Text { id: segmentText; Layout.fillWidth: true; text: root.meetingSegmentField(modelData, 3); color: root.primaryText; font.pixelSize: 11; wrapMode: Text.Wrap }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
