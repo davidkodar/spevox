@@ -14,6 +14,7 @@ pub mod ffi {
         #[qobject]
         #[qml_element]
         #[qproperty(QString, status_text, cxx_name = "statusText")]
+        #[qproperty(QString, text_delivery_status, cxx_name = "textDeliveryStatus")]
         #[qproperty(QString, microphone_name, cxx_name = "microphoneName")]
         #[qproperty(QString, model_name, cxx_name = "modelName")]
         #[qproperty(bool, recording)]
@@ -102,6 +103,10 @@ pub mod ffi {
         #[qinvokable]
         #[cxx_name = "initializeDesktopRuntime"]
         fn initialize_desktop_runtime(self: Pin<&mut Self>);
+
+        #[qinvokable]
+        #[cxx_name = "diagnoseTextDelivery"]
+        fn diagnose_text_delivery(self: Pin<&mut Self>);
 
         #[qinvokable]
         #[cxx_name = "selectInput"]
@@ -344,6 +349,7 @@ use crate::ai::{self, AiConfig};
 
 pub struct FluidVoiceControllerRust {
     status_text: QString,
+    text_delivery_status: QString,
     microphone_name: QString,
     model_name: QString,
     recording: bool,
@@ -528,6 +534,9 @@ impl Default for FluidVoiceControllerRust {
         let ai_profiles = load_ai_profiles();
         Self {
             status_text: QString::from("Ready"),
+            text_delivery_status: QString::from(
+                "Clipboard recovery is ready. Portal paste has not been tested yet.",
+            ),
             microphone_name: QString::from("Detecting PipeWire inputs…"),
             model_name,
             recording: false,
@@ -770,17 +779,37 @@ impl ffi::FluidVoiceController {
                             },
                             request = desktop_receiver.recv() => match request {
                                 Some(DesktopCommand::Paste) => {
-                                    // Request optional text injection only after
-                                    // capture and transcription have succeeded,
-                                    // so it can never delay the shortcut loop.
-                                    if text_input.is_none() {
-                                        text_input = TextInputSession::request().await.ok();
-                                    }
-                                    if let Some(session) = text_input.as_ref() {
-                                        if let Err(error) = session.paste_clipboard().await {
-                                            eprintln!("Automatic paste failed: {error}");
+                                    let mut outcome = Err("Plasma keyboard permission was not granted".to_owned());
+                                    for _ in 0..2 {
+                                        if text_input.is_none() {
+                                            match TextInputSession::request().await {
+                                                Ok(session) => text_input = Some(session),
+                                                Err(error) => {
+                                                    outcome = Err(error.to_string());
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                        if let Some(session) = text_input.as_ref() {
+                                            match session.paste_clipboard().await {
+                                                Ok(()) => {
+                                                    outcome = Ok(());
+                                                    break;
+                                                }
+                                                Err(error) => {
+                                                    outcome = Err(error.to_string());
+                                                    text_input = None;
+                                                }
+                                            }
                                         }
                                     }
+                                    let message = match outcome {
+                                        Ok(()) => "Direct paste verified through the Plasma Wayland portal.".to_owned(),
+                                        Err(error) => format!("Direct paste failed; the transcript remains on the clipboard. Plasma portal: {error}"),
+                                    };
+                                    qt_thread.queue(move |mut controller| {
+                                        controller.as_mut().set_text_delivery_status(QString::from(&message));
+                                    }).ok();
                                 }
                                 Some(DesktopCommand::CopySelection(reply)) => {
                                     if text_input.is_none() {
@@ -797,6 +826,16 @@ impl ffi::FluidVoiceController {
                                     rebind = Some(shortcut);
                                     break;
                                 }
+                                Some(DesktopCommand::DiagnoseTextInput(reply)) => {
+                                    let portal = match TextInputSession::request().await {
+                                        Ok(session) => {
+                                            text_input = Some(session);
+                                            Ok(())
+                                        }
+                                        Err(error) => Err(error.to_string()),
+                                    };
+                                    reply.send(portal).ok();
+                                }
                                 None => break,
                             }
                         }
@@ -806,6 +845,47 @@ impl ffi::FluidVoiceController {
                     requested_shortcut = shortcut;
                 }
             });
+        });
+    }
+
+    pub fn diagnose_text_delivery(mut self: Pin<&mut Self>) {
+        let clipboard_ready = ClipboardDelivery::connect().is_ok();
+        let Some(sender) = self.as_ref().rust().desktop_sender.clone() else {
+            self.as_mut().set_text_delivery_status(QString::from(
+                "Desktop integration is not running. Restart FluidVoice and try again.",
+            ));
+            return;
+        };
+        self.as_mut().set_text_delivery_status(QString::from(
+            "Checking Plasma keyboard permission without typing…",
+        ));
+        let qt_thread = self.qt_thread();
+        std::thread::spawn(move || {
+            let (reply, result) = std::sync::mpsc::channel();
+            let portal = if sender
+                .send(DesktopCommand::DiagnoseTextInput(reply))
+                .is_err()
+            {
+                Err("desktop integration stopped unexpectedly".to_owned())
+            } else {
+                result
+                    .recv_timeout(Duration::from_secs(30))
+                    .map_err(|_| "timed out waiting for the Plasma portal".to_owned())
+                    .and_then(|result| result)
+            };
+            let message = match (clipboard_ready, portal) {
+                (true, Ok(())) => "Clipboard and Plasma keyboard portal are ready. The next dictation should paste directly.".to_owned(),
+                (true, Err(error)) => format!("Clipboard recovery is ready, but direct paste permission is unavailable: {error}"),
+                (false, Ok(())) => "Plasma keyboard permission is ready, but the clipboard service is unavailable. Ensure a Plasma clipboard manager is running.".to_owned(),
+                (false, Err(error)) => format!("Clipboard and direct paste are unavailable. Plasma portal: {error}"),
+            };
+            qt_thread
+                .queue(move |mut controller| {
+                    controller
+                        .as_mut()
+                        .set_text_delivery_status(QString::from(&message));
+                })
+                .ok();
         });
     }
 
@@ -2828,6 +2908,7 @@ enum DesktopCommand {
     Paste,
     CopySelection(std::sync::mpsc::Sender<Result<(), String>>),
     Rebind(String),
+    DiagnoseTextInput(std::sync::mpsc::Sender<Result<(), String>>),
 }
 
 enum DesktopAction {

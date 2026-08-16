@@ -15,6 +15,9 @@ All notable changes to FluidVoice Linux are documented here. The project uses
   upstream-inspired writing and rewrite workspace, provider/model visibility,
   instruction-based drafting, selected-text replacement, result preview, retry,
   undo, and copy recovery controls.
+- Made Wayland text delivery recover from stale keyboard-portal sessions,
+  report direct-paste versus clipboard-only outcomes, and added non-destructive
+  in-app and CLI delivery diagnostics with actionable Plasma error details.
 - Added AI enhancement analytics for usage, success/fallback rate, average
   latency, and provider/model activity.
 - Added per-entry raw/final visual diffs, word and character deltas, and copy

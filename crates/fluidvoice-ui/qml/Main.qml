@@ -634,6 +634,28 @@ ApplicationWindow {
                 Rectangle {
                     visible: root.settingsSection === 0
                     Layout.fillWidth: true
+                    implicitHeight: deliveryDiagnostics.implicitHeight + 32
+                    radius: 16
+                    color: root.panel
+                    border.color: root.hairline
+                    ColumnLayout {
+                        id: deliveryDiagnostics; anchors.fill: parent; anchors.margins: 16; spacing: 10
+                        RowLayout {
+                            Layout.fillWidth: true
+                            ColumnLayout {
+                                Layout.fillWidth: true; spacing: 3
+                                Text { text: qsTr("Text delivery"); color: root.primaryText; font.pixelSize: 14; font.weight: Font.Medium }
+                                Text { Layout.fillWidth: true; text: qsTr("FluidVoice uses the Plasma keyboard portal for direct paste and always keeps successful transcripts on the clipboard."); color: root.secondaryText; font.pixelSize: 12; wrapMode: Text.Wrap }
+                            }
+                            Button { text: qsTr("Run check"); onClicked: controller.diagnoseTextDelivery() }
+                        }
+                        Text { Layout.fillWidth: true; text: controller.textDeliveryStatus; color: controller.textDeliveryStatus.indexOf("ready") >= 0 ? root.accent : root.secondaryText; font.pixelSize: 11; wrapMode: Text.Wrap }
+                    }
+                }
+
+                Rectangle {
+                    visible: root.settingsSection === 0
+                    Layout.fillWidth: true
                     implicitHeight: overlayAppearance.implicitHeight + 32
                     radius: 16
                     color: root.panel

@@ -3,7 +3,9 @@ use std::time::Duration;
 use fluidvoice_audio::{AudioBuffer, CaptureStopToken, PipeWireCapture};
 use fluidvoice_core::{DictationCoordinator, DictationState};
 use fluidvoice_delivery::ClipboardDelivery;
-use fluidvoice_portal::{GlobalShortcutBinding, GlobalShortcutConfig, GlobalShortcutEvent};
+use fluidvoice_portal::{
+    GlobalShortcutBinding, GlobalShortcutConfig, GlobalShortcutEvent, TextInputSession,
+};
 use fluidvoice_transcription::{TranscriptionConfig, WhisperTranscriber};
 use tokio::sync::mpsc;
 
@@ -13,6 +15,33 @@ const MIN_DICTATION_DURATION: Duration = Duration::from_millis(300);
 #[allow(clippy::too_many_lines)]
 async fn main() {
     let arguments = std::env::args().skip(1).collect::<Vec<_>>();
+    if arguments
+        .first()
+        .is_some_and(|argument| argument == "--diagnose-text-delivery")
+    {
+        let clipboard = ClipboardDelivery::connect().map(|_| ());
+        let portal = TextInputSession::request().await;
+        match (clipboard, portal) {
+            (Ok(()), Ok(_)) => println!(
+                "Text delivery ready: clipboard connected and Plasma keyboard permission granted. No keys were sent."
+            ),
+            (Ok(()), Err(error)) => {
+                eprintln!("Clipboard ready, but Plasma keyboard permission failed: {error}");
+                std::process::exit(1);
+            }
+            (Err(error), Ok(_)) => {
+                eprintln!("Plasma keyboard permission ready, but clipboard failed: {error}");
+                std::process::exit(1);
+            }
+            (Err(clipboard), Err(portal)) => {
+                eprintln!(
+                    "Clipboard failed: {clipboard}\nPlasma keyboard permission failed: {portal}"
+                );
+                std::process::exit(1);
+            }
+        }
+        return;
+    }
     if arguments
         .first()
         .is_some_and(|argument| argument == "--diagnose-workflow")

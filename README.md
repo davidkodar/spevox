@@ -202,6 +202,7 @@ Useful diagnostics include:
 
 ```bash
 cargo run -p fluidvoice-app -- --diagnose-shortcut
+cargo run -p fluidvoice-app -- --diagnose-text-delivery
 cargo run -p fluidvoice-app -- --diagnose-audio 3 [PIPEWIRE_NODE]
 cargo run -p fluidvoice-app -- --diagnose-transcription /path/to/model.bin 5 [PIPEWIRE_NODE]
 cargo run -p fluidvoice-app -- --diagnose-workflow /path/to/model.bin 5 [PIPEWIRE_NODE]
