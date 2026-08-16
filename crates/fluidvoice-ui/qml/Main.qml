@@ -372,108 +372,123 @@ ApplicationWindow {
                                     color: index === controller.selectedModel ? "#18292a" : "#19191b"
                                     border.color: index === controller.selectedModel ? "#487778" : root.hairline
 
-                                    RowLayout {
+                                    Item {
                                         anchors.fill: parent
                                         anchors.margins: 12
-                                        spacing: 10
                                         Rectangle {
-                                            Layout.preferredWidth: 8
-                                            Layout.preferredHeight: 8
+                                            id: modelStatusDot
+                                            anchors.left: parent.left
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            width: 8
+                                            height: 8
                                             radius: 4
                                             color: index === controller.selectedModel ? root.accent : "#55555a"
                                         }
-                                        ColumnLayout {
-                                            Layout.fillWidth: true
-                                            spacing: 3
-                                            RowLayout {
-                                                Layout.fillWidth: true
-                                                Text { text: modelData; color: root.primaryText; font.pixelSize: 13; font.weight: Font.Medium }
-                                                Text {
-                                                    text: controller.modelStates[index] || ""
-                                                    color: controller.modelStates[index] === "Downloaded" ? root.accent : root.tertiaryText
-                                                    font.pixelSize: 11
+
+                                        Item {
+                                            id: modelTextArea
+                                            anchors.left: modelStatusDot.right
+                                            anchors.leftMargin: 10
+                                            anchors.right: modelActions.left
+                                            anchors.rightMargin: 10
+                                            anchors.top: parent.top
+                                            anchors.bottom: parent.bottom
+                                            clip: true
+
+                                            ColumnLayout {
+                                                anchors.fill: parent
+                                                spacing: 3
+                                                RowLayout {
+                                                    Layout.fillWidth: true
+                                                    Text { text: modelData; color: root.primaryText; font.pixelSize: 13; font.weight: Font.Medium }
+                                                    Text {
+                                                        text: controller.modelStates[index] || ""
+                                                        color: controller.modelStates[index] === "Downloaded" ? root.accent : root.tertiaryText
+                                                        font.pixelSize: 11
+                                                    }
                                                 }
-                                            }
-                                            Text { text: controller.modelDetails[index] || ""; color: root.secondaryText; font.pixelSize: 11 }
-                                            ProgressBar {
-                                                Layout.fillWidth: true
-                                                visible: controller.downloadingModel === index
-                                                value: controller.modelDownloadProgress
+                                                Text {
+                                                    Layout.fillWidth: true
+                                                    text: controller.modelDetails[index] || ""
+                                                    color: root.secondaryText
+                                                    font.pixelSize: 11
+                                                    elide: Text.ElideRight
+                                                }
+                                                ProgressBar {
+                                                    Layout.fillWidth: true
+                                                    visible: controller.downloadingModel === index
+                                                    value: controller.modelDownloadProgress
+                                                }
                                             }
                                         }
+
                                         Item {
-                                            implicitWidth: 186
-                                            Layout.preferredWidth: 186
-                                            Layout.minimumWidth: 186
-                                            Layout.maximumWidth: 186
-                                            Layout.fillHeight: true
+                                            id: modelActions
+                                            anchors.right: parent.right
+                                            anchors.top: parent.top
+                                            anchors.bottom: parent.bottom
+                                            width: 186
 
-                                            RowLayout {
-                                                anchors.fill: parent
-                                                spacing: 10
-                                                StackLayout {
-                                                    implicitWidth: 134
-                                                    Layout.preferredWidth: 134
-                                                    Layout.minimumWidth: 134
-                                                    Layout.maximumWidth: 134
-                                                    currentIndex: controller.modelStates[index] === "Downloaded"
-                                                                  && index === controller.selectedModel ? 1 : 0
+                                            StackLayout {
+                                                anchors.left: parent.left
+                                                anchors.verticalCenter: parent.verticalCenter
+                                                width: 134
+                                                height: 40
+                                                currentIndex: controller.modelStates[index] === "Downloaded"
+                                                              && index === controller.selectedModel ? 1 : 0
 
-                                                    Button {
-                                                        implicitWidth: 134
-                                                        Layout.preferredWidth: 134
-                                                        Layout.minimumWidth: 134
-                                                        Layout.maximumWidth: 134
-                                                        text: controller.downloadingModel === index ? qsTr("Cancel")
-                                                              : controller.modelStates[index] !== "Downloaded" ? qsTr("Download")
-                                                              : qsTr("Activate")
-                                                        enabled: !controller.recording && !controller.transcribing
-                                                                 && (controller.downloadingModel < 0 || controller.downloadingModel === index)
-                                                        onClicked: {
-                                                            if (controller.downloadingModel === index)
-                                                                controller.cancelModelDownload()
-                                                            else if (controller.modelStates[index] !== "Downloaded")
-                                                                controller.downloadModel(index)
-                                                            else
-                                                                controller.selectModel(index)
-                                                        }
+                                                Button {
+                                                    Layout.fillWidth: true
+                                                    Layout.fillHeight: true
+                                                    text: controller.downloadingModel === index ? qsTr("Cancel")
+                                                          : controller.modelStates[index] !== "Downloaded" ? qsTr("Download")
+                                                          : qsTr("Activate")
+                                                    enabled: !controller.recording && !controller.transcribing
+                                                             && (controller.downloadingModel < 0 || controller.downloadingModel === index)
+                                                    onClicked: {
+                                                        if (controller.downloadingModel === index)
+                                                            controller.cancelModelDownload()
+                                                        else if (controller.modelStates[index] !== "Downloaded")
+                                                            controller.downloadModel(index)
+                                                        else
+                                                            controller.selectModel(index)
                                                     }
-                                                    Item {
-                                                        Layout.fillWidth: true
-                                                        Rectangle {
+                                                }
+                                                Item {
+                                                    Layout.fillWidth: true
+                                                    Layout.fillHeight: true
+                                                    Rectangle {
+                                                        anchors.centerIn: parent
+                                                        width: activeLabel.implicitWidth + 22
+                                                        height: 30
+                                                        radius: 15
+                                                        color: "#234b3b"
+                                                        border.color: "#39755a"
+                                                        Text {
+                                                            id: activeLabel
                                                             anchors.centerIn: parent
-                                                            width: activeLabel.implicitWidth + 22
-                                                            height: 30
-                                                            radius: 15
-                                                            color: "#234b3b"
-                                                            border.color: "#39755a"
-                                                            Text {
-                                                                id: activeLabel
-                                                                anchors.centerIn: parent
-                                                                text: qsTr("Active")
-                                                                color: "#70d59b"
-                                                                font.pixelSize: 12
-                                                                font.weight: Font.DemiBold
-                                                            }
+                                                            text: qsTr("Active")
+                                                            color: "#70d59b"
+                                                            font.pixelSize: 12
+                                                            font.weight: Font.DemiBold
                                                         }
                                                     }
                                                 }
-                                                ToolButton {
-                                                    implicitWidth: 42
-                                                    Layout.preferredWidth: 42
-                                                    Layout.minimumWidth: 42
-                                                    Layout.maximumWidth: 42
-                                                    Layout.preferredHeight: 38
-                                                    visible: controller.modelStates[index] === "Downloaded" && index !== controller.selectedModel
-                                                    enabled: controller.downloadingModel < 0 && !controller.recording && !controller.transcribing
-                                                    icon.source: "qrc:/qt/qml/io/github/davidkodar/FluidVoiceLinux/assets/trash.svg"
-                                                    icon.width: 20
-                                                    icon.height: 20
-                                                    display: AbstractButton.IconOnly
-                                                    ToolTip.visible: hovered
-                                                    ToolTip.text: qsTr("Delete downloaded model")
-                                                    onClicked: controller.deleteModel(index)
-                                                }
+                                            }
+                                            ToolButton {
+                                                anchors.right: parent.right
+                                                anchors.verticalCenter: parent.verticalCenter
+                                                width: 42
+                                                height: 38
+                                                visible: controller.modelStates[index] === "Downloaded" && index !== controller.selectedModel
+                                                enabled: controller.downloadingModel < 0 && !controller.recording && !controller.transcribing
+                                                icon.source: "qrc:/qt/qml/io/github/davidkodar/FluidVoiceLinux/assets/trash.svg"
+                                                icon.width: 20
+                                                icon.height: 20
+                                                display: AbstractButton.IconOnly
+                                                ToolTip.visible: hovered
+                                                ToolTip.text: qsTr("Delete downloaded model")
+                                                onClicked: controller.deleteModel(index)
                                             }
                                         }
                                     }
