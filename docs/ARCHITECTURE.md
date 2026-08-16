@@ -4,13 +4,19 @@
 
 The Linux client is a native implementation for KDE Plasma on Wayland. The macOS FluidVoice source is a behavioral and algorithmic reference, not a portable application shell.
 
+Optional post-transcription enhancement sits behind a provider-neutral boundary.
+Cloud providers receive transcript text only after explicit opt-in; loopback
+Ollama, LM Studio, and compatible servers support fully local cleanup. The
+default local-only lock prevents accidental cloud selection. Fluid-1 remains a
+separate closed component and is not reproduced here.
+
 ## Experience parity
 
 Qt Quick/QML will reproduce the macOS client's visual language rather than defaulting to a generic utility UI. Shared design tokens will cover color, type scale, spacing, radii, shadows, translucency, animation curves, and status colors. Reference views will be compared at fixed sizes during UI review.
 
 Platform metaphors are translated rather than copied blindly: the notch overlay becomes a non-focusable Plasma overlay, the macOS menu-bar experience becomes a StatusNotifierItem tray experience, and permission prompts follow KDE/portal conventions. Visual parity must never require bypassing Wayland security or breaking Plasma window behavior.
 
-## Planned modules
+## Implemented modules
 
 ```text
 crates/fluidvoice-core/     dependency-light state machine and domain events
@@ -23,6 +29,12 @@ crates/fluidvoice-storage/  XDG settings, history, and migrations
 crates/fluidvoice-ui/       CXX-Qt bridge, Qt Quick tray, overlay, settings
 tests/                      desktop integration and compatibility harness
 ```
+
+The UI controller also coordinates provider streaming, application/workflow
+prompt profiles, selected-text rewriting, allowlisted Command Mode actions,
+audio-file decoding, update checks, and release-facing status. These remain
+separated from microphone capture and embedded whisper.cpp inference by typed
+Rust boundaries even though the desktop bridge composes them in one process.
 
 ## State machine
 

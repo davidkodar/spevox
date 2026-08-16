@@ -1,0 +1,26 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install native dependencies
+        run: sudo apt-get update && sudo apt-get install -y build-essential clang cmake libpipewire-0.3-dev libvulkan-dev glslc qt6-base-dev qt6-declarative-dev qt6-tools-dev-tools
+      - name: Build release archive
+        run: ./packaging/package-tarball.sh
+      - name: Publish checksummed archive
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            target/package/*.tar.gz
+            target/package/*.sha256

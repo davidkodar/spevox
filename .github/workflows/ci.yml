@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: Install native dependencies
+        run: sudo apt-get update && sudo apt-get install -y build-essential clang cmake libpipewire-0.3-dev libvulkan-dev glslc qt6-base-dev qt6-declarative-dev qt6-tools-dev-tools
+      - name: Formatting
+        run: cargo fmt --all --check
+      - name: Tests
+        env:
+          QMAKE: /usr/bin/qmake6
+        run: cargo test --workspace --locked
+      - name: Release build
+        env:
+          QMAKE: /usr/bin/qmake6
+        run: cargo build --release --locked -p fluidvoice-ui
+      - name: Validate AppStream metadata
+        run: sudo apt-get install -y appstream && appstreamcli validate --no-net data/io.github.davidkodar.FluidVoiceLinux.metainfo.xml
+

@@ -5,6 +5,12 @@ All notable changes to FluidVoice Linux are documented here. The project uses
 
 ## Unreleased
 
+- No changes yet.
+
+## 0.3.0 - 2026-08-16
+
+### Added
+
 - Added optional post-transcription AI cleanup for OpenAI, Anthropic, xAI,
   Groq, Cerebras, Gemini, OpenRouter, Ollama, LM Studio, and custom
   OpenAI-compatible endpoints.
@@ -26,11 +32,9 @@ All notable changes to FluidVoice Linux are documented here. The project uses
   and confirmation-gated allowlisted Plasma actions without arbitrary shell execution.
 - Added bounded local FFmpeg decoding for MP3, FLAC, Ogg/Opus, M4A/AAC, WebM,
   MP4, and varied WAV files, with a built-in PCM WAV fallback.
-- Broader file-format support beyond 16-bit PCM WAV.
 - Added searchable history cards with relative and full local timestamps and word counts.
 - Expanded local statistics with today's activity, estimated time saved, streaks,
   average session size, and a seven-day activity chart.
-- Richer history metadata, audio retention, and command-mode workflows are planned.
 
 ## 0.2.0 - 2026-08-16
 

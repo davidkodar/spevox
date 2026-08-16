@@ -16,6 +16,9 @@
   <categories><category>Utility</category><category>Accessibility</category></categories>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="0.3.0" date="2026-08-16">
+      <description><p>Adds optional local and cloud AI enhancement, local-only privacy controls, streaming cleanup, application profiles, selected-text rewriting, safe Command Mode actions, richer history exports, and broad local audio decoding.</p></description>
+    </release>
     <release version="0.2.0" date="2026-08-16">
       <description><p>Adds Vulkan acceleration, KDE-aware appearance settings, upstream-style navigation, model management, and local productivity features.</p></description>
     </release>

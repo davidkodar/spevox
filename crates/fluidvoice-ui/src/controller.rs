@@ -73,6 +73,7 @@ pub mod ffi {
         #[qproperty(QString, ai_profile_prompt, cxx_name = "aiProfilePrompt")]
         #[qproperty(QString, ai_profile_name, cxx_name = "aiProfileName")]
         #[qproperty(QString, app_version, cxx_name = "appVersion")]
+        #[qproperty(QString, update_status, cxx_name = "updateStatus")]
         type FluidVoiceController = super::FluidVoiceControllerRust;
 
         #[qinvokable]
@@ -230,6 +231,10 @@ pub mod ffi {
         #[qinvokable]
         #[cxx_name = "rewriteSelectedText"]
         fn rewrite_selected_text(self: Pin<&mut Self>, instruction: &QString);
+
+        #[qinvokable]
+        #[cxx_name = "checkForUpdates"]
+        fn check_for_updates(self: Pin<&mut Self>);
     }
 
     impl cxx_qt::Threading for FluidVoiceController {}
@@ -327,6 +332,7 @@ pub struct FluidVoiceControllerRust {
     ai_profile_name: QString,
     ai_profiles: Vec<AiProfile>,
     app_version: QString,
+    update_status: QString,
 }
 
 impl Default for FluidVoiceControllerRust {
@@ -538,6 +544,7 @@ impl Default for FluidVoiceControllerRust {
             ai_profile_name: QString::default(),
             ai_profiles,
             app_version: QString::from(env!("CARGO_PKG_VERSION")),
+            update_status: QString::from("Updates have not been checked."),
         }
     }
 }
@@ -1351,6 +1358,27 @@ impl ffi::FluidVoiceController {
         });
     }
 
+    pub fn check_for_updates(mut self: Pin<&mut Self>) {
+        if *self.as_ref().transcribing() {
+            return;
+        }
+        let qt_thread = self.qt_thread();
+        self.as_mut().set_transcribing(true);
+        self.as_mut()
+            .set_update_status(QString::from("Checking GitHub Releases…"));
+        std::thread::spawn(move || {
+            let result = check_latest_release(env!("CARGO_PKG_VERSION"));
+            qt_thread
+                .queue(move |mut controller| {
+                    controller.as_mut().set_transcribing(false);
+                    controller
+                        .as_mut()
+                        .set_update_status(QString::from(&result));
+                })
+                .ok();
+        });
+    }
+
     pub fn add_dictionary_term(mut self: Pin<&mut Self>, term: &QString) {
         let term = term.to_string().trim().to_owned();
         if term.is_empty() {
@@ -2096,6 +2124,49 @@ fn parse_desktop_action(value: &str) -> Option<DesktopAction> {
         "lock screen" | "lock my screen" | "lock computer" => Some(DesktopAction::LockScreen),
         _ => None,
     }
+}
+
+fn check_latest_release(current: &str) -> String {
+    let response =
+        ureq::get("https://api.github.com/repos/davidkodar/fluidvoice-linux/releases/latest")
+            .header("user-agent", "FluidVoice-Linux")
+            .call();
+    let mut response = match response {
+        Ok(response) => response,
+        Err(ureq::Error::StatusCode(404)) => {
+            return "No public release feed is available while the repository is private."
+                .to_owned();
+        }
+        Err(error) => return format!("Update check failed: {error}"),
+    };
+    let body = match response.body_mut().read_to_string() {
+        Ok(body) => body,
+        Err(error) => return format!("Release feed could not be read: {error}"),
+    };
+    let value = match serde_json::from_str::<serde_json::Value>(&body) {
+        Ok(value) => value,
+        Err(error) => return format!("Release feed returned invalid data: {error}"),
+    };
+    let Some(tag) = value.get("tag_name").and_then(serde_json::Value::as_str) else {
+        return "Release feed did not include a version tag.".to_owned();
+    };
+    let latest = tag.trim_start_matches('v');
+    match (version_tuple(current), version_tuple(latest)) {
+        (Some(current), Some(latest_tuple)) if latest_tuple > current => {
+            format!("Version {latest} is available on GitHub Releases.")
+        }
+        (Some(_), Some(_)) => format!("FluidVoice Linux {current} is up to date."),
+        _ => format!("Latest release tag: {tag}"),
+    }
+}
+
+fn version_tuple(value: &str) -> Option<(u32, u32, u32)> {
+    let mut parts = value.split('.');
+    Some((
+        parts.next()?.parse().ok()?,
+        parts.next()?.parse().ok()?,
+        parts.next()?.split('-').next()?.parse().ok()?,
+    ))
 }
 
 #[derive(Clone, Copy)]
@@ -2926,7 +2997,7 @@ mod tests {
     use super::{
         DesktopAction, asr_gain, decode_audio_file, decode_file_url, meter_level,
         parse_desktop_action, peak_db, process_transcript, supported_languages,
-        suspicious_single_word, whisper_model_catalog, write_history_export,
+        suspicious_single_word, version_tuple, whisper_model_catalog, write_history_export,
     };
 
     #[test]
@@ -2949,6 +3020,13 @@ mod tests {
         ));
         assert!(parse_desktop_action("rm -rf important files").is_none());
         assert!(parse_desktop_action("run echo hello").is_none());
+    }
+
+    #[test]
+    fn parses_release_versions_for_update_comparison() {
+        assert_eq!(version_tuple("0.3.0"), Some((0, 3, 0)));
+        assert_eq!(version_tuple("1.2.3-beta.1"), Some((1, 2, 3)));
+        assert_eq!(version_tuple("invalid"), None);
     }
 
     #[test]

@@ -5,7 +5,7 @@ Native, local-first voice dictation for KDE Plasma on Wayland.
 > [!IMPORTANT]
 > This is an unofficial Linux port inspired by
 > [FluidVoice for macOS](https://github.com/altic-dev/FluidVoice). It is not
-> sponsored or endorsed by Altic or the upstream maintainers. Version 0.2.0 is
+> sponsored or endorsed by Altic or the upstream maintainers. Version 0.3.0 is
 > a private preview and is not yet packaged for general distribution.
 
 FluidVoice Linux combines a Rust 2024 core, Qt Quick/CXX-Qt interface,
@@ -64,7 +64,7 @@ uses `sudo` only when copying files into `/usr/local`.
 ```bash
 git clone https://github.com/davidkodar/fluidvoice-linux.git
 cd fluidvoice-linux
-./packaging/install-dev.sh
+./packaging/install.sh
 fluidvoice-ui
 ```
 
@@ -96,7 +96,7 @@ the settings window leaves FluidVoice running in the system tray.
 This table is intentionally conservative. “Partial” means the Linux feature is
 usable but does not yet match the depth of the current macOS implementation.
 
-| Capability | Linux 0.2.0 | Current macOS FluidVoice | Notes |
+| Capability | Linux 0.3.0 | Current macOS FluidVoice | Notes |
 | --- | --- | --- | --- |
 | Global hold-to-dictate | Available | Available | Linux uses the XDG Global Shortcuts portal. |
 | Direct typing into applications | Partial | Available | Linux uses Wayland portal/clipboard delivery; application support can vary. |
@@ -110,7 +110,7 @@ usable but does not yet match the depth of the current macOS implementation.
 | Spoken formatting | Available | Available | Linux handles newline, paragraph, comma, period, question mark, and exclamation mark. |
 | Command Mode system actions | Partial | Available | Linux provides provider-backed KDE assistance plus confirmed allowlisted actions for System Settings, Konsole, Dolphin, and screen locking; arbitrary shell execution is deliberately prohibited. |
 | Write/rewrite selected text | Partial | Available | Linux captures and replaces selected text through the consented Wayland keyboard portal and clipboard; the settings window hides first so focus returns to the source app. Voice-triggered rewrite shortcuts remain planned. |
-| AI Enhancement | Partial | Available | Linux supports configurable standard and local providers, streamed overlay updates, a cleanup prompt, and safe raw-text fallback; per-app prompts are not yet implemented. |
+| AI Enhancement | Partial | Available | Linux supports configurable cloud and local providers, streamed overlay updates, application/workflow prompt profiles, and safe raw-text fallback. It cannot reproduce the closed Fluid-1 model. |
 | Fluid Intelligence / Fluid-1 | Missing | Available | Fluid-1 weights, runtime, and training code are separately maintained and not available in the GPL repository. |
 | File transcription | Partial | Available | Linux accepts MP3, FLAC, Ogg/Opus, M4A/AAC, WebM, MP4, and varied WAV encodings through FFmpeg with a two-hour decoded-audio safety limit; meeting workflows remain planned. |
 | Transcript history | Partial | Available | Linux provides search, timestamps, raw/final text, AI provider/model/status/latency metadata, source labels, word counts, and JSON/CSV export; app/window metadata, audio retention, and reports are still missing. |
@@ -119,10 +119,10 @@ usable but does not yet match the depth of the current macOS implementation.
 | Audio recording history | Missing | Available | Linux does not retain microphone audio after transcription. |
 | Adaptive themes and accents | Available | Available | System/KDE defaults plus explicit FluidVoice themes and colors. |
 | Tray/menu-bar integration | Available | Available | Plasma tray is the Linux equivalent of the macOS menu bar item. |
-| Automatic updates / beta channel | Missing | Available | Planned after public packaging and signed releases exist. |
+| Automatic updates / beta channel | Partial | Available | Linux can check GitHub Releases and ships checksummed archives; unattended and cryptographically signed updates are not yet available. The feed remains unavailable while the repository is private. |
 
 The macOS feature set changes quickly. This matrix reflects the upstream source
-and README reviewed for the 0.2.0 preview; it is not a promise of identical
+and README reviewed for the 0.3.0 preview; it is not a promise of identical
 platform behavior.
 
 ## Models, languages, and storage
@@ -196,8 +196,16 @@ cargo run -p fluidvoice-app -- --diagnose-workflow /path/to/model.bin 5 [PIPEWIR
 ```
 
 The application ID is `io.github.davidkodar.FluidVoiceLinux`. The matching
-desktop entry, icon, AppStream metadata, and GPL license are installed by the
-development installer.
+desktop entry, icon, AppStream metadata, and GPL license are installed by
+`packaging/install.sh`. Use `packaging/install-dev.sh` when iterating on a debug
+build, or `packaging/uninstall.sh` to remove application files without deleting
+models, settings, history, or other user data.
+
+Tagged releases are built by GitHub Actions as versioned `x86_64.tar.gz`
+archives with SHA-256 checksum files. `packaging/package-tarball.sh` reproduces
+that artifact locally. The in-app update check reads GitHub Releases and will
+remain unavailable while this repository is private; releases are not installed
+silently.
 
 The current production speech backend remains embedded whisper.cpp. Parakeet,
 Nemotron, Cohere, and Apple Speech depend on runtimes or platform services that
@@ -219,11 +227,11 @@ More detail is available in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Project status and roadmap
 
-The core KDE Wayland dictation workflow is operational. Before a general public
-release, priorities include broader audio formats, richer history and stats,
-streaming AI cleanup previews, per-application prompts, robust packaging,
-accessibility review, automated release artifacts, and wider testing across
-Plasma distributions and GPU vendors.
+The core KDE Wayland dictation workflow, broad audio decoding, rich local
+history, streamed AI cleanup, explicit application profiles, and checksummed
+release packaging are operational. Before a general public release, priorities
+are guided local-model setup, accessibility review, signed distribution-native
+packages, and wider testing across Plasma distributions and GPU vendors.
 
 Please use [GitHub Issues](https://github.com/davidkodar/fluidvoice-linux/issues)
 for reproducible bugs and feature proposals once the repository is public.
