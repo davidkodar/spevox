@@ -5,6 +5,9 @@ All notable changes to FluidVoice Linux are documented here. The project uses
 
 ## 0.4.0 - 2026-08-16
 
+- Redesigned the dictation result popup with responsive sizing, balanced visual
+  hierarchy, equal-width actions, a dedicated dismiss control, and reliable
+  suppression of listening and AI result popups when the setting is disabled.
 - Began the 0.4.0 development cycle with optional local audio retention,
   configurable storage budgets, oldest-first pruning, playback, individual
   deletion, and ZIP export with history metadata.

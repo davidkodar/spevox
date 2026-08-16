@@ -1345,7 +1345,9 @@ impl ffi::FluidVoiceController {
         config.enabled = true;
         let qt_thread = self.qt_thread();
         self.as_mut().set_transcribing(true);
-        self.as_mut().set_overlay_visible(true);
+        if *self.as_ref().overlay_enabled() {
+            self.as_mut().set_overlay_visible(true);
+        }
         self.as_mut().set_overlay_result_available(false);
         self.as_mut()
             .set_status_text(QString::from("Retrying AI enhancement…"));
@@ -2098,7 +2100,9 @@ impl ffi::FluidVoiceController {
                                 controller.as_mut().set_transcript_text(QString::from(&text));
                                 controller.as_mut().set_live_transcript(QString::from(&text));
                                 controller.as_mut().set_overlay_result_available(true);
-                                controller.as_mut().set_overlay_visible(true);
+                                if *controller.as_ref().overlay_enabled() {
+                                    controller.as_mut().set_overlay_visible(true);
+                                }
                                 controller.as_mut().set_ai_status(QString::from(
                                     "Selected text rewritten · replacement pasted or left on clipboard",
                                 ));
@@ -2214,7 +2218,9 @@ impl ffi::FluidVoiceController {
                                     .as_mut()
                                     .set_live_transcript(QString::from(&text));
                                 controller.as_mut().set_overlay_result_available(true);
-                                controller.as_mut().set_overlay_visible(true);
+                                if *controller.as_ref().overlay_enabled() {
+                                    controller.as_mut().set_overlay_visible(true);
+                                }
                                 controller.as_mut().set_ai_status(QString::from(
                                     "Write Mode retry pasted or left on clipboard",
                                 ));
@@ -2987,7 +2993,9 @@ impl ffi::FluidVoiceController {
                             let text = text.to_owned();
                             stream_thread
                                 .queue(move |mut controller| {
-                                    controller.as_mut().set_overlay_visible(true);
+                                    if *controller.as_ref().overlay_enabled() {
+                                        controller.as_mut().set_overlay_visible(true);
+                                    }
                                     controller
                                         .as_mut()
                                         .set_live_transcript(QString::from(&text));

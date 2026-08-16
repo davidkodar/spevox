@@ -1209,8 +1209,8 @@ ApplicationWindow {
                                 anchors.rightMargin: 24
                                 anchors.verticalCenter: parent.verticalCenter
                                 spacing: 4
-                                Text { text: qsTr("Recording overlay"); color: root.primaryText; font.pixelSize: 14; font.weight: Font.Medium }
-                                Text { text: qsTr("Show the compact listening indicator above other windows."); color: root.secondaryText; font.pixelSize: 12 }
+                                Text { text: qsTr("Dictation popup"); color: root.primaryText; font.pixelSize: 14; font.weight: Font.Medium }
+                                Text { text: qsTr("Show listening, live text, and result actions above other windows."); color: root.secondaryText; font.pixelSize: 12 }
                             }
                             Switch {
                                 id: overlaySwitch
@@ -2088,8 +2088,15 @@ ApplicationWindow {
 
     Window {
         id: overlay
-        width: controller.selectedOverlaySize === 0 ? 300 : controller.selectedOverlaySize === 2 ? 560 : 380
-        height: (controller.selectedOverlaySize === 0 ? (controller.overlayShowText ? 112 : 84) : controller.selectedOverlaySize === 2 ? (controller.overlayShowText ? 240 : 128) : (controller.overlayShowText ? 156 : 104)) + (controller.overlayResultAvailable ? 52 : 0)
+        readonly property int listeningWidth: controller.selectedOverlaySize === 0 ? 300 : controller.selectedOverlaySize === 2 ? 560 : 380
+        width: controller.overlayResultAvailable ? Math.max(listeningWidth, 540) : listeningWidth
+        height: controller.overlayResultAvailable
+                ? (controller.overlayShowText ? 218 : 170)
+                : controller.selectedOverlaySize === 0
+                  ? (controller.overlayShowText ? 112 : 84)
+                  : controller.selectedOverlaySize === 2
+                    ? (controller.overlayShowText ? 240 : 128)
+                    : (controller.overlayShowText ? 156 : 104)
         x: Math.round((Screen.width - width) / 2)
         y: controller.selectedOverlayPosition === 1 ? Screen.height - height - 54 : controller.selectedOverlayPosition === 2 ? Math.round((Screen.height - height) / 2) : 42
         visible: controller.overlayVisible
@@ -2163,29 +2170,41 @@ ApplicationWindow {
         Rectangle {
             anchors.fill: parent
             anchors.margins: 8
-            radius: 18
-            color: "#fa000000"
-            border.color: controller.recording ? "#8063d391" : "#32ffffff"
+            radius: 20
+            color: "#f51a1b1f"
+            border.color: controller.recording ? root.accent : "#3dffffff"
             border.width: 1
 
             ColumnLayout {
                 anchors.fill: parent
                 anchors.margins: 16
-                spacing: 10
+                spacing: 12
 
                 RowLayout {
                     Layout.fillWidth: true
                     Text {
-                        text: controller.recording ? qsTr("Dictate") : controller.transcribing ? qsTr("Processing") : qsTr("FluidVoice")
+                        text: controller.recording ? qsTr("Listening") : controller.transcribing ? qsTr("Improving text") : qsTr("Dictation ready")
                         color: controller.recording ? root.accent : "#f2f2f2"
-                        font.pixelSize: 13
+                        font.pixelSize: 14
                         font.weight: Font.DemiBold
                     }
                     Item { Layout.fillWidth: true }
                     Text {
-                        text: controller.recording ? qsTr("Release to finish") : controller.transcribing ? qsTr("On-device") : "Ctrl Alt D"
+                        visible: !controller.overlayResultAvailable
+                        text: controller.recording ? qsTr("Release to finish") : controller.transcribing ? qsTr("Processing") : "Ctrl Alt D"
                         color: "#8d8d92"
                         font.pixelSize: 11
+                    }
+                    Button {
+                        visible: controller.overlayResultAvailable
+                        flat: true
+                        text: "×"
+                        font.pixelSize: 18
+                        Layout.preferredWidth: 30
+                        Layout.preferredHeight: 28
+                        ToolTip.visible: hovered
+                        ToolTip.text: qsTr("Dismiss")
+                        onClicked: controller.dismissOverlay()
                     }
                 }
 
@@ -2193,28 +2212,28 @@ ApplicationWindow {
                     visible: controller.overlayShowText
                     Layout.fillWidth: true
                     Layout.fillHeight: true
+                    Layout.minimumHeight: controller.overlayResultAvailable ? 42 : 0
                     text: overlay.animatedTranscript.length > 0
                           ? overlay.animatedTranscript
                           : qsTr("Speak naturally — text will appear here")
                     color: overlay.animatedTranscript.length > 0 ? "#eeeeef" : "#77777c"
-                    font.pixelSize: 13
-                    lineHeight: 1.15
+                    font.pixelSize: controller.overlayResultAvailable ? 15 : 13
+                    font.weight: controller.overlayResultAvailable ? Font.Medium : Font.Normal
+                    lineHeight: 1.18
                     wrapMode: Text.Wrap
-                    elide: Text.ElideLeft
-                    maximumLineCount: 3
+                    elide: Text.ElideRight
+                    maximumLineCount: controller.selectedOverlaySize === 2 ? 4 : 3
                     verticalAlignment: Text.AlignVCenter
                 }
 
                 RowLayout {
                     visible: controller.overlayResultAvailable
                     Layout.fillWidth: true
-                    spacing: 6
-                    Button { text: qsTr("Copy"); onClicked: controller.copyLastResult(false) }
-                    Button { text: qsTr("Raw"); enabled: controller.lastRawText.length > 0; onClicked: controller.copyLastResult(true) }
-                    Button { text: qsTr("Undo AI"); enabled: controller.lastRawText.length > 0 && controller.lastRawText !== controller.transcriptText; onClicked: controller.undoLastAi() }
-                    Button { text: qsTr("Retry AI"); enabled: controller.lastRawText.length > 0 && !controller.transcribing; onClicked: controller.retryLastAi() }
-                    Item { Layout.fillWidth: true }
-                    Button { text: "×"; onClicked: controller.dismissOverlay() }
+                    spacing: 8
+                    Button { Layout.fillWidth: true; Layout.minimumWidth: 0; text: qsTr("Copy"); onClicked: controller.copyLastResult(false) }
+                    Button { Layout.fillWidth: true; Layout.minimumWidth: 0; text: qsTr("Copy raw"); enabled: controller.lastRawText.length > 0; onClicked: controller.copyLastResult(true) }
+                    Button { Layout.fillWidth: true; Layout.minimumWidth: 0; text: qsTr("Undo AI"); enabled: controller.lastRawText.length > 0 && controller.lastRawText !== controller.transcriptText; onClicked: controller.undoLastAi() }
+                    Button { Layout.fillWidth: true; Layout.minimumWidth: 0; text: qsTr("Retry AI"); enabled: controller.lastRawText.length > 0 && !controller.transcribing; onClicked: controller.retryLastAi() }
                 }
 
                 RowLayout {
@@ -2251,11 +2270,7 @@ ApplicationWindow {
                         }
                     }
                     Item { Layout.fillWidth: true }
-                    Text {
-                        text: controller.recording ? qsTr("Listening") : controller.transcribing ? qsTr("Transcribing") : qsTr("Ready")
-                        color: "#8d8d92"
-                        font.pixelSize: 11
-                    }
+                    Item { Layout.preferredWidth: 22; Layout.preferredHeight: 22 }
                 }
             }
         }
