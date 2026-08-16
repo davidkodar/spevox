@@ -298,6 +298,20 @@ release packaging are operational. Before a general public release, priorities
 are guided local-model setup, accessibility review, signed distribution-native
 packages, and wider testing across Plasma distributions and GPU vendors.
 
+### Planned after 0.4.0
+
+- **Multilingual intelligent dictation cleanup:** expand the current compact AI
+  prompt into a constrained, upstream-inspired cleanup pipeline covering
+  punctuation and question detection, capitalization, minimal unambiguous
+  grammatical repairs, filler and false-start removal, self-corrections,
+  spoken formatting, and number normalization. The work will include
+  deterministic formatting where an LLM is unnecessary, language-aware prompt
+  guidance, model recommendations, and regression fixtures that compare raw
+  dictation with expected output across English, Swedish, and additional
+  languages. This targets reliable behavior with local and cloud providers; it
+  does not claim compatibility with or reproduction of the privately
+  maintained Fluid Intelligence model.
+
 Please use [GitHub Issues](https://github.com/davidkodar/fluidvoice-linux/issues)
 for reproducible bugs and feature proposals once the repository is public.
 
