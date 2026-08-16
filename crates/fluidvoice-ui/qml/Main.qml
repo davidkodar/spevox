@@ -1013,12 +1013,26 @@ ApplicationWindow {
                     visible: root.settingsSection === 8
                     spacing: 14
                     Text { text: qsTr("Getting Started"); color: root.primaryText; font.pixelSize: 22; font.weight: Font.Bold }
-                    Text { text: root.destinationDescriptions[8]; color: root.secondaryText; font.pixelSize: 14 }
+                    Text { Layout.fillWidth: true; text: qsTr("Set up reliable, private dictation on KDE Plasma in a few minutes."); color: root.secondaryText; font.pixelSize: 14; wrapMode: Text.Wrap }
+
+                    Rectangle {
+                        Layout.fillWidth: true; implicitHeight: firstRunContent.implicitHeight + 32; radius: 16; color: root.panel; border.color: root.hairline
+                        ColumnLayout {
+                            id: firstRunContent; anchors.fill: parent; anchors.margins: 16; spacing: 8
+                            Text { text: qsTr("RECOMMENDED FIRST RUN"); color: root.tertiaryText; font.pixelSize: 11; font.weight: Font.Medium }
+                            Text { Layout.fillWidth: true; text: qsTr("1. Select and test your microphone.\n2. Download a multilingual Whisper model—Small is a good starting point for Swedish.\n3. Choose a fixed language for best short-dictation accuracy, or Automatic for mixed languages.\n4. Keep Automatic (Vulkan) selected for GPU acceleration with CPU fallback.\n5. Hold the global shortcut, speak naturally, then release to transcribe and paste."); color: root.secondaryText; font.pixelSize: 13; lineHeight: 1.25; wrapMode: Text.Wrap }
+                            Button { text: qsTr("Open Voice Engine"); onClicked: root.showSettingsSection(1) }
+                        }
+                    }
+
+                    Text { text: qsTr("Setup checklist"); color: root.primaryText; font.pixelSize: 15; font.weight: Font.DemiBold }
                     Repeater {
                         model: [
-                            { "title": qsTr("Choose a microphone"), "detail": controller.selectedInput >= 0 ? controller.microphoneName : qsTr("Open Voice Engine and select an input"), "done": controller.selectedInput >= 0 },
-                            { "title": qsTr("Install a speech model"), "detail": controller.modelName, "done": controller.modelStates[controller.selectedModel] === "Downloaded" },
-                            { "title": qsTr("Test the global shortcut"), "detail": qsTr("Hold %1 and speak").arg(controller.shortcuts[controller.selectedShortcut]), "done": controller.transcriptCount > 0 }
+                            { "title": qsTr("Microphone selected"), "detail": controller.selectedInput >= 0 ? controller.microphoneName : qsTr("Choose an input in Voice Engine"), "done": controller.selectedInput >= 0 },
+                            { "title": qsTr("Speech model ready"), "detail": controller.modelName, "done": controller.modelStates[controller.selectedModel] === "Downloaded" },
+                            { "title": qsTr("Language and compute configured"), "detail": qsTr("%1 · %2").arg(controller.languages[controller.selectedLanguage]).arg(controller.computeBackends[controller.selectedComputeBackend]), "done": controller.modelStates[controller.selectedModel] === "Downloaded" },
+                            { "title": qsTr("Global shortcut configured"), "detail": qsTr("Hold %1 while speaking").arg(controller.shortcuts[controller.selectedShortcut]), "done": controller.selectedShortcut >= 0 },
+                            { "title": qsTr("First dictation completed"), "detail": controller.transcriptCount > 0 ? qsTr("%1 transcript(s) saved locally").arg(controller.transcriptCount) : qsTr("Try dictating into a text field"), "done": controller.transcriptCount > 0 }
                         ]
                         delegate: Rectangle {
                             required property var modelData; Layout.fillWidth: true; height: 72; radius: 10; color: root.panel; border.color: root.hairline
@@ -1026,6 +1040,15 @@ ApplicationWindow {
                                 Rectangle { width: 26; height: 26; radius: 13; color: modelData.done ? "#234b3b" : root.panelRaised; border.color: modelData.done ? "#39755a" : root.hairline; Text { anchors.centerIn: parent; text: modelData.done ? "✓" : "·"; color: modelData.done ? "#70d59b" : root.secondaryText; font.pixelSize: 13 } }
                                 ColumnLayout { Layout.fillWidth: true; spacing: 2; Text { text: modelData.title; color: root.primaryText; font.pixelSize: 14; font.weight: Font.Medium } Text { text: modelData.detail; color: root.secondaryText; font.pixelSize: 12 } }
                             }
+                        }
+                    }
+
+                    Rectangle {
+                        Layout.fillWidth: true; implicitHeight: usageTips.implicitHeight + 32; radius: 16; color: root.panel; border.color: root.hairline
+                        ColumnLayout {
+                            id: usageTips; anchors.fill: parent; anchors.margins: 16; spacing: 8
+                            Text { text: qsTr("KDE & WAYLAND TIPS"); color: root.tertiaryText; font.pixelSize: 11; font.weight: Font.Medium }
+                            Text { Layout.fillWidth: true; text: qsTr("• Closing the settings window keeps FluidVoice available in the Plasma system tray.\n• Plasma owns the global shortcut and may ask for approval the first time.\n• If direct paste is unavailable in an application, the transcript remains recoverable on the clipboard.\n• Automatic compute uses Vulkan when a compatible GPU is available and safely falls back to CPU.\n• Models, history, and dictionary data stay under your standard XDG user-data directory."); color: root.secondaryText; font.pixelSize: 13; lineHeight: 1.25; wrapMode: Text.Wrap }
                         }
                     }
                 }
