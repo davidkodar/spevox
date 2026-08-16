@@ -11,10 +11,18 @@ ApplicationWindow {
     height: 620
     minimumWidth: 760
     minimumHeight: 540
-    visible: true
+    visible: false
     title: qsTr("FluidVoice")
     color: "#111216"
-    onClosing: Qt.quit()
+    property bool quitting: false
+    onClosing: function(close) {
+        if (quitting) {
+            close.accepted = true
+            return
+        }
+        close.accepted = false
+        root.hide()
+    }
 
     readonly property color accent: "#8b7cff"
     readonly property color panel: "#1a1b21"
@@ -51,7 +59,10 @@ ApplicationWindow {
             Platform.MenuSeparator {}
             Platform.MenuItem {
                 text: qsTr("Quit")
-                onTriggered: Qt.quit()
+                onTriggered: {
+                    root.quitting = true
+                    Qt.quit()
+                }
             }
         }
         onActivated: function(reason) {
@@ -409,7 +420,10 @@ ApplicationWindow {
         height: 82
         visible: controller.overlayVisible
         color: "transparent"
+        transientParent: null
+        modality: Qt.NonModal
         flags: Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
+               | Qt.WindowDoesNotAcceptFocus
         title: qsTr("FluidVoice Recording")
 
         Rectangle {
