@@ -1191,6 +1191,24 @@ ApplicationWindow {
                             Rectangle { Layout.fillWidth: true; height: 1; color: root.hairline }
                             Text { text: qsTr("AVAILABLE COMMANDS"); color: root.tertiaryText; font.pixelSize: 11; font.weight: Font.Medium }
                             Text { Layout.fillWidth: true; text: qsTr("“new line”  “new paragraph”  “comma”  “period”  “question mark”  “exclamation mark”"); color: root.secondaryText; font.pixelSize: 13; wrapMode: Text.Wrap }
+                            Rectangle { Layout.fillWidth: true; height: 1; color: root.hairline }
+                            Text { text: qsTr("COMMAND ASSISTANT"); color: root.tertiaryText; font.pixelSize: 11; font.weight: Font.Medium }
+                            Text { Layout.fillWidth: true; text: qsTr("Ask the configured provider for KDE help, or request an allowlisted action: open settings, open terminal, open file manager, or lock screen. Every desktop action requires confirmation; arbitrary shell execution is never allowed."); color: root.secondaryText; font.pixelSize: 12; wrapMode: Text.Wrap }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                TextField { id: commandInput; Layout.fillWidth: true; placeholderText: qsTr("Ask or request a desktop action"); onAccepted: commandSubmit.clicked() }
+                                Button { id: commandSubmit; text: controller.transcribing ? qsTr("Thinking…") : qsTr("Send"); enabled: !controller.transcribing && commandInput.text.trim().length > 0; onClicked: { controller.submitCommand(commandInput.text); commandInput.clear() } }
+                            }
+                            Rectangle {
+                                Layout.fillWidth: true; implicitHeight: commandOutputText.implicitHeight + 24; radius: 10; color: root.panelRaised; border.color: root.hairline
+                                Text { id: commandOutputText; anchors.fill: parent; anchors.margins: 12; text: controller.commandOutput; color: root.primaryText; font.pixelSize: 12; wrapMode: Text.Wrap }
+                            }
+                            RowLayout {
+                                visible: controller.pendingCommand.length > 0; Layout.fillWidth: true
+                                Text { Layout.fillWidth: true; text: qsTr("Confirm: %1").arg(controller.pendingCommand); color: "#d9a441"; font.pixelSize: 12; wrapMode: Text.Wrap }
+                                Button { text: qsTr("Cancel"); onClicked: controller.cancelPendingCommand() }
+                                Button { text: qsTr("Run action"); onClicked: controller.approvePendingCommand() }
+                            }
                         }
                     }
                     Rectangle {

@@ -22,6 +22,8 @@ All notable changes to FluidVoice Linux are documented here. The project uses
   and profile-specific cleanup prompts on Plasma Wayland.
 - Added selected-text rewriting through the consented Wayland keyboard portal,
   configured AI provider, verified clipboard delivery, and paste fallback.
+- Added provider-backed Command Mode assistance, persistent command history,
+  and confirmation-gated allowlisted Plasma actions without arbitrary shell execution.
 - Broader file-format support beyond 16-bit PCM WAV.
 - Added searchable history cards with relative and full local timestamps and word counts.
 - Expanded local statistics with today's activity, estimated time saved, streaks,

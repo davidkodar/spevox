@@ -106,7 +106,7 @@ usable but does not yet match the depth of the current macOS implementation.
 | Model download and deletion | Available | Available | Downloads are size-validated and remain `.part` until complete. |
 | Custom dictionary | Partial | Available | Linux applies persistent preferred capitalization after transcription; deeper model prompting is planned. |
 | Spoken formatting | Available | Available | Linux handles newline, paragraph, comma, period, question mark, and exclamation mark. |
-| Command Mode system actions | Missing | Available | Linux does not yet launch apps or execute desktop workflows by voice. |
+| Command Mode system actions | Partial | Available | Linux provides provider-backed KDE assistance plus confirmed allowlisted actions for System Settings, Konsole, Dolphin, and screen locking; arbitrary shell execution is deliberately prohibited. |
 | Write/rewrite selected text | Partial | Available | Linux captures and replaces selected text through the consented Wayland keyboard portal and clipboard; the settings window hides first so focus returns to the source app. Voice-triggered rewrite shortcuts remain planned. |
 | AI Enhancement | Partial | Available | Linux supports configurable standard and local providers, streamed overlay updates, a cleanup prompt, and safe raw-text fallback; per-app prompts are not yet implemented. |
 | Fluid Intelligence / Fluid-1 | Missing | Available | Fluid-1 weights, runtime, and training code are separately maintained and not available in the GPL repository. |
@@ -137,6 +137,7 @@ User data follows XDG conventions:
   compatibly as new enriched entries are appended).
 - Settings: `$XDG_CONFIG_HOME/fluidvoice/settings.conf` or `~/.config/fluidvoice/settings.conf`.
 - Application profiles: `$XDG_DATA_HOME/fluidvoice/ai-profiles.json`.
+- Command history: `$XDG_DATA_HOME/fluidvoice/command-history.tsv`.
 
 Audio is processed locally and is not retained by the normal dictation flow.
 History and dictionary data can be cleared from the interface or removed from

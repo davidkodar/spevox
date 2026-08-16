@@ -43,6 +43,9 @@ pub mod ffi {
         #[qproperty(i32, transcript_count, cxx_name = "transcriptCount")]
         #[qproperty(i32, dictated_word_count, cxx_name = "dictatedWordCount")]
         #[qproperty(bool, command_mode_enabled, cxx_name = "commandModeEnabled")]
+        #[qproperty(QString, command_output, cxx_name = "commandOutput")]
+        #[qproperty(QString, pending_command, cxx_name = "pendingCommand")]
+        #[qproperty(QStringList, command_history, cxx_name = "commandHistory")]
         #[qproperty(
             QString,
             file_transcription_status,
@@ -145,6 +148,18 @@ pub mod ffi {
         fn update_command_mode_enabled(self: Pin<&mut Self>, enabled: bool);
 
         #[qinvokable]
+        #[cxx_name = "submitCommand"]
+        fn submit_command(self: Pin<&mut Self>, command: &QString);
+
+        #[qinvokable]
+        #[cxx_name = "approvePendingCommand"]
+        fn approve_pending_command(self: Pin<&mut Self>);
+
+        #[qinvokable]
+        #[cxx_name = "cancelPendingCommand"]
+        fn cancel_pending_command(self: Pin<&mut Self>);
+
+        #[qinvokable]
         #[cxx_name = "transcribeFile"]
         fn transcribe_file(self: Pin<&mut Self>, path: &QString);
 
@@ -225,6 +240,7 @@ use std::{
     io::{Read, Write},
     path::PathBuf,
     pin::Pin,
+    process::Command,
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
@@ -283,6 +299,10 @@ pub struct FluidVoiceControllerRust {
     transcript_count: i32,
     dictated_word_count: i32,
     command_mode_enabled: bool,
+    command_output: QString,
+    pending_command: QString,
+    pending_desktop_action: Option<DesktopAction>,
+    command_history: QStringList,
     file_transcription_status: QString,
     compute_backends: QStringList,
     selected_compute_backend: i32,
@@ -448,6 +468,16 @@ impl Default for FluidVoiceControllerRust {
             transcript_count: i32::try_from(history.len()).unwrap_or(i32::MAX),
             dictated_word_count: i32::try_from(dictated_word_count).unwrap_or(i32::MAX),
             command_mode_enabled: preferences.command_mode_enabled,
+            command_output: QString::from(
+                "Ask a question or request an allowlisted desktop action.",
+            ),
+            pending_command: QString::default(),
+            pending_desktop_action: None,
+            command_history: load_lines(&command_history_path())
+                .iter()
+                .rev()
+                .map(QString::from)
+                .collect(),
             file_transcription_status: QString::from("Choose a WAV file to transcribe locally."),
             compute_backends: ["Automatic (Vulkan)", "GPU preferred (Vulkan)", "CPU"]
                 .into_iter()
@@ -856,6 +886,81 @@ impl ffi::FluidVoiceController {
     pub fn update_command_mode_enabled(mut self: Pin<&mut Self>, enabled: bool) {
         self.as_mut().set_command_mode_enabled(enabled);
         self.as_ref().rust().save_preferences();
+    }
+
+    pub fn submit_command(mut self: Pin<&mut Self>, command: &QString) {
+        let command = command.to_string().trim().to_owned();
+        if command.is_empty() || *self.as_ref().transcribing() {
+            return;
+        }
+        append_command_history(self.as_mut(), "user", &command);
+        if let Some(action) = parse_desktop_action(&command) {
+            let description = action.description();
+            self.as_mut().rust_mut().get_mut().pending_desktop_action = Some(action);
+            self.as_mut()
+                .set_pending_command(QString::from(description));
+            self.as_mut().set_command_output(QString::from(&format!(
+                "Confirmation required: {description}"
+            )));
+            return;
+        }
+        let mut config = self.as_ref().rust().ai_config();
+        config.enabled = true;
+        config.prompt = "You are FluidVoice Command Mode, a concise KDE Plasma assistant. Answer the user's question or explain how to perform the requested task. Do not claim to have executed anything. Never output shell commands unless explicitly asked, and clearly label them as suggestions.".to_owned();
+        let qt_thread = self.qt_thread();
+        self.as_mut().set_transcribing(true);
+        self.as_mut()
+            .set_command_output(QString::from("Command Mode is thinking…"));
+        std::thread::spawn(move || {
+            let result = ai::enhance(&config, &command);
+            qt_thread
+                .queue(move |mut controller| {
+                    controller.as_mut().set_transcribing(false);
+                    match result {
+                        Ok(output) => {
+                            append_command_history(controller.as_mut(), "assistant", &output);
+                            controller
+                                .as_mut()
+                                .set_command_output(QString::from(&output));
+                        }
+                        Err(error) => {
+                            controller
+                                .as_mut()
+                                .set_command_output(QString::from(&format!(
+                                    "Command Mode failed: {error}"
+                                )))
+                        }
+                    }
+                })
+                .ok();
+        });
+    }
+
+    pub fn approve_pending_command(mut self: Pin<&mut Self>) {
+        let Some(action) = self
+            .as_mut()
+            .rust_mut()
+            .get_mut()
+            .pending_desktop_action
+            .take()
+        else {
+            return;
+        };
+        self.as_mut().set_pending_command(QString::default());
+        let result = action.execute();
+        let message = result.map_or_else(
+            |error| format!("Desktop action failed: {error}"),
+            |()| "Desktop action started".to_owned(),
+        );
+        append_command_history(self.as_mut(), "system", &message);
+        self.as_mut().set_command_output(QString::from(&message));
+    }
+
+    pub fn cancel_pending_command(mut self: Pin<&mut Self>) {
+        self.as_mut().rust_mut().get_mut().pending_desktop_action = None;
+        self.as_mut().set_pending_command(QString::default());
+        self.as_mut()
+            .set_command_output(QString::from("Desktop action cancelled"));
     }
 
     pub fn select_compute_backend(mut self: Pin<&mut Self>, index: i32) {
@@ -1941,6 +2046,58 @@ enum DesktopCommand {
     Rebind(String),
 }
 
+enum DesktopAction {
+    OpenSystemSettings,
+    OpenTerminal,
+    OpenFileManager,
+    LockScreen,
+}
+
+impl DesktopAction {
+    fn description(&self) -> &'static str {
+        match self {
+            Self::OpenSystemSettings => "Open KDE System Settings",
+            Self::OpenTerminal => "Open Konsole",
+            Self::OpenFileManager => "Open Dolphin file manager",
+            Self::LockScreen => "Lock the Plasma session",
+        }
+    }
+
+    fn execute(&self) -> Result<(), String> {
+        let mut command = match self {
+            Self::OpenSystemSettings => Command::new("systemsettings"),
+            Self::OpenTerminal => Command::new("konsole"),
+            Self::OpenFileManager => Command::new("dolphin"),
+            Self::LockScreen => {
+                let mut command = Command::new("qdbus6");
+                command.args([
+                    "org.freedesktop.ScreenSaver",
+                    "/ScreenSaver",
+                    "org.freedesktop.ScreenSaver.Lock",
+                ]);
+                command
+            }
+        };
+        command
+            .spawn()
+            .map(|_| ())
+            .map_err(|error| error.to_string())
+    }
+}
+
+fn parse_desktop_action(value: &str) -> Option<DesktopAction> {
+    let value = value.trim().to_ascii_lowercase();
+    match value.as_str() {
+        "open settings" | "open system settings" | "show system settings" => {
+            Some(DesktopAction::OpenSystemSettings)
+        }
+        "open terminal" | "launch terminal" | "open konsole" => Some(DesktopAction::OpenTerminal),
+        "open files" | "open file manager" | "open dolphin" => Some(DesktopAction::OpenFileManager),
+        "lock screen" | "lock my screen" | "lock computer" => Some(DesktopAction::LockScreen),
+        _ => None,
+    }
+}
+
 #[derive(Clone, Copy)]
 struct AiProviderPreset {
     id: &'static str,
@@ -2092,6 +2249,26 @@ fn history_path() -> PathBuf {
 
 fn ai_profiles_path() -> PathBuf {
     data_directory().join("ai-profiles.json")
+}
+
+fn command_history_path() -> PathBuf {
+    data_directory().join("command-history.tsv")
+}
+
+fn append_command_history(
+    mut controller: Pin<&mut ffi::FluidVoiceController>,
+    role: &str,
+    text: &str,
+) {
+    let mut history = load_lines(&command_history_path());
+    history.push(format!("{}\t{}", history_value(role), history_value(text)));
+    if history.len() > 200 {
+        history.drain(..history.len() - 200);
+    }
+    save_lines(&command_history_path(), &history).ok();
+    controller
+        .as_mut()
+        .set_command_history(history.iter().rev().map(QString::from).collect());
 }
 
 fn load_lines(path: &PathBuf) -> Vec<String> {
@@ -2698,8 +2875,9 @@ mod tests {
     use std::{fs, time::Duration};
 
     use super::{
-        asr_gain, decode_file_url, meter_level, peak_db, process_transcript, supported_languages,
-        suspicious_single_word, whisper_model_catalog, write_history_export,
+        DesktopAction, asr_gain, decode_file_url, meter_level, parse_desktop_action, peak_db,
+        process_transcript, supported_languages, suspicious_single_word, whisper_model_catalog,
+        write_history_export,
     };
 
     #[test]
@@ -2708,6 +2886,20 @@ mod tests {
         assert!((meter_level(0.01) - 1.0 / 3.0).abs() < 0.001);
         assert_eq!(meter_level(1.0), 1.0);
         assert_eq!(meter_level(f32::NAN), 0.0);
+    }
+
+    #[test]
+    fn accepts_only_allowlisted_desktop_actions() {
+        assert!(matches!(
+            parse_desktop_action("open terminal"),
+            Some(DesktopAction::OpenTerminal)
+        ));
+        assert!(matches!(
+            parse_desktop_action("lock my screen"),
+            Some(DesktopAction::LockScreen)
+        ));
+        assert!(parse_desktop_action("rm -rf important files").is_none());
+        assert!(parse_desktop_action("run echo hello").is_none());
     }
 
     #[test]
