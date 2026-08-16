@@ -26,7 +26,7 @@ Reliable automatic insertion into Wayland applications is a separate validation 
 - Qt Quick/QML for the Plasma interface, connected through CXX-Qt
 - PipeWire for microphone capture
 - XDG Global Shortcuts portal for hold/toggle activation
-- whisper.cpp through Rust bindings, with a CPU baseline and optional acceleration
+- whisper.cpp through Rust bindings, with Vulkan GPU acceleration and CPU fallback
 - AT-SPI and consented Wayland interfaces for text-delivery research
 
 ## Build and run
@@ -35,6 +35,7 @@ Requirements for the current foundation:
 
 - Rust 1.85 or newer with Cargo, rustfmt, and Clippy
 - Qt 6 with Core, GUI, QML, Quick Controls 2, Network, and `qmake6`
+- Vulkan loader and development headers (`vulkan-headers` on Arch/CachyOS)
 
 ```bash
 cargo fmt --all --check
@@ -86,7 +87,12 @@ Local transcription uses a `whisper.cpp` GGML model supplied by path. After down
 cargo run -p fluidvoice-app -- --diagnose-transcription /path/to/ggml-tiny.bin 5 [PIPEWIRE_NODE]
 ```
 
-The current baseline deliberately uses CPU inference. Model download/selection, hardware acceleration, and language controls will become application settings rather than being hard-coded into the engine.
+The Voice Engine offers Automatic, Vulkan GPU, and CPU compute modes. Automatic
+is the default: it requests the compiled Vulkan backend and lets whisper.cpp
+fall back safely to CPU when the driver exposes no usable device. The explicit
+CPU option disables GPU initialization. On Arch/CachyOS, install the build-time
+headers with `sudo pacman -S --needed vulkan-headers`; a working vendor Vulkan
+driver is also required at runtime.
 
 The first complete recovery workflow waits for the KDE shortcut, records a bounded capture, transcribes locally, and copies verified non-empty text to the clipboard:
 

@@ -8,7 +8,7 @@ publish.workspace = true
 
 [dependencies]
 fluidvoice-audio = { path = "../fluidvoice-audio" }
-whisper-rs = "0.16.0"
+whisper-rs = { version = "0.16.0", features = ["vulkan"] }
 
 [lints]
 workspace = true

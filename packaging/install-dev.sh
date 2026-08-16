@@ -12,6 +12,11 @@ if (( EUID == 0 )); then
 fi
 
 cd "$project_dir"
+if [[ ! -f /usr/include/vulkan/vulkan.h ]]; then
+  echo "Vulkan development headers are required to build GPU acceleration." >&2
+  echo "On Arch/CachyOS, install them with: sudo pacman -S --needed vulkan-headers" >&2
+  exit 2
+fi
 QMAKE=${QMAKE:-/usr/bin/qmake6} cargo build --release -p fluidvoice-ui
 
 install_command=(install)

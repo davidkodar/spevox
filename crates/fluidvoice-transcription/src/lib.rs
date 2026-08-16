@@ -9,6 +9,7 @@ use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextPar
 pub struct TranscriptionConfig {
     language: Option<String>,
     thread_count: i32,
+    use_gpu: bool,
 }
 
 impl Default for TranscriptionConfig {
@@ -16,6 +17,7 @@ impl Default for TranscriptionConfig {
         Self {
             language: None,
             thread_count: default_thread_count(),
+            use_gpu: true,
         }
     }
 }
@@ -36,6 +38,19 @@ impl TranscriptionConfig {
     #[must_use]
     pub const fn thread_count(&self) -> i32 {
         self.thread_count
+    }
+
+    /// Selects the compiled Vulkan backend. When disabled, inference is forced
+    /// onto the CPU; when enabled, whisper.cpp falls back to CPU if necessary.
+    #[must_use]
+    pub const fn with_gpu(mut self, use_gpu: bool) -> Self {
+        self.use_gpu = use_gpu;
+        self
+    }
+
+    #[must_use]
+    pub const fn use_gpu(&self) -> bool {
+        self.use_gpu
     }
 }
 
@@ -76,7 +91,7 @@ impl WhisperTranscriber {
             )));
         }
         let mut context_parameters = WhisperContextParameters::default();
-        context_parameters.use_gpu(false);
+        context_parameters.use_gpu(config.use_gpu);
         let context = WhisperContext::new_with_params(model_path, context_parameters)
             .map_err(TranscriptionError::whisper)?;
         Ok(Self { context, config })
@@ -180,6 +195,8 @@ mod tests {
         let config = TranscriptionConfig::default();
         assert_eq!(config.language(), None);
         assert!((1..=8).contains(&config.thread_count()));
+        assert!(config.use_gpu());
+        assert!(!config.with_gpu(false).use_gpu());
     }
 
     #[test]

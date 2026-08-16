@@ -48,6 +48,8 @@ pub mod ffi {
             file_transcription_status,
             cxx_name = "fileTranscriptionStatus"
         )]
+        #[qproperty(QStringList, compute_backends, cxx_name = "computeBackends")]
+        #[qproperty(i32, selected_compute_backend, cxx_name = "selectedComputeBackend")]
         type FluidVoiceController = super::FluidVoiceControllerRust;
 
         #[qinvokable]
@@ -121,6 +123,10 @@ pub mod ffi {
         #[qinvokable]
         #[cxx_name = "transcribeFile"]
         fn transcribe_file(self: Pin<&mut Self>, path: &QString);
+
+        #[qinvokable]
+        #[cxx_name = "selectComputeBackend"]
+        fn select_compute_backend(self: Pin<&mut Self>, index: i32);
     }
 
     impl cxx_qt::Threading for FluidVoiceController {}
@@ -188,6 +194,8 @@ pub struct FluidVoiceControllerRust {
     dictated_word_count: i32,
     command_mode_enabled: bool,
     file_transcription_status: QString,
+    compute_backends: QStringList,
+    selected_compute_backend: i32,
 }
 
 impl Default for FluidVoiceControllerRust {
@@ -299,6 +307,11 @@ impl Default for FluidVoiceControllerRust {
             dictated_word_count: i32::try_from(dictated_word_count).unwrap_or(i32::MAX),
             command_mode_enabled: preferences.command_mode_enabled,
             file_transcription_status: QString::from("Choose a WAV file to transcribe locally."),
+            compute_backends: ["Automatic (Vulkan)", "GPU preferred (Vulkan)", "CPU"]
+                .into_iter()
+                .map(QString::from)
+                .collect(),
+            selected_compute_backend: preferences.compute_backend.clamp(0, 2),
         }
     }
 }
@@ -638,6 +651,20 @@ impl ffi::FluidVoiceController {
         self.as_ref().rust().save_preferences();
     }
 
+    pub fn select_compute_backend(mut self: Pin<&mut Self>, index: i32) {
+        if !(0..=2).contains(&index) || *self.as_ref().recording() || *self.as_ref().transcribing()
+        {
+            return;
+        }
+        self.as_mut().set_selected_compute_backend(index);
+        self.as_ref().rust().save_preferences();
+        self.as_mut().set_status_text(QString::from(match index {
+            2 => "CPU inference selected",
+            1 => "Vulkan GPU preferred; CPU fallback remains available",
+            _ => "Automatic Vulkan acceleration selected",
+        }));
+    }
+
     pub fn add_dictionary_term(mut self: Pin<&mut Self>, term: &QString) {
         let term = term.to_string().trim().to_owned();
         if term.is_empty() {
@@ -700,12 +727,13 @@ impl ffi::FluidVoiceController {
         };
         let path = PathBuf::from(decode_file_url(&path.to_string()));
         let language = selected_language_code(self.as_ref().rust());
+        let use_gpu = self.as_ref().rust().selected_compute_backend != 2;
         let qt_thread = self.qt_thread();
         self.as_mut().set_transcribing(true);
         self.as_mut()
             .set_file_transcription_status(QString::from("Transcribing locally…"));
         std::thread::spawn(move || {
-            let result = transcribe_wav_file(&path, &model, language);
+            let result = transcribe_wav_file(&path, &model, language, use_gpu);
             qt_thread
                 .queue(move |mut controller| {
                     controller.as_mut().set_transcribing(false);
@@ -757,6 +785,7 @@ impl ffi::FluidVoiceController {
         let stop_token = CaptureStopToken::new();
         let capture_target = self.as_ref().rust().capture_target.clone();
         let language = selected_language_code(self.as_ref().rust());
+        let use_gpu = self.as_ref().rust().selected_compute_backend != 2;
         let model = selected_model_path(self.as_ref().rust());
         let gain = 10.0_f32.powf(*self.as_ref().gain_db() / 20.0);
         self.as_mut().rust_mut().get_mut().stop_token = Some(stop_token.clone());
@@ -782,7 +811,9 @@ impl ffi::FluidVoiceController {
             let preview_worker = std::thread::spawn(move || {
                 let Some(model) = preview_model else { return };
                 let automatic_language = preview_language.is_empty();
-                let config = TranscriptionConfig::default().with_language(Some(preview_language));
+                let config = TranscriptionConfig::default()
+                    .with_language(Some(preview_language))
+                    .with_gpu(use_gpu);
                 let Ok(transcriber) = WhisperTranscriber::load(&model, config) else {
                     return;
                 };
@@ -889,7 +920,9 @@ impl ffi::FluidVoiceController {
                     // detection can classify short utterances correctly yet return
                     // no segments; the fixed language path is reliable for the same
                     // captured buffer and avoids wasting audio on detection.
-                    let config = TranscriptionConfig::default().with_language(Some(language));
+                    let config = TranscriptionConfig::default()
+                        .with_language(Some(language))
+                        .with_gpu(use_gpu);
                     let first = WhisperTranscriber::load(model, config.clone())
                         .map_err(|error| error.to_string())?
                         .transcribe(&asr_audio)
@@ -1016,6 +1049,7 @@ impl FluidVoiceControllerRust {
             gain_db: self.gain_db,
             overlay_enabled: self.overlay_enabled,
             command_mode_enabled: self.command_mode_enabled,
+            compute_backend: self.selected_compute_backend,
         };
         if let Err(error) = preferences.save() {
             eprintln!("Failed to save preferences: {error}");
@@ -1031,6 +1065,7 @@ struct Preferences {
     gain_db: f32,
     overlay_enabled: bool,
     command_mode_enabled: bool,
+    compute_backend: i32,
 }
 
 impl Default for Preferences {
@@ -1043,6 +1078,7 @@ impl Default for Preferences {
             gain_db: 0.0,
             overlay_enabled: true,
             command_mode_enabled: false,
+            compute_backend: 0,
         }
     }
 }
@@ -1068,6 +1104,8 @@ impl Preferences {
                 preferences.overlay_enabled = value == "true";
             } else if let Some(value) = line.strip_prefix("command_mode_enabled=") {
                 preferences.command_mode_enabled = value == "true";
+            } else if let Some(value) = line.strip_prefix("compute_backend=") {
+                preferences.compute_backend = value.parse().unwrap_or(0);
             }
         }
         preferences
@@ -1082,14 +1120,15 @@ impl Preferences {
         fs::write(
             path,
             format!(
-                "language={}\nmodel={}\nshortcut={}\ninput={}\ngain_db={}\noverlay_enabled={}\ncommand_mode_enabled={}\n",
+                "language={}\nmodel={}\nshortcut={}\ninput={}\ngain_db={}\noverlay_enabled={}\ncommand_mode_enabled={}\ncompute_backend={}\n",
                 self.language,
                 self.model.display(),
                 self.shortcut,
                 self.input,
                 self.gain_db,
                 self.overlay_enabled,
-                self.command_mode_enabled
+                self.command_mode_enabled,
+                self.compute_backend
             ),
         )
         .map_err(|error| error.to_string())
@@ -1260,6 +1299,7 @@ fn transcribe_wav_file(
     path: &PathBuf,
     model: &PathBuf,
     language: String,
+    use_gpu: bool,
 ) -> Result<String, String> {
     let mut reader = hound::WavReader::open(path)
         .map_err(|error| format!("Could not open WAV file: {error}"))?;
@@ -1282,7 +1322,9 @@ fn transcribe_wav_file(
     )
     .map_err(|error| error.to_string())?;
     let audio = native.to_asr_mono();
-    let config = TranscriptionConfig::default().with_language(Some(language));
+    let config = TranscriptionConfig::default()
+        .with_language(Some(language))
+        .with_gpu(use_gpu);
     let transcript = WhisperTranscriber::load(model, config)
         .map_err(|error| error.to_string())?
         .transcribe(&audio)

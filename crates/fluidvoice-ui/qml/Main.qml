@@ -391,6 +391,29 @@ ApplicationWindow {
                             }
                         }
 
+                        RowLayout {
+                            Layout.fillWidth: true
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                spacing: 3
+                                Text { text: qsTr("Compute backend"); color: root.primaryText; font.pixelSize: 14; font.weight: Font.Medium }
+                                Text {
+                                    text: controller.selectedComputeBackend === 2
+                                          ? qsTr("Force CPU inference")
+                                          : qsTr("Vulkan acceleration with safe CPU fallback")
+                                    color: root.secondaryText
+                                    font.pixelSize: 12
+                                }
+                            }
+                            ComboBox {
+                                Layout.preferredWidth: 210
+                                model: controller.computeBackends
+                                currentIndex: controller.selectedComputeBackend
+                                enabled: !controller.recording && !controller.transcribing
+                                onActivated: function(index) { controller.selectComputeBackend(index) }
+                            }
+                        }
+
                         Text { text: qsTr("Whisper models"); color: root.primaryText; font.pixelSize: 14; font.weight: Font.Medium }
 
                         ColumnLayout {
