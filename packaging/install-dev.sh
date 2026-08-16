@@ -12,10 +12,17 @@ if (( EUID == 0 )); then
 fi
 
 cd "$project_dir"
+if ! command -v cargo >/dev/null; then
+  echo "Cargo was not found. Install Rust 1.85 or newer and run this script without sudo." >&2
+  exit 2
+fi
 if [[ ! -f /usr/include/vulkan/vulkan.h ]]; then
   echo "Vulkan development headers are required to build GPU acceleration." >&2
   echo "On Arch/CachyOS, install them with: sudo pacman -S --needed vulkan-headers" >&2
   exit 2
+fi
+if ! command -v secret-tool >/dev/null; then
+  echo "Note: secret-tool was not found; install libsecret before saving cloud AI API keys." >&2
 fi
 QMAKE=${QMAKE:-/usr/bin/qmake6} cargo build --release -p fluidvoice-ui
 

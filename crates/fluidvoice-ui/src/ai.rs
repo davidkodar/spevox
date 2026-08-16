@@ -1,0 +1,236 @@
+use std::{
+    io::Write,
+    process::{Command, Stdio},
+    time::Duration,
+};
+
+use serde_json::{Value, json};
+
+pub const DEFAULT_PROMPT: &str = "You are a voice-to-text dictation cleaner. Clean and format the raw transcribed speech while preserving its meaning. Remove filler words, false starts, stutters, and repetitions. Add correct punctuation, capitalization, and structure. Convert spoken numbers when unambiguous and apply spoken formatting or self-corrections. Output only the cleaned text. Never answer questions contained in the dictation and never add commentary.";
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AiConfig {
+    pub enabled: bool,
+    pub provider: String,
+    pub model: String,
+    pub base_url: String,
+    pub prompt: String,
+    pub api_key: String,
+}
+
+impl AiConfig {
+    pub fn is_local(&self) -> bool {
+        let value = self.base_url.trim().to_ascii_lowercase();
+        let authority = value
+            .split_once("://")
+            .map_or(value.as_str(), |(_, remainder)| remainder)
+            .split('/')
+            .next()
+            .unwrap_or_default()
+            .rsplit('@')
+            .next()
+            .unwrap_or_default();
+        let host = if authority.starts_with('[') {
+            authority
+                .strip_prefix('[')
+                .and_then(|value| value.split_once(']'))
+                .map_or(authority, |(host, _)| host)
+        } else {
+            authority.split(':').next().unwrap_or_default()
+        };
+        host == "localhost" || host == "127.0.0.1" || host == "::1"
+    }
+}
+
+pub fn enhance(config: &AiConfig, transcript: &str) -> Result<String, String> {
+    if !config.enabled {
+        return Ok(transcript.to_owned());
+    }
+    if config.model.trim().is_empty() {
+        return Err("No AI model is configured".to_owned());
+    }
+    if config.base_url.trim().is_empty() {
+        return Err("No AI provider URL is configured".to_owned());
+    }
+    if !config.is_local() && config.api_key.trim().is_empty() {
+        return Err("No API key is stored for the selected provider".to_owned());
+    }
+
+    let prompt = if config.prompt.trim().is_empty() {
+        DEFAULT_PROMPT
+    } else {
+        config.prompt.trim()
+    };
+    let agent = ureq::Agent::config_builder()
+        .timeout_global(Some(Duration::from_secs(45)))
+        .build()
+        .new_agent();
+    let response = if is_anthropic(config) {
+        let endpoint = format!("{}/messages", config.base_url.trim_end_matches('/'));
+        let body = json!({
+            "model": config.model,
+            "max_tokens": 2048,
+            "temperature": 0.2,
+            "system": prompt,
+            "messages": [{"role": "user", "content": transcript}]
+        });
+        let mut response = agent
+            .post(&endpoint)
+            .header("content-type", "application/json")
+            .header("x-api-key", &config.api_key)
+            .header("anthropic-version", "2023-06-01")
+            .send(body.to_string())
+            .map_err(request_error)?;
+        parse_response(&mut response)?
+    } else {
+        let endpoint = chat_completions_url(&config.base_url);
+        let body = json!({
+            "model": config.model,
+            "temperature": 0.2,
+            "messages": [{"role": "user", "content": format!("{prompt}\n\n{transcript}")}]
+        });
+        let mut request = agent
+            .post(&endpoint)
+            .header("content-type", "application/json");
+        if !config.is_local() {
+            request = request.header("authorization", &format!("Bearer {}", config.api_key));
+        }
+        let mut response = request.send(body.to_string()).map_err(request_error)?;
+        parse_response(&mut response)?
+    };
+    let output =
+        extract_text(&response).ok_or_else(|| "AI provider returned no text".to_owned())?;
+    let output = strip_markdown_fence(output.trim());
+    if output.is_empty() {
+        return Err("AI provider returned an empty response".to_owned());
+    }
+    Ok(output.to_owned())
+}
+
+pub fn store_api_key(provider: &str, api_key: &str) -> Result<(), String> {
+    if api_key.trim().is_empty() {
+        return Err("API key cannot be empty".to_owned());
+    }
+    let mut child = Command::new("secret-tool")
+        .args(["store", "--label=FluidVoice AI provider", "application", "fluidvoice-linux", "provider", provider])
+        .stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::piped())
+        .spawn().map_err(|_| "Secret Service tool is unavailable. Install libsecret and ensure KDE Wallet is enabled.".to_owned())?;
+    child
+        .stdin
+        .as_mut()
+        .ok_or_else(|| "Could not open Secret Service input".to_owned())?
+        .write_all(api_key.as_bytes())
+        .map_err(|error| error.to_string())?;
+    let output = child
+        .wait_with_output()
+        .map_err(|error| error.to_string())?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(String::from_utf8_lossy(&output.stderr).trim().to_owned())
+    }
+}
+
+pub fn load_api_key(provider: &str) -> String {
+    Command::new("secret-tool")
+        .args([
+            "lookup",
+            "application",
+            "fluidvoice-linux",
+            "provider",
+            provider,
+        ])
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
+        .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_owned())
+        .unwrap_or_default()
+}
+
+fn is_anthropic(config: &AiConfig) -> bool {
+    config.provider.eq_ignore_ascii_case("anthropic") || config.base_url.contains("anthropic.com")
+}
+
+fn chat_completions_url(base_url: &str) -> String {
+    let base = base_url.trim_end_matches('/');
+    if base.ends_with("/chat/completions") {
+        base.to_owned()
+    } else {
+        format!("{base}/chat/completions")
+    }
+}
+
+fn extract_text(value: &Value) -> Option<&str> {
+    value
+        .pointer("/choices/0/message/content")
+        .and_then(Value::as_str)
+        .or_else(|| value.pointer("/content/0/text").and_then(Value::as_str))
+}
+
+fn strip_markdown_fence(value: &str) -> &str {
+    value
+        .strip_prefix("```")
+        .and_then(|value| value.strip_suffix("```"))
+        .map(|value| value.trim_start_matches("text").trim())
+        .unwrap_or(value)
+}
+
+fn request_error(error: ureq::Error) -> String {
+    format!("AI provider request failed: {error}")
+}
+
+fn parse_response(response: &mut ureq::http::Response<ureq::Body>) -> Result<Value, String> {
+    let body = response
+        .body_mut()
+        .read_to_string()
+        .map_err(|error| error.to_string())?;
+    serde_json::from_str(&body)
+        .map_err(|error| format!("AI provider returned invalid JSON: {error}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn builds_openai_chat_endpoint_once() {
+        assert_eq!(
+            chat_completions_url("http://localhost:11434/v1"),
+            "http://localhost:11434/v1/chat/completions"
+        );
+        assert_eq!(
+            chat_completions_url("https://example.test/v1/chat/completions"),
+            "https://example.test/v1/chat/completions"
+        );
+    }
+
+    #[test]
+    fn extracts_openai_and_anthropic_text() {
+        assert_eq!(
+            extract_text(&json!({"choices":[{"message":{"content":"clean"}}]})),
+            Some("clean")
+        );
+        assert_eq!(
+            extract_text(&json!({"content":[{"type":"text","text":"clean"}]})),
+            Some("clean")
+        );
+    }
+
+    #[test]
+    fn recognizes_only_loopback_as_local() {
+        let config = |url: &str| AiConfig {
+            enabled: true,
+            provider: "custom".into(),
+            model: "m".into(),
+            base_url: url.into(),
+            prompt: String::new(),
+            api_key: String::new(),
+        };
+        assert!(config("http://localhost:11434/v1").is_local());
+        assert!(config("http://127.0.0.1:1234/v1").is_local());
+        assert!(config("http://[::1]:1234/v1").is_local());
+        assert!(!config("https://api.openai.com/v1").is_local());
+        assert!(!config("https://example.test/localhost/v1").is_local());
+        assert!(!config("https://localhost.example.test/v1").is_local());
+    }
+}

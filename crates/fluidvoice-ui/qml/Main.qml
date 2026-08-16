@@ -990,44 +990,54 @@ ApplicationWindow {
                 Rectangle {
                     visible: root.settingsSection === 2
                     Layout.fillWidth: true
-                    implicitHeight: unavailableContent.implicitHeight + 48
+                    implicitHeight: aiContent.implicitHeight + 40
                     radius: 16
                     color: root.panel
                     border.color: root.hairline
 
                     ColumnLayout {
-                        id: unavailableContent
-                        anchors.left: parent.left
-                        anchors.right: parent.right
-                        anchors.top: parent.top
-                        anchors.margins: 24
-                        spacing: 12
-                        Rectangle {
-                            width: 44
-                            height: 44
-                            radius: 12
-                            color: root.panelRaised
-                            border.color: root.hairline
-                            Text {
-                                anchors.centerIn: parent
-                            text: "✦"
-                                color: root.secondaryText
-                                font.pixelSize: 20
+                        id: aiContent; anchors.fill: parent; anchors.margins: 20; spacing: 14
+                        RowLayout {
+                            Layout.fillWidth: true
+                            ColumnLayout { Layout.fillWidth: true; spacing: 3
+                                Text { text: qsTr("Enhance dictated text"); color: root.primaryText; font.pixelSize: 15; font.weight: Font.DemiBold }
+                                Text { text: qsTr("Optional cleanup after local speech recognition. Raw text is used if enhancement fails."); color: root.secondaryText; font.pixelSize: 12; wrapMode: Text.Wrap; Layout.fillWidth: true }
+                            }
+                            Switch { checked: controller.aiEnabled; onToggled: controller.updateAiEnabled(checked) }
+                        }
+                        Rectangle { Layout.fillWidth: true; height: 1; color: root.hairline }
+                        Text { text: qsTr("PROVIDER"); color: root.tertiaryText; font.pixelSize: 11; font.weight: Font.Medium }
+                        ComboBox {
+                            Layout.fillWidth: true; model: controller.aiProviders; currentIndex: controller.selectedAiProvider
+                            enabled: !controller.recording && !controller.transcribing
+                            onActivated: function(index) { controller.selectAiProvider(index) }
+                        }
+                        GridLayout {
+                            Layout.fillWidth: true; columns: 2; columnSpacing: 14; rowSpacing: 10
+                            Text { text: qsTr("Model"); color: root.secondaryText; font.pixelSize: 12 }
+                            TextField { Layout.fillWidth: true; text: controller.aiModel; onEditingFinished: controller.updateAiModel(text) }
+                            Text { text: qsTr("Base URL"); color: root.secondaryText; font.pixelSize: 12 }
+                            TextField { Layout.fillWidth: true; text: controller.aiBaseUrl; onEditingFinished: controller.updateAiBaseUrl(text) }
+                            Text { visible: controller.selectedAiProvider !== 7 && controller.selectedAiProvider !== 8; text: qsTr("API key"); color: root.secondaryText; font.pixelSize: 12 }
+                            RowLayout {
+                                visible: controller.selectedAiProvider !== 7 && controller.selectedAiProvider !== 8; Layout.fillWidth: true
+                                TextField { id: aiApiKey; Layout.fillWidth: true; echoMode: TextInput.Password; placeholderText: controller.aiKeyConfigured ? qsTr("Stored securely · enter to replace") : qsTr("Required for this provider") }
+                                Button { text: qsTr("Save key"); enabled: aiApiKey.text.length > 0; onClicked: { controller.saveAiApiKey(aiApiKey.text); aiApiKey.clear() } }
                             }
                         }
-                        Text {
-                            text: qsTr("Not implemented yet")
-                            color: root.primaryText
-                            font.pixelSize: 15
-                            font.weight: Font.DemiBold
+                        Text { Layout.fillWidth: true; text: controller.selectedAiProvider === 7 || controller.selectedAiProvider === 8 ? qsTr("Local endpoint: transcription and enhancement remain on this computer.") : qsTr("Cloud endpoint: the cleanup prompt and raw transcript are sent to the selected provider only when enhancement is enabled."); color: controller.selectedAiProvider === 7 || controller.selectedAiProvider === 8 ? root.accent : "#d9a441"; font.pixelSize: 11; wrapMode: Text.Wrap }
+                        Text { text: qsTr("CLEANUP PROMPT"); color: root.tertiaryText; font.pixelSize: 11; font.weight: Font.Medium }
+                        TextArea {
+                            Layout.fillWidth: true; implicitHeight: 150; text: controller.aiPrompt; wrapMode: TextEdit.Wrap
+                            background: Rectangle { color: root.panelRaised; border.color: root.hairline; radius: 8 }
+                            onEditingFinished: controller.updateAiPrompt(text)
                         }
-                        Text {
+                        RowLayout {
                             Layout.fillWidth: true
-                            text: qsTr("AI Enhancement is shown to match FluidVoice's upstream navigation, but no AI provider or text-processing service is connected in this Linux port yet. Local Whisper transcription continues to work without it.")
-                            color: root.secondaryText
-                            font.pixelSize: 13
-                            wrapMode: Text.Wrap
+                            Text { Layout.fillWidth: true; text: controller.aiStatus; color: root.secondaryText; font.pixelSize: 11; wrapMode: Text.Wrap }
+                            Button { text: controller.transcribing ? qsTr("Testing…") : qsTr("Verify provider"); enabled: !controller.recording && !controller.transcribing; onClicked: controller.testAiProvider() }
                         }
+                        Text { Layout.fillWidth: true; text: qsTr("Fluid Intelligence / Fluid-1 is not included. This implementation uses your selected standard or local provider and preserves raw-text fallback behavior."); color: root.tertiaryText; font.pixelSize: 11; wrapMode: Text.Wrap }
                     }
                 }
 

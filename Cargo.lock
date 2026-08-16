@@ -682,6 +682,7 @@ dependencies = [
  "fluidvoice-portal",
  "fluidvoice-transcription",
  "hound",
+ "serde_json",
  "tokio",
  "ureq",
 ]

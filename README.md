@@ -11,6 +11,8 @@ Native, local-first voice dictation for KDE Plasma on Wayland.
 FluidVoice Linux combines a Rust 2024 core, Qt Quick/CXX-Qt interface,
 PipeWire capture, XDG desktop portals, and local whisper.cpp inference. The
 normal dictation path does not send audio or transcripts to a cloud service.
+Optional AI cleanup can use a local server or a provider the user explicitly
+configures.
 
 ## Current features
 
@@ -26,6 +28,8 @@ normal dictation path does not send audio or transcripts to a cloud service.
 - Persistent custom spellings and optional spoken formatting commands.
 - Local 16-bit PCM WAV transcription, transcript history, and basic usage statistics.
 - KDE system theme/accent defaults plus explicit FluidVoice dark, light, and accent options.
+- Optional post-transcription cleanup through standard cloud providers, Ollama,
+  LM Studio, or a custom OpenAI-compatible endpoint, with raw-text fallback.
 - Upstream-inspired settings navigation, onboarding, changelog, and feedback pages.
 
 See [CHANGELOG.md](CHANGELOG.md) for release-by-release details.
@@ -40,6 +44,7 @@ The application currently requires:
 - Qt 6 Core, GUI, QML, Quick, Quick Controls 2, Network, Widgets, and `qmake6`.
 - PipeWire development libraries.
 - Vulkan loader, shader compiler, and development headers.
+- `secret-tool` (from libsecret) when storing API keys for cloud AI providers.
 
 On Arch Linux or CachyOS, the Vulkan headers are provided by:
 
@@ -101,7 +106,8 @@ usable but does not yet match the depth of the current macOS implementation.
 | Spoken formatting | Available | Available | Linux handles newline, paragraph, comma, period, question mark, and exclamation mark. |
 | Command Mode system actions | Missing | Available | Linux does not yet launch apps or execute desktop workflows by voice. |
 | Write/rewrite selected text | Missing | Available | Requires a richer Wayland text-selection and editing integration. |
-| AI Enhancement / Fluid Intelligence | Missing | Available | Fluid Intelligence is separately maintained and closed source; no cloud provider integration is included. |
+| AI Enhancement | Partial | Available | Linux supports configurable standard and local providers with a cleanup prompt and safe raw-text fallback; streaming enhancement and per-app prompts are not yet implemented. |
+| Fluid Intelligence / Fluid-1 | Missing | Available | Fluid-1 weights, runtime, and training code are separately maintained and not available in the GPL repository. |
 | File transcription | Partial | Available | Linux currently accepts 16-bit PCM WAV; broader formats and meeting workflows are planned. |
 | Transcript history | Partial | Available | Linux provides search, local date/time, relative time, and word counts; app/window metadata, per-entry actions, audio retention, ZIP export, and reports are missing. |
 | Usage statistics | Partial | Available | Linux provides today/all-time totals, estimated time saved, streaks, averages, and a seven-day chart; editable typing speed, 30-day charts, milestones, insights, and records are still missing. |
@@ -131,6 +137,13 @@ User data follows XDG conventions:
 Audio is processed locally and is not retained by the normal dictation flow.
 History and dictionary data can be cleared from the interface or removed from
 the paths above.
+
+AI enhancement is disabled by default. Ollama and LM Studio can keep the
+cleanup step local. When a cloud provider is enabled, the cleanup prompt and
+raw transcript—not microphone audio—are sent to that provider. API keys are
+stored through the desktop Secret Service using `secret-tool`; they are never
+written to `settings.conf`. If enhancement is unavailable or fails, FluidVoice
+delivers the unenhanced transcript.
 
 ## GPU acceleration
 
@@ -190,9 +203,9 @@ More detail is available in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 The core KDE Wayland dictation workflow is operational. Before a general public
 release, priorities include broader audio formats, richer history and stats,
-robust packaging, accessibility review, automated release artifacts, and wider
-testing across Plasma distributions and GPU vendors. AI Enhancement is outside
-the current open-source Linux scope unless a compatible provider is implemented.
+streaming AI cleanup previews, per-application prompts, robust packaging,
+accessibility review, automated release artifacts, and wider testing across
+Plasma distributions and GPU vendors.
 
 Please use [GitHub Issues](https://github.com/davidkodar/fluidvoice-linux/issues)
 for reproducible bugs and feature proposals once the repository is public.

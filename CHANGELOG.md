@@ -5,6 +5,11 @@ All notable changes to FluidVoice Linux are documented here. The project uses
 
 ## Unreleased
 
+- Added optional post-transcription AI cleanup for OpenAI, Anthropic, xAI,
+  Groq, Cerebras, Gemini, OpenRouter, Ollama, LM Studio, and custom
+  OpenAI-compatible endpoints.
+- Added secure API-key storage through the desktop Secret Service, editable
+  cleanup prompts, provider verification, and raw-transcript fallback.
 - Broader file-format support beyond 16-bit PCM WAV.
 - Added searchable history cards with relative and full local timestamps and word counts.
 - Expanded local statistics with today's activity, estimated time saved, streaks,

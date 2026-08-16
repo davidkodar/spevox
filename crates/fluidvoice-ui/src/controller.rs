@@ -54,6 +54,14 @@ pub mod ffi {
         #[qproperty(i32, selected_theme, cxx_name = "selectedTheme")]
         #[qproperty(QStringList, accent_options, cxx_name = "accentOptions")]
         #[qproperty(i32, selected_accent, cxx_name = "selectedAccent")]
+        #[qproperty(bool, ai_enabled, cxx_name = "aiEnabled")]
+        #[qproperty(QStringList, ai_providers, cxx_name = "aiProviders")]
+        #[qproperty(i32, selected_ai_provider, cxx_name = "selectedAiProvider")]
+        #[qproperty(QString, ai_model, cxx_name = "aiModel")]
+        #[qproperty(QString, ai_base_url, cxx_name = "aiBaseUrl")]
+        #[qproperty(QString, ai_prompt, cxx_name = "aiPrompt")]
+        #[qproperty(QString, ai_status, cxx_name = "aiStatus")]
+        #[qproperty(bool, ai_key_configured, cxx_name = "aiKeyConfigured")]
         #[qproperty(QString, app_version, cxx_name = "appVersion")]
         type FluidVoiceController = super::FluidVoiceControllerRust;
 
@@ -140,6 +148,34 @@ pub mod ffi {
         #[qinvokable]
         #[cxx_name = "selectAccent"]
         fn select_accent(self: Pin<&mut Self>, index: i32);
+
+        #[qinvokable]
+        #[cxx_name = "updateAiEnabled"]
+        fn update_ai_enabled(self: Pin<&mut Self>, enabled: bool);
+
+        #[qinvokable]
+        #[cxx_name = "selectAiProvider"]
+        fn select_ai_provider(self: Pin<&mut Self>, index: i32);
+
+        #[qinvokable]
+        #[cxx_name = "updateAiModel"]
+        fn update_ai_model(self: Pin<&mut Self>, value: &QString);
+
+        #[qinvokable]
+        #[cxx_name = "updateAiBaseUrl"]
+        fn update_ai_base_url(self: Pin<&mut Self>, value: &QString);
+
+        #[qinvokable]
+        #[cxx_name = "updateAiPrompt"]
+        fn update_ai_prompt(self: Pin<&mut Self>, value: &QString);
+
+        #[qinvokable]
+        #[cxx_name = "saveAiApiKey"]
+        fn save_ai_api_key(self: Pin<&mut Self>, value: &QString);
+
+        #[qinvokable]
+        #[cxx_name = "testAiProvider"]
+        fn test_ai_provider(self: Pin<&mut Self>);
     }
 
     impl cxx_qt::Threading for FluidVoiceController {}
@@ -166,6 +202,8 @@ use fluidvoice_portal::{
 };
 use fluidvoice_transcription::{TranscriptionConfig, WhisperTranscriber};
 use tokio::sync::mpsc;
+
+use crate::ai::{self, AiConfig};
 
 pub struct FluidVoiceControllerRust {
     status_text: QString,
@@ -213,6 +251,14 @@ pub struct FluidVoiceControllerRust {
     selected_theme: i32,
     accent_options: QStringList,
     selected_accent: i32,
+    ai_enabled: bool,
+    ai_providers: QStringList,
+    selected_ai_provider: i32,
+    ai_model: QString,
+    ai_base_url: QString,
+    ai_prompt: QString,
+    ai_status: QString,
+    ai_key_configured: bool,
     app_version: QString,
 }
 
@@ -273,6 +319,20 @@ impl Default for FluidVoiceControllerRust {
         let (model_states, model_details) = model_ui_lists(&model_paths);
         let dictionary = load_lines(&dictionary_path());
         let history = load_lines(&history_path());
+        let selected_ai_provider = preferences.ai_provider.clamp(0, 9);
+        let provider = ai_provider(selected_ai_provider);
+        let ai_model = if preferences.ai_model.is_empty() {
+            provider.default_model.to_owned()
+        } else {
+            preferences.ai_model.clone()
+        };
+        let ai_base_url = if preferences.ai_base_url.is_empty() {
+            provider.default_url.to_owned()
+        } else {
+            preferences.ai_base_url.clone()
+        };
+        let provider_key = provider.id;
+        let ai_key_configured = provider.local || !ai::load_api_key(provider_key).is_empty();
         let dictated_word_count = history
             .iter()
             .map(|entry| {
@@ -340,6 +400,25 @@ impl Default for FluidVoiceControllerRust {
                 .map(QString::from)
                 .collect(),
             selected_accent: preferences.accent.clamp(0, 3),
+            ai_enabled: preferences.ai_enabled,
+            ai_providers: ai_provider_catalog()
+                .iter()
+                .map(|provider| QString::from(provider.name))
+                .collect(),
+            selected_ai_provider,
+            ai_model: QString::from(&ai_model),
+            ai_base_url: QString::from(&ai_base_url),
+            ai_prompt: QString::from(if preferences.ai_prompt.is_empty() {
+                ai::DEFAULT_PROMPT
+            } else {
+                &preferences.ai_prompt
+            }),
+            ai_status: QString::from(if preferences.ai_enabled {
+                "Enhancement enabled · provider not yet verified"
+            } else {
+                "Off · raw transcription stays fully local"
+            }),
+            ai_key_configured,
             app_version: QString::from(env!("CARGO_PKG_VERSION")),
         }
     }
@@ -710,6 +789,93 @@ impl ffi::FluidVoiceController {
         self.as_ref().rust().save_preferences();
     }
 
+    pub fn update_ai_enabled(mut self: Pin<&mut Self>, enabled: bool) {
+        self.as_mut().set_ai_enabled(enabled);
+        self.as_mut().set_ai_status(QString::from(if enabled {
+            "Enabled · verify the provider before dictating"
+        } else {
+            "Off · raw transcription stays fully local"
+        }));
+        self.as_ref().rust().save_preferences();
+    }
+
+    pub fn select_ai_provider(mut self: Pin<&mut Self>, index: i32) {
+        if !valid_index(index, ai_provider_catalog().len()) {
+            return;
+        }
+        let provider = ai_provider(index);
+        self.as_mut().set_selected_ai_provider(index);
+        self.as_mut()
+            .set_ai_model(QString::from(provider.default_model));
+        self.as_mut()
+            .set_ai_base_url(QString::from(provider.default_url));
+        self.as_mut()
+            .set_ai_key_configured(provider.local || !ai::load_api_key(provider.id).is_empty());
+        self.as_mut()
+            .set_ai_status(QString::from(if provider.local {
+                "Local endpoint · transcript stays on this computer"
+            } else {
+                "Cloud provider · transcript is sent only when enhancement is enabled"
+            }));
+        self.as_ref().rust().save_preferences();
+    }
+
+    pub fn update_ai_model(mut self: Pin<&mut Self>, value: &QString) {
+        self.as_mut()
+            .set_ai_model(QString::from(value.to_string().trim()));
+        self.as_ref().rust().save_preferences();
+    }
+
+    pub fn update_ai_base_url(mut self: Pin<&mut Self>, value: &QString) {
+        self.as_mut()
+            .set_ai_base_url(QString::from(value.to_string().trim()));
+        self.as_ref().rust().save_preferences();
+    }
+
+    pub fn update_ai_prompt(mut self: Pin<&mut Self>, value: &QString) {
+        self.as_mut()
+            .set_ai_prompt(QString::from(value.to_string().trim()));
+        self.as_ref().rust().save_preferences();
+    }
+
+    pub fn save_ai_api_key(mut self: Pin<&mut Self>, value: &QString) {
+        let provider = ai_provider(*self.as_ref().selected_ai_provider());
+        match ai::store_api_key(provider.id, &value.to_string()) {
+            Ok(()) => {
+                self.as_mut().set_ai_key_configured(true);
+                self.as_mut().set_ai_status(QString::from(
+                    "API key stored securely by KDE Wallet / Secret Service",
+                ));
+            }
+            Err(error) => self.as_mut().set_ai_status(QString::from(&error)),
+        }
+    }
+
+    pub fn test_ai_provider(mut self: Pin<&mut Self>) {
+        if *self.as_ref().transcribing() {
+            return;
+        }
+        let config = self.as_ref().rust().ai_config();
+        let qt_thread = self.qt_thread();
+        self.as_mut().set_transcribing(true);
+        self.as_mut()
+            .set_ai_status(QString::from("Verifying provider…"));
+        std::thread::spawn(move || {
+            let result = ai::enhance(&config, "hello comma this is a provider test");
+            qt_thread
+                .queue(move |mut controller| {
+                    controller.as_mut().set_transcribing(false);
+                    controller
+                        .as_mut()
+                        .set_ai_status(QString::from(match result {
+                            Ok(text) => format!("Verified · test result: {text}"),
+                            Err(error) => format!("Verification failed · {error}"),
+                        }));
+                })
+                .ok();
+        });
+    }
+
     pub fn add_dictionary_term(mut self: Pin<&mut Self>, term: &QString) {
         let term = term.to_string().trim().to_owned();
         if term.is_empty() {
@@ -773,17 +939,27 @@ impl ffi::FluidVoiceController {
         let path = PathBuf::from(decode_file_url(&path.to_string()));
         let language = selected_language_code(self.as_ref().rust());
         let use_gpu = self.as_ref().rust().selected_compute_backend != 2;
+        let ai_config = self.as_ref().rust().ai_config();
         let qt_thread = self.qt_thread();
         self.as_mut().set_transcribing(true);
         self.as_mut()
             .set_file_transcription_status(QString::from("Transcribing locally…"));
         std::thread::spawn(move || {
-            let result = transcribe_wav_file(&path, &model, language, use_gpu);
+            let result = transcribe_wav_file(&path, &model, language, use_gpu).map(|text| {
+                if ai_config.enabled {
+                    match ai::enhance(&ai_config, &text) {
+                        Ok(enhanced) => (enhanced, None),
+                        Err(error) => (text, Some(error)),
+                    }
+                } else {
+                    (text, None)
+                }
+            });
             qt_thread
                 .queue(move |mut controller| {
                     controller.as_mut().set_transcribing(false);
                     match result {
-                        Ok(text) => {
+                        Ok((text, ai_error)) => {
                             let processed = process_transcript(
                                 &text,
                                 controller.as_ref().rust().command_mode_enabled,
@@ -796,8 +972,15 @@ impl ffi::FluidVoiceController {
                             controller
                                 .as_mut()
                                 .set_file_transcription_status(QString::from(
-                                    "Complete — transcript added to History.",
-                                ));
+                                ai_error.map_or_else(
+                                    || "Complete — transcript added to History.".to_owned(),
+                                    |error| {
+                                        format!(
+                                            "AI enhancement failed; raw transcript saved. {error}"
+                                        )
+                                    },
+                                ),
+                            ));
                             controller
                                 .set_status_text(QString::from("File transcription complete"));
                         }
@@ -832,6 +1015,7 @@ impl ffi::FluidVoiceController {
         let language = selected_language_code(self.as_ref().rust());
         let use_gpu = self.as_ref().rust().selected_compute_backend != 2;
         let model = selected_model_path(self.as_ref().rust());
+        let ai_config = self.as_ref().rust().ai_config();
         let gain = 10.0_f32.powf(*self.as_ref().gain_db() / 20.0);
         self.as_mut().rust_mut().get_mut().stop_token = Some(stop_token.clone());
         self.as_mut().set_audio_level(0.0);
@@ -992,6 +1176,13 @@ impl ffi::FluidVoiceController {
                     }
                     Ok(first)
                 });
+            let enhancement = transcription.as_ref().ok().and_then(|transcript| {
+                if ai_config.enabled {
+                    Some(ai::enhance(&ai_config, &transcript.text))
+                } else {
+                    None
+                }
+            });
             qt_thread
                 .queue(move |mut controller| {
                     controller.as_mut().set_transcribing(false);
@@ -1001,8 +1192,13 @@ impl ffi::FluidVoiceController {
                     }
                     match transcription {
                         Ok(transcript) if !transcript.text.is_empty() => {
+                            let (enhanced_text, ai_error) = match enhancement {
+                                Some(Ok(text)) => (text, None),
+                                Some(Err(error)) => (transcript.text.clone(), Some(error)),
+                                None => (transcript.text.clone(), None),
+                            };
                             let processed = process_transcript(
-                                &transcript.text,
+                                &enhanced_text,
                                 controller.as_ref().rust().command_mode_enabled,
                                 &load_lines(&dictionary_path()),
                             );
@@ -1032,7 +1228,9 @@ impl ffi::FluidVoiceController {
                             }
                             record_history(controller.as_mut(), &processed);
                             controller.as_mut().set_transcript_text(QString::from(&processed));
-                            controller.set_status_text(QString::from(if delivery_result.is_ok() {
+                            controller.set_status_text(QString::from(if let Some(error) = ai_error {
+                                format!("AI enhancement failed · raw transcript delivered · {error}")
+                            } else if delivery_result.is_ok() {
                                 format!("Dictated {:.1}s · {detected_language} · pasted or copied", duration.as_secs_f32())
                             } else {
                                 format!("Transcribed {:.1}s · {detected_language} · clipboard unavailable", duration.as_secs_f32())
@@ -1097,9 +1295,26 @@ impl FluidVoiceControllerRust {
             compute_backend: self.selected_compute_backend,
             theme: self.selected_theme,
             accent: self.selected_accent,
+            ai_enabled: self.ai_enabled,
+            ai_provider: self.selected_ai_provider,
+            ai_model: self.ai_model.to_string(),
+            ai_base_url: self.ai_base_url.to_string(),
+            ai_prompt: self.ai_prompt.to_string(),
         };
         if let Err(error) = preferences.save() {
             eprintln!("Failed to save preferences: {error}");
+        }
+    }
+
+    fn ai_config(&self) -> AiConfig {
+        let provider = ai_provider(self.selected_ai_provider);
+        AiConfig {
+            enabled: self.ai_enabled,
+            provider: provider.id.to_owned(),
+            model: self.ai_model.to_string(),
+            base_url: self.ai_base_url.to_string(),
+            prompt: self.ai_prompt.to_string(),
+            api_key: ai::load_api_key(provider.id),
         }
     }
 }
@@ -1115,6 +1330,11 @@ struct Preferences {
     compute_backend: i32,
     theme: i32,
     accent: i32,
+    ai_enabled: bool,
+    ai_provider: i32,
+    ai_model: String,
+    ai_base_url: String,
+    ai_prompt: String,
 }
 
 impl Default for Preferences {
@@ -1130,6 +1350,11 @@ impl Default for Preferences {
             compute_backend: 0,
             theme: 0,
             accent: 0,
+            ai_enabled: false,
+            ai_provider: 7,
+            ai_model: String::new(),
+            ai_base_url: String::new(),
+            ai_prompt: String::new(),
         }
     }
 }
@@ -1161,6 +1386,16 @@ impl Preferences {
                 preferences.theme = value.parse().unwrap_or(0);
             } else if let Some(value) = line.strip_prefix("accent=") {
                 preferences.accent = value.parse().unwrap_or(0);
+            } else if let Some(value) = line.strip_prefix("ai_enabled=") {
+                preferences.ai_enabled = value == "true";
+            } else if let Some(value) = line.strip_prefix("ai_provider=") {
+                preferences.ai_provider = value.parse().unwrap_or(7);
+            } else if let Some(value) = line.strip_prefix("ai_model=") {
+                preferences.ai_model = unescape_setting(value);
+            } else if let Some(value) = line.strip_prefix("ai_base_url=") {
+                preferences.ai_base_url = unescape_setting(value);
+            } else if let Some(value) = line.strip_prefix("ai_prompt=") {
+                preferences.ai_prompt = unescape_setting(value);
             }
         }
         preferences
@@ -1175,7 +1410,7 @@ impl Preferences {
         fs::write(
             path,
             format!(
-                "language={}\nmodel={}\nshortcut={}\ninput={}\ngain_db={}\noverlay_enabled={}\ncommand_mode_enabled={}\ncompute_backend={}\ntheme={}\naccent={}\n",
+                "language={}\nmodel={}\nshortcut={}\ninput={}\ngain_db={}\noverlay_enabled={}\ncommand_mode_enabled={}\ncompute_backend={}\ntheme={}\naccent={}\nai_enabled={}\nai_provider={}\nai_model={}\nai_base_url={}\nai_prompt={}\n",
                 self.language,
                 self.model.display(),
                 self.shortcut,
@@ -1185,7 +1420,12 @@ impl Preferences {
                 self.command_mode_enabled,
                 self.compute_backend,
                 self.theme,
-                self.accent
+                self.accent,
+                self.ai_enabled,
+                self.ai_provider,
+                escape_setting(&self.ai_model),
+                escape_setting(&self.ai_base_url),
+                escape_setting(&self.ai_prompt)
             ),
         )
         .map_err(|error| error.to_string())
@@ -1195,6 +1435,127 @@ impl Preferences {
 enum DesktopCommand {
     Paste,
     Rebind(String),
+}
+
+#[derive(Clone, Copy)]
+struct AiProviderPreset {
+    id: &'static str,
+    name: &'static str,
+    default_url: &'static str,
+    default_model: &'static str,
+    local: bool,
+}
+
+fn ai_provider_catalog() -> &'static [AiProviderPreset] {
+    &[
+        AiProviderPreset {
+            id: "openai",
+            name: "OpenAI",
+            default_url: "https://api.openai.com/v1",
+            default_model: "gpt-4.1",
+            local: false,
+        },
+        AiProviderPreset {
+            id: "anthropic",
+            name: "Anthropic",
+            default_url: "https://api.anthropic.com/v1",
+            default_model: "claude-sonnet-4-20250514",
+            local: false,
+        },
+        AiProviderPreset {
+            id: "xai",
+            name: "xAI",
+            default_url: "https://api.x.ai/v1",
+            default_model: "grok-3-fast",
+            local: false,
+        },
+        AiProviderPreset {
+            id: "groq",
+            name: "Groq",
+            default_url: "https://api.groq.com/openai/v1",
+            default_model: "openai/gpt-oss-120b",
+            local: false,
+        },
+        AiProviderPreset {
+            id: "cerebras",
+            name: "Cerebras",
+            default_url: "https://api.cerebras.ai/v1",
+            default_model: "gpt-oss-120b",
+            local: false,
+        },
+        AiProviderPreset {
+            id: "google",
+            name: "Google Gemini",
+            default_url: "https://generativelanguage.googleapis.com/v1beta/openai",
+            default_model: "gemini-2.5-flash",
+            local: false,
+        },
+        AiProviderPreset {
+            id: "openrouter",
+            name: "OpenRouter",
+            default_url: "https://openrouter.ai/api/v1",
+            default_model: "openai/gpt-oss-20b",
+            local: false,
+        },
+        AiProviderPreset {
+            id: "ollama",
+            name: "Ollama (local)",
+            default_url: "http://localhost:11434/v1",
+            default_model: "qwen2.5:7b",
+            local: true,
+        },
+        AiProviderPreset {
+            id: "lmstudio",
+            name: "LM Studio (local)",
+            default_url: "http://localhost:1234/v1",
+            default_model: "local-model",
+            local: true,
+        },
+        AiProviderPreset {
+            id: "custom",
+            name: "Custom OpenAI-compatible",
+            default_url: "",
+            default_model: "",
+            local: false,
+        },
+    ]
+}
+
+fn ai_provider(index: i32) -> AiProviderPreset {
+    ai_provider_catalog()
+        .get(usize::try_from(index).unwrap_or(7))
+        .copied()
+        .unwrap_or(ai_provider_catalog()[7])
+}
+
+fn escape_setting(value: &str) -> String {
+    value
+        .replace('\\', "\\\\")
+        .replace('\n', "\\n")
+        .replace('\r', "\\r")
+}
+
+fn unescape_setting(value: &str) -> String {
+    let mut result = String::with_capacity(value.len());
+    let mut escaped = false;
+    for character in value.chars() {
+        if escaped {
+            result.push(match character {
+                'n' => '\n',
+                'r' => '\r',
+                other => other,
+            });
+            escaped = false;
+        } else if character == '\\' {
+            escaped = true;
+        } else {
+            result.push(character);
+        }
+    }
+    if escaped {
+        result.push('\\');
+    }
+    result
 }
 
 fn preferences_path() -> PathBuf {
