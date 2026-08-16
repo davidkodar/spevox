@@ -24,6 +24,9 @@ fi
 if ! command -v secret-tool >/dev/null; then
   echo "Note: secret-tool was not found; install libsecret before saving cloud AI API keys." >&2
 fi
+if ! command -v ffmpeg >/dev/null; then
+  echo "Note: FFmpeg was not found; file transcription will be limited to 16-bit PCM WAV." >&2
+fi
 QMAKE=${QMAKE:-/usr/bin/qmake6} cargo build --release -p fluidvoice-ui
 
 install_command=(install)

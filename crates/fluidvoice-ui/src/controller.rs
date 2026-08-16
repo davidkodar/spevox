@@ -1433,7 +1433,7 @@ impl ffi::FluidVoiceController {
         self.as_mut()
             .set_file_transcription_status(QString::from("Transcribing locally…"));
         std::thread::spawn(move || {
-            let result = transcribe_wav_file(&path, &model, language, use_gpu).map(|text| {
+            let result = transcribe_audio_file(&path, &model, language, use_gpu).map(|text| {
                 let raw_text = text.clone();
                 let started = Instant::now();
                 if ai_config.enabled {
@@ -2476,19 +2476,79 @@ fn decode_file_url(value: &str) -> String {
     String::from_utf8_lossy(&result).into_owned()
 }
 
-fn transcribe_wav_file(
+fn transcribe_audio_file(
     path: &PathBuf,
     model: &PathBuf,
     language: String,
     use_gpu: bool,
 ) -> Result<String, String> {
+    let audio = decode_audio_file(path)?;
+    let config = TranscriptionConfig::default()
+        .with_language(Some(language))
+        .with_gpu(use_gpu);
+    let transcript = WhisperTranscriber::load(model, config)
+        .map_err(|error| error.to_string())?
+        .transcribe(&audio)
+        .map_err(|error| error.to_string())?;
+    if transcript.text.trim().is_empty() {
+        return Err("No speech was recognized in this file.".to_owned());
+    }
+    Ok(transcript.text)
+}
+
+fn decode_audio_file(path: &PathBuf) -> Result<fluidvoice_audio::MonoAudioBuffer, String> {
+    const MAX_DECODED_BYTES: u64 = 16_000 * 4 * 60 * 60 * 2;
+    let mut command = Command::new("ffmpeg");
+    command
+        .args(["-nostdin", "-v", "error", "-i"])
+        .arg(path)
+        .args(["-vn", "-f", "f32le", "-ac", "1", "-ar", "16000", "pipe:1"])
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    match command.spawn() {
+        Ok(mut child) => {
+            let mut bytes = Vec::new();
+            child
+                .stdout
+                .take()
+                .ok_or_else(|| "FFmpeg stdout was unavailable".to_owned())?
+                .take(MAX_DECODED_BYTES + 1)
+                .read_to_end(&mut bytes)
+                .map_err(|error| error.to_string())?;
+            let output = child
+                .wait_with_output()
+                .map_err(|error| error.to_string())?;
+            if !output.status.success() {
+                return Err(format!(
+                    "FFmpeg could not decode this audio file: {}",
+                    String::from_utf8_lossy(&output.stderr).trim()
+                ));
+            }
+            if u64::try_from(bytes.len()).unwrap_or(u64::MAX) > MAX_DECODED_BYTES {
+                return Err("Decoded audio exceeds the two-hour safety limit".to_owned());
+            }
+            if bytes.len() % 4 != 0 {
+                return Err("FFmpeg returned incomplete audio samples".to_owned());
+            }
+            let samples = bytes
+                .chunks_exact(4)
+                .map(|chunk| f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
+                .collect::<Vec<_>>();
+            return AudioBuffer::new(samples, 16_000, 1, false)
+                .map(|audio| audio.to_asr_mono())
+                .map_err(|error| error.to_string());
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(format!("Could not start FFmpeg: {error}")),
+    }
+
     let mut reader = hound::WavReader::open(path)
-        .map_err(|error| format!("Could not open WAV file: {error}"))?;
+        .map_err(|error| format!("FFmpeg is not installed and WAV fallback failed: {error}"))?;
     let specification = reader.spec();
     if specification.sample_format != hound::SampleFormat::Int
         || specification.bits_per_sample != 16
     {
-        return Err("Only 16-bit PCM WAV files are supported in this release.".to_owned());
+        return Err("FFmpeg is required for audio other than 16-bit PCM WAV.".to_owned());
     }
     let samples = reader
         .samples::<i16>()
@@ -2502,18 +2562,7 @@ fn transcribe_wav_file(
         false,
     )
     .map_err(|error| error.to_string())?;
-    let audio = native.to_asr_mono();
-    let config = TranscriptionConfig::default()
-        .with_language(Some(language))
-        .with_gpu(use_gpu);
-    let transcript = WhisperTranscriber::load(model, config)
-        .map_err(|error| error.to_string())?
-        .transcribe(&audio)
-        .map_err(|error| error.to_string())?;
-    if transcript.text.trim().is_empty() {
-        return Err("No speech was recognized in this file.".to_owned());
-    }
-    Ok(transcript.text)
+    Ok(native.to_asr_mono())
 }
 
 fn supported_languages() -> &'static [(&'static str, &'static str)] {
@@ -2875,9 +2924,9 @@ mod tests {
     use std::{fs, time::Duration};
 
     use super::{
-        DesktopAction, asr_gain, decode_file_url, meter_level, parse_desktop_action, peak_db,
-        process_transcript, supported_languages, suspicious_single_word, whisper_model_catalog,
-        write_history_export,
+        DesktopAction, asr_gain, decode_audio_file, decode_file_url, meter_level,
+        parse_desktop_action, peak_db, process_transcript, supported_languages,
+        suspicious_single_word, whisper_model_catalog, write_history_export,
     };
 
     #[test]
@@ -2900,6 +2949,29 @@ mod tests {
         ));
         assert!(parse_desktop_action("rm -rf important files").is_none());
         assert!(parse_desktop_action("run echo hello").is_none());
+    }
+
+    #[test]
+    fn decodes_audio_files_to_mono_16khz() {
+        let path = std::env::temp_dir().join(format!(
+            "fluidvoice-audio-decode-{}.wav",
+            std::process::id()
+        ));
+        let specification = hound::WavSpec {
+            channels: 1,
+            sample_rate: 16_000,
+            bits_per_sample: 16,
+            sample_format: hound::SampleFormat::Int,
+        };
+        let mut writer = hound::WavWriter::create(&path, specification).expect("create test WAV");
+        for sample in [0_i16, 1000, -1000, 0] {
+            writer.write_sample(sample).expect("write test sample");
+        }
+        writer.finalize().expect("finalize test WAV");
+        let audio = decode_audio_file(&path).expect("decode test audio");
+        assert_eq!(audio.sample_rate(), 16_000);
+        assert_eq!(audio.samples().len(), 4);
+        fs::remove_file(path).expect("remove test WAV");
     }
 
     #[test]

@@ -238,7 +238,7 @@ ApplicationWindow {
     FileDialog {
         id: audioFileDialog
         title: qsTr("Choose an audio file")
-        nameFilters: [qsTr("PCM WAV audio (*.wav)")]
+        nameFilters: [qsTr("Audio files (*.wav *.mp3 *.flac *.ogg *.opus *.m4a *.aac *.webm *.mp4)")]
         onAccepted: controller.transcribeFile(selectedFile.toString())
     }
 
@@ -1235,7 +1235,7 @@ ApplicationWindow {
                             id: fileContent; anchors.fill: parent; anchors.margins: 20; spacing: 12
                             Text { text: qsTr("TRANSCRIBE AUDIO"); color: root.tertiaryText; font.pixelSize: 11; font.weight: Font.Medium }
                             Text { Layout.fillWidth: true; text: qsTr("Uses the active Whisper model and language. Audio remains on this computer."); color: root.secondaryText; font.pixelSize: 13; wrapMode: Text.Wrap }
-                            Button { text: controller.transcribing ? qsTr("Transcribing…") : qsTr("Choose WAV file"); enabled: !controller.transcribing && !controller.recording; onClicked: audioFileDialog.open() }
+                            Button { text: controller.transcribing ? qsTr("Transcribing…") : qsTr("Choose audio file"); enabled: !controller.transcribing && !controller.recording; onClicked: audioFileDialog.open() }
                             Text { Layout.fillWidth: true; text: controller.fileTranscriptionStatus; color: controller.transcribing ? root.accent : root.secondaryText; font.pixelSize: 12; wrapMode: Text.Wrap }
                         }
                     }

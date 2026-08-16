@@ -26,7 +26,8 @@ configures.
 - Wayland-aware direct paste where available, with verified clipboard recovery.
 - Native Plasma system tray, single-instance activation, and correct desktop identity.
 - Persistent custom spellings and optional spoken formatting commands.
-- Local 16-bit PCM WAV transcription, transcript history, and basic usage statistics.
+- Local MP3, FLAC, Ogg/Opus, M4A/AAC, WebM, MP4, and WAV transcription through
+  FFmpeg, plus transcript history and usage statistics.
 - KDE system theme/accent defaults plus explicit FluidVoice dark, light, and accent options.
 - Optional post-transcription cleanup through standard cloud providers, Ollama,
   LM Studio, or a custom OpenAI-compatible endpoint, with local model discovery
@@ -47,6 +48,7 @@ The application currently requires:
 - PipeWire development libraries.
 - Vulkan loader, shader compiler, and development headers.
 - `secret-tool` (from libsecret) when storing API keys for cloud AI providers.
+- FFmpeg for broad audio-file transcription (16-bit PCM WAV retains a built-in fallback).
 
 On Arch Linux or CachyOS, the Vulkan headers are provided by:
 
@@ -110,7 +112,7 @@ usable but does not yet match the depth of the current macOS implementation.
 | Write/rewrite selected text | Partial | Available | Linux captures and replaces selected text through the consented Wayland keyboard portal and clipboard; the settings window hides first so focus returns to the source app. Voice-triggered rewrite shortcuts remain planned. |
 | AI Enhancement | Partial | Available | Linux supports configurable standard and local providers, streamed overlay updates, a cleanup prompt, and safe raw-text fallback; per-app prompts are not yet implemented. |
 | Fluid Intelligence / Fluid-1 | Missing | Available | Fluid-1 weights, runtime, and training code are separately maintained and not available in the GPL repository. |
-| File transcription | Partial | Available | Linux currently accepts 16-bit PCM WAV; broader formats and meeting workflows are planned. |
+| File transcription | Partial | Available | Linux accepts MP3, FLAC, Ogg/Opus, M4A/AAC, WebM, MP4, and varied WAV encodings through FFmpeg with a two-hour decoded-audio safety limit; meeting workflows remain planned. |
 | Transcript history | Partial | Available | Linux provides search, timestamps, raw/final text, AI provider/model/status/latency metadata, source labels, word counts, and JSON/CSV export; app/window metadata, audio retention, and reports are still missing. |
 | Usage statistics | Partial | Available | Linux provides today/all-time totals, estimated time saved, streaks, averages, and a seven-day chart; editable typing speed, 30-day charts, milestones, insights, and records are still missing. |
 | Per-application configuration | Partial | Available | Linux provides persistent named prompt profiles with explicit selection; automatic focused-app matching is unavailable to ordinary Plasma Wayland clients. |
@@ -196,6 +198,12 @@ cargo run -p fluidvoice-app -- --diagnose-workflow /path/to/model.bin 5 [PIPEWIR
 The application ID is `io.github.davidkodar.FluidVoiceLinux`. The matching
 desktop entry, icon, AppStream metadata, and GPL license are installed by the
 development installer.
+
+The current production speech backend remains embedded whisper.cpp. Parakeet,
+Nemotron, Cohere, and Apple Speech depend on runtimes or platform services that
+cannot presently be shipped as a supported native KDE/Linux backend; the engine
+boundary remains isolated so a maintainable Linux runtime can be added later
+without changing capture, history, or delivery.
 
 ## Architecture
 
