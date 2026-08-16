@@ -211,6 +211,10 @@ pub mod ffi {
         #[qinvokable]
         #[cxx_name = "deleteAiProfile"]
         fn delete_ai_profile(self: Pin<&mut Self>);
+
+        #[qinvokable]
+        #[cxx_name = "rewriteSelectedText"]
+        fn rewrite_selected_text(self: Pin<&mut Self>, instruction: &QString);
     }
 
     impl cxx_qt::Threading for FluidVoiceController {}
@@ -606,6 +610,17 @@ impl ffi::FluidVoiceController {
                                             eprintln!("Automatic paste failed: {error}");
                                         }
                                     }
+                                }
+                                Some(DesktopCommand::CopySelection(reply)) => {
+                                    if text_input.is_none() {
+                                        text_input = TextInputSession::request().await.ok();
+                                    }
+                                    let result = if let Some(session) = text_input.as_ref() {
+                                        session.copy_selection().await.map_err(|error| error.to_string())
+                                    } else {
+                                        Err("Wayland keyboard permission is unavailable".to_owned())
+                                    };
+                                    reply.send(result).ok();
                                 }
                                 Some(DesktopCommand::Rebind(shortcut)) => {
                                     rebind = Some(shortcut);
@@ -1148,6 +1163,87 @@ impl ffi::FluidVoiceController {
         self.as_mut().set_ai_profile_prompt(QString::default());
         self.as_mut()
             .set_ai_status(QString::from("Application profile deleted"));
+    }
+
+    pub fn rewrite_selected_text(mut self: Pin<&mut Self>, instruction: &QString) {
+        let instruction = instruction.to_string().trim().to_owned();
+        if instruction.is_empty() || *self.as_ref().transcribing() {
+            return;
+        }
+        let Some(desktop_sender) = self.as_ref().rust().desktop_sender.clone() else {
+            self.as_mut()
+                .set_ai_status(QString::from("Desktop integration is not ready"));
+            return;
+        };
+        let mut config = self.as_ref().rust().ai_config();
+        config.enabled = true;
+        config.prompt = "Rewrite the selected text according to the user's instruction. Preserve meaning unless the instruction asks otherwise. Output only the replacement text, with no explanation or markdown fences.".to_owned();
+        let qt_thread = self.qt_thread();
+        self.as_mut().set_transcribing(true);
+        self.as_mut()
+            .set_ai_status(QString::from("Capturing selected text…"));
+        std::thread::spawn(move || {
+            let (reply, result) = std::sync::mpsc::channel();
+            if desktop_sender
+                .send(DesktopCommand::CopySelection(reply))
+                .is_err()
+            {
+                return;
+            }
+            let copied = result
+                .recv_timeout(Duration::from_secs(8))
+                .map_err(|_| "Timed out waiting for Wayland selection capture".to_owned())
+                .and_then(|result| result);
+            std::thread::sleep(Duration::from_millis(150));
+            let selected = copied.and_then(|()| {
+                ClipboardDelivery::connect()
+                    .map_err(|error| error.to_string())?
+                    .read_text()
+                    .map_err(|error| error.to_string())
+            });
+            let rewritten = selected.and_then(|selected| {
+                if selected.trim().is_empty() {
+                    return Err("The clipboard contains no selected text".to_owned());
+                }
+                ai::enhance(
+                    &config,
+                    &format!("User instruction: {instruction}\n\nSelected text:\n{selected}"),
+                )
+            });
+            qt_thread
+                .queue(move |mut controller| {
+                    controller.as_mut().set_transcribing(false);
+                    match rewritten {
+                        Ok(text) => {
+                            let rust = controller.as_mut().rust_mut().get_mut();
+                            if rust.clipboard.is_none() {
+                                rust.clipboard = ClipboardDelivery::connect().ok();
+                            }
+                            let copied = rust
+                                .clipboard
+                                .as_mut()
+                                .is_some_and(|clipboard| clipboard.copy_transcript(&text).is_ok());
+                            if copied {
+                                if let Some(sender) = controller.as_ref().rust().desktop_sender.as_ref() {
+                                    sender.send(DesktopCommand::Paste).ok();
+                                }
+                                controller.as_mut().set_transcript_text(QString::from(&text));
+                                controller.as_mut().set_ai_status(QString::from(
+                                    "Selected text rewritten · replacement pasted or left on clipboard",
+                                ));
+                            } else {
+                                controller.as_mut().set_ai_status(QString::from(
+                                    "Rewrite completed but clipboard delivery failed",
+                                ));
+                            }
+                        }
+                        Err(error) => controller.as_mut().set_ai_status(QString::from(&format!(
+                            "Rewrite failed · {error}"
+                        ))),
+                    }
+                })
+                .ok();
+        });
     }
 
     pub fn add_dictionary_term(mut self: Pin<&mut Self>, term: &QString) {
@@ -1841,6 +1937,7 @@ impl Preferences {
 
 enum DesktopCommand {
     Paste,
+    CopySelection(std::sync::mpsc::Sender<Result<(), String>>),
     Rebind(String),
 }
 

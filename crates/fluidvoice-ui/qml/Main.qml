@@ -242,6 +242,14 @@ ApplicationWindow {
         onAccepted: controller.transcribeFile(selectedFile.toString())
     }
 
+    Timer {
+        id: rewriteDelay
+        property string instruction: ""
+        interval: 250
+        repeat: false
+        onTriggered: controller.rewriteSelectedText(instruction)
+    }
+
     FileDialog {
         id: historyJsonDialog
         title: qsTr("Export history as JSON")
@@ -1183,6 +1191,17 @@ ApplicationWindow {
                             Rectangle { Layout.fillWidth: true; height: 1; color: root.hairline }
                             Text { text: qsTr("AVAILABLE COMMANDS"); color: root.tertiaryText; font.pixelSize: 11; font.weight: Font.Medium }
                             Text { Layout.fillWidth: true; text: qsTr("“new line”  “new paragraph”  “comma”  “period”  “question mark”  “exclamation mark”"); color: root.secondaryText; font.pixelSize: 13; wrapMode: Text.Wrap }
+                        }
+                    }
+                    Rectangle {
+                        Layout.fillWidth: true; implicitHeight: rewriteContent.implicitHeight + 32; radius: 16; color: root.panel; border.color: root.hairline
+                        ColumnLayout {
+                            id: rewriteContent; anchors.fill: parent; anchors.margins: 16; spacing: 12
+                            Text { text: qsTr("REWRITE SELECTED TEXT"); color: root.tertiaryText; font.pixelSize: 11; font.weight: Font.Medium }
+                            Text { Layout.fillWidth: true; text: qsTr("Select text in another application, return here without changing that selection, enter an instruction, and rewrite it through the configured AI provider. Plasma may request keyboard-control permission."); color: root.secondaryText; font.pixelSize: 12; wrapMode: Text.Wrap }
+                            TextField { id: rewriteInstruction; Layout.fillWidth: true; placeholderText: qsTr("For example: Make this concise and professional") }
+                            Button { text: controller.transcribing ? qsTr("Rewriting…") : qsTr("Rewrite selection"); enabled: !controller.transcribing && rewriteInstruction.text.trim().length > 0; onClicked: { rewriteDelay.instruction = rewriteInstruction.text; root.hide(); rewriteDelay.restart() } }
+                            Text { Layout.fillWidth: true; text: controller.aiStatus; color: root.secondaryText; font.pixelSize: 11; wrapMode: Text.Wrap }
                         }
                     }
                 }

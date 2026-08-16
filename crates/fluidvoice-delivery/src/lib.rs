@@ -47,6 +47,16 @@ impl ClipboardDelivery {
         Ok(())
     }
 
+    /// Reads the current textual clipboard contents.
+    ///
+    /// # Errors
+    /// Returns an error when the clipboard does not contain readable text.
+    pub fn read_text(&mut self) -> Result<String, ClipboardDeliveryError> {
+        self.clipboard
+            .get_text()
+            .map_err(ClipboardDeliveryError::backend)
+    }
+
     #[must_use]
     pub fn last_transcript(&self) -> Option<&str> {
         self.last_transcript.as_deref()

@@ -39,6 +39,20 @@ impl TextInputSession {
         self.key(KEY_LEFTCTRL, KeyState::Released).await
     }
 
+    /// Sends Ctrl+C so a focused application can place its selected text on
+    /// the clipboard. The caller remains responsible for reading it.
+    pub async fn copy_selection(&self) -> ashpd::Result<()> {
+        const KEY_LEFTCTRL: i32 = 29;
+        const KEY_C: i32 = 46;
+        self.key(KEY_LEFTCTRL, KeyState::Pressed).await?;
+        if let Err(error) = self.key(KEY_C, KeyState::Pressed).await {
+            let _ = self.key(KEY_LEFTCTRL, KeyState::Released).await;
+            return Err(error);
+        }
+        self.key(KEY_C, KeyState::Released).await?;
+        self.key(KEY_LEFTCTRL, KeyState::Released).await
+    }
+
     async fn key(&self, keycode: i32, state: KeyState) -> ashpd::Result<()> {
         self.portal
             .notify_keyboard_keycode(&self.session, keycode, state, Default::default())
