@@ -51,6 +51,7 @@ pub struct TranscriptSegment {
 pub struct Transcript {
     pub text: String,
     pub segments: Vec<TranscriptSegment>,
+    pub detected_language: Option<String>,
 }
 
 pub struct WhisperTranscriber {
@@ -111,6 +112,8 @@ impl WhisperTranscriber {
         state
             .full(parameters, audio.samples())
             .map_err(TranscriptionError::whisper)?;
+        let detected_language =
+            whisper_rs::get_lang_str(state.full_lang_id_from_state()).map(str::to_owned);
 
         let mut segments = Vec::new();
         for segment in state.as_iter() {
@@ -133,7 +136,11 @@ impl WhisperTranscriber {
             .map(|segment| segment.text.as_str())
             .collect::<Vec<_>>()
             .join(" ");
-        Ok(Transcript { text, segments })
+        Ok(Transcript {
+            text,
+            segments,
+            detected_language,
+        })
     }
 }
 

@@ -621,12 +621,20 @@ impl ffi::FluidVoiceController {
             let preview_language = language.clone();
             let preview_worker = std::thread::spawn(move || {
                 let Some(model) = preview_model else { return };
+                let automatic_language = preview_language.is_empty();
                 let config = TranscriptionConfig::default().with_language(Some(preview_language));
                 let Ok(transcriber) = WhisperTranscriber::load(&model, config) else {
                     return;
                 };
                 while let Ok(audio) = preview_receiver.recv() {
                     let preview_duration = audio.duration();
+                    if automatic_language && preview_duration < Duration::from_millis(2_500) {
+                        // Language classification on sub-second phonemes is
+                        // strongly English-biased in Tiny/Base. Wait for a
+                        // meaningful phrase before publishing automatic-mode
+                        // preview text.
+                        continue;
+                    }
                     let mono = audio.to_asr_mono();
                     let preview_audio = mono.amplified(asr_gain(mono.peak(), gain));
                     let Ok(transcript) = transcriber.transcribe(&preview_audio) else {
@@ -755,6 +763,11 @@ impl ffi::FluidVoiceController {
                     }
                     match transcription {
                         Ok(transcript) if !transcript.text.is_empty() => {
+                            let detected_language = transcript
+                                .detected_language
+                                .as_deref()
+                                .and_then(language_display_name)
+                                .unwrap_or("Unknown language");
                             controller
                                 .as_mut()
                                 .set_live_transcript(QString::from(&transcript.text));
@@ -778,9 +791,9 @@ impl ffi::FluidVoiceController {
                                 .as_mut()
                                 .set_transcript_text(QString::from(&transcript.text));
                             controller.set_status_text(QString::from(if delivery_result.is_ok() {
-                                format!("Dictated {:.1}s · pasted or copied", duration.as_secs_f32())
+                                format!("Dictated {:.1}s · {detected_language} · pasted or copied", duration.as_secs_f32())
                             } else {
-                                format!("Transcribed {:.1}s · clipboard unavailable", duration.as_secs_f32())
+                                format!("Transcribed {:.1}s · {detected_language} · clipboard unavailable", duration.as_secs_f32())
                             }));
                         }
                         Ok(_) => {
@@ -1197,6 +1210,12 @@ fn selected_language_code(controller: &FluidVoiceControllerRust) -> String {
         .and_then(|index| controller.language_codes.get(index))
         .cloned()
         .unwrap_or_else(|| "en".to_owned())
+}
+
+fn language_display_name(code: &str) -> Option<&'static str> {
+    supported_languages()
+        .iter()
+        .find_map(|(name, candidate)| (*candidate == code).then_some(*name))
 }
 
 fn selected_model_path(controller: &FluidVoiceControllerRust) -> Option<PathBuf> {
