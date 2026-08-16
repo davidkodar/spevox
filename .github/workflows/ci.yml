@@ -14,7 +14,7 @@ jobs:
         with:
           components: rustfmt
       - name: Install native dependencies
-        run: sudo apt-get update && sudo apt-get install -y build-essential clang cmake libpipewire-0.3-dev libvulkan-dev glslc qt6-base-dev qt6-declarative-dev qt6-tools-dev-tools
+        run: sudo apt-get update && sudo apt-get install -y build-essential clang cmake libpipewire-0.3-dev libvulkan-dev glslc python3-yaml qt6-base-dev qt6-declarative-dev qt6-tools-dev-tools
       - name: Formatting
         run: cargo fmt --all --check
       - name: Tests
@@ -27,4 +27,9 @@ jobs:
         run: cargo build --release --locked -p fluidvoice-ui
       - name: Validate AppStream metadata
         run: sudo apt-get install -y appstream && appstreamcli validate --no-net data/io.github.davidkodar.FluidVoiceLinux.metainfo.xml
-
+      - name: Validate packaging scripts and manifests
+        run: |
+          bash -n packaging/*.sh
+          python3 -c 'import yaml; yaml.safe_load(open("packaging/flatpak/io.github.davidkodar.FluidVoiceLinux.yml"))'
+        env:
+          PYTHONWARNINGS: error

@@ -6,6 +6,7 @@ on:
 
 permissions:
   contents: write
+  id-token: write
 
 jobs:
   package:
@@ -17,10 +18,60 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y build-essential clang cmake libpipewire-0.3-dev libvulkan-dev glslc qt6-base-dev qt6-declarative-dev qt6-tools-dev-tools
       - name: Build release archive
         run: ./packaging/package-tarball.sh
-      - name: Publish checksummed archive
+      - name: Generate update channel and Arch recipe
+        shell: bash
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          archive="fluidvoice-linux-$version-x86_64.tar.gz"
+          checksum="$(cut -d ' ' -f1 "target/package/$archive.sha256")"
+          channel=stable
+          [[ "$version" == *-* ]] && channel=beta
+          git archive --format=tar.gz --prefix="fluidvoice-linux-$version/" -o "target/package/fluidvoice-linux-$version.tar.gz" HEAD
+          source_checksum="$(sha256sum "target/package/fluidvoice-linux-$version.tar.gz" | cut -d ' ' -f1)"
+          ./packaging/make-update-manifest.sh "$GITHUB_REF_NAME" "$archive" "$checksum" "target/package/update-$channel.json"
+          sed -e "s/@VERSION@/$version/g" -e "s/@SOURCE_SHA256@/$source_checksum/g" packaging/arch/PKGBUILD.in > target/package/PKGBUILD
+      - uses: sigstore/cosign-installer@v3
+      - name: Sign release artifacts with GitHub OIDC
+        shell: bash
+        run: |
+          for artifact in target/package/*.tar.gz target/package/update-*.json target/package/PKGBUILD; do
+            cosign sign-blob --yes "$artifact" --output-signature "$artifact.sig" --output-certificate "$artifact.pem"
+          done
+      - name: Publish checksummed and signed archive
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
           files: |
             target/package/*.tar.gz
             target/package/*.sha256
+            target/package/update-*.json
+            target/package/PKGBUILD
+            target/package/*.sig
+            target/package/*.pem
+
+  flatpak:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install Flatpak tooling and KDE runtime
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flatpak flatpak-builder
+          flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user -y flathub org.kde.Platform//6.8 org.kde.Sdk//6.8 org.freedesktop.Sdk.Extension.rust-stable//24.08
+      - name: Build offline-vendored Flatpak bundle
+        run: ./packaging/package-flatpak.sh
+      - uses: sigstore/cosign-installer@v3
+      - name: Sign Flatpak bundle with GitHub OIDC
+        run: cosign sign-blob --yes target/package/fluidvoice-linux.flatpak --output-signature target/package/fluidvoice-linux.flatpak.sig --output-certificate target/package/fluidvoice-linux.flatpak.pem
+      - name: Attach Flatpak bundle to release
+        uses: softprops/action-gh-release@v2
+        with:
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          files: |
+            target/package/fluidvoice-linux.flatpak
+            target/package/fluidvoice-linux.flatpak.sha256
+            target/package/fluidvoice-linux.flatpak.sig
+            target/package/fluidvoice-linux.flatpak.pem

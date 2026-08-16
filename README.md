@@ -81,6 +81,15 @@ For a development run without installation:
 QMAKE=/usr/bin/qmake6 cargo run -p fluidvoice-ui
 ```
 
+Release tags publish a checksummed binary archive, an Arch `PKGBUILD`, stable
+or beta update metadata, and Sigstore keyless signatures/certificates. Verify a
+download with `cosign verify-blob --certificate-identity-regexp
+'github.com/davidkodar/fluidvoice-linux' --certificate-oidc-issuer
+'https://token.actions.githubusercontent.com' --certificate FILE.pem
+--signature FILE.sig FILE`. The Flatpak manifest lives under
+`packaging/flatpak`; after installing its KDE SDK/runtime, maintainers can build
+an offline-vendored bundle with `./packaging/package-flatpak.sh`.
+
 ### 3. Configure dictation
 
 1. Open **Voice Engine** and select the correct microphone.
@@ -126,7 +135,7 @@ usable but does not yet match the depth of the current macOS implementation.
 | Audio recording history | Available | Available | Optional and off by default; Linux retains local mono WAV recordings within a configurable budget, supports playback and deletion, and exports audio plus metadata as ZIP. |
 | Adaptive themes and accents | Available | Available | System/KDE defaults plus explicit FluidVoice themes and colors. |
 | Tray/menu-bar integration | Available | Available | Plasma tray is the Linux equivalent of the macOS menu bar item. |
-| Automatic updates / beta channel | Partial | Available | Linux can check GitHub Releases and ships checksummed archives; unattended and cryptographically signed updates are not yet available. The feed remains unavailable while the repository is private. |
+| Automatic updates / beta channel | Partial | Available | Tagged Linux releases publish separate stable/beta metadata plus checksummed, keyless-signed artifacts. The app checks releases but does not yet install updates unattended; feeds remain unavailable while the repository is private. |
 
 The macOS feature set changes quickly. This matrix reflects the upstream source
 and README reviewed during 0.4.0 development; it is not a promise of identical

@@ -40,6 +40,10 @@ All notable changes to FluidVoice Linux are documented here. The project uses
   with owner-only permissions. It exposes only health, status, and dictation
   toggle operations, rejects browser origins, caps requests, and applies short
   connection timeouts.
+- Added an Arch Linux package recipe, an offline-vendored Flatpak build path,
+  stable/beta update manifests, and keyless Sigstore signing of tagged release
+  artifacts through GitHub Actions. Automatic installation remains deliberately
+  separate from update discovery.
 - Added AI enhancement analytics for usage, success/fallback rate, average
   latency, and provider/model activity.
 - Added per-entry raw/final visual diffs, word and character deltas, and copy
