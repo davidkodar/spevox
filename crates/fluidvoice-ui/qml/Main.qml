@@ -14,21 +14,29 @@ ApplicationWindow {
     title: qsTr("FluidVoice")
     color: "#121212"
     property int settingsSection: 0
+    readonly property var destinationTitles: [
+        qsTr("Settings"), qsTr("Voice Engine"), qsTr("AI Enhancement"),
+        qsTr("Custom Dictionary"), qsTr("Command Mode"), qsTr("File Transcription"),
+        qsTr("History"), qsTr("Stats"), qsTr("Getting Started"),
+        qsTr("Change logs"), qsTr("Feedback")
+    ]
+    readonly property var destinationDescriptions: [
+        qsTr("Manage FluidVoice behavior, shortcuts, and appearance."),
+        qsTr("Choose the microphone, speech model, and spoken language."),
+        qsTr("Refine dictated text with an optional AI processing step."),
+        qsTr("Teach FluidVoice names, terms, and preferred spellings."),
+        qsTr("Run actions and workflows with your voice."),
+        qsTr("Create transcripts from existing audio files."),
+        qsTr("Review recent dictation and transcription activity."),
+        qsTr("See how you use FluidVoice over time."),
+        qsTr("Learn the essentials and complete initial setup."),
+        qsTr("See what changed in recent versions."),
+        qsTr("Share feedback about this unofficial Linux port.")
+    ]
 
     function showSettingsSection(index) {
-        var target = generalSection
-        if (index === 1)
-            target = audioSection
-        else if (index === 2)
-            target = transcriptionSection
-        else if (index === 3)
-            target = shortcutsSection
-        else if (index === 4)
-            target = appearanceSection
         settingsSection = index
-        settingsFlick.contentY = Math.max(0, Math.min(
-            target.y - 8,
-            settingsFlick.contentHeight - settingsFlick.height))
+        settingsFlick.contentY = 0
     }
     onClosing: function(close) {
         close.accepted = false
@@ -64,37 +72,22 @@ ApplicationWindow {
     }
 
     header: Rectangle {
-        height: 52
+        height: 44
         color: "#0f0f0f"
         border.color: root.hairline
         border.width: 1
 
         RowLayout {
             anchors.fill: parent
-            anchors.leftMargin: 20
+            anchors.leftMargin: 16
             anchors.rightMargin: 16
             spacing: 10
 
-            Image {
-                Layout.preferredWidth: 28
-                Layout.preferredHeight: 28
-                Layout.minimumWidth: 28
-                Layout.minimumHeight: 28
-                Layout.maximumWidth: 28
-                Layout.maximumHeight: 28
-                source: "qrc:/qt/qml/io/github/davidkodar/FluidVoiceLinux/assets/fluidvoice-app.png"
-                sourceSize.width: 56
-                sourceSize.height: 56
-                fillMode: Image.PreserveAspectFit
-                smooth: true
-                mipmap: true
-            }
-
             Text {
-                text: "FluidVoice"
-                color: root.primaryText
-                font.pixelSize: 15
-                font.weight: Font.DemiBold
+                text: root.destinationTitles[root.settingsSection]
+                color: root.secondaryText
+                font.pixelSize: 13
+                font.weight: Font.Medium
             }
 
             Item { Layout.fillWidth: true }
@@ -134,7 +127,7 @@ ApplicationWindow {
         spacing: 0
 
         Rectangle {
-            Layout.preferredWidth: 220
+            Layout.preferredWidth: 244
             Layout.fillHeight: true
             color: "#0f0f0f"
             border.color: root.hairline
@@ -145,40 +138,69 @@ ApplicationWindow {
                 anchors.rightMargin: 12
                 anchors.topMargin: 18
                 anchors.bottomMargin: 14
-                spacing: 4
-
-                Text {
-                    text: qsTr("CONFIGURE")
-                    color: root.tertiaryText
-                    font.pixelSize: 11
-                    font.weight: Font.Medium
-                    Layout.leftMargin: 8
-                    Layout.bottomMargin: 4
-                }
+                spacing: 2
 
                 Repeater {
-                    model: ["General", "Audio", "Transcription", "Shortcuts", "Appearance"]
+                    model: [
+                        { "header": true, "name": qsTr("CONFIGURE") },
+                        { "name": qsTr("Settings"), "symbol": "⚙", "page": 0 },
+                        { "name": qsTr("Voice Engine"), "symbol": "≋", "page": 1 },
+                        { "name": qsTr("AI Enhancement"), "symbol": "✦", "page": 2 },
+                        { "name": qsTr("Custom Dictionary"), "symbol": "▤", "page": 3 },
+                        { "header": true, "name": qsTr("USE") },
+                        { "name": qsTr("Command Mode"), "symbol": ">_", "page": 4 },
+                        { "name": qsTr("File Transcription"), "symbol": "▧", "page": 5 },
+                        { "header": true, "name": qsTr("ACTIVITY") },
+                        { "name": qsTr("History"), "symbol": "↶", "page": 6 },
+                        { "name": qsTr("Stats"), "symbol": "▥", "page": 7 },
+                        { "header": true, "name": qsTr("HELP") },
+                        { "name": qsTr("Getting Started"), "symbol": "⌂", "page": 8 },
+                        { "name": qsTr("Change logs"), "symbol": "⌕", "page": 9 },
+                        { "name": qsTr("Feedback"), "symbol": "✉", "page": 10 }
+                    ]
                     delegate: Rectangle {
-                        required property string modelData
+                        required property var modelData
                         required property int index
                         Layout.fillWidth: true
-                        height: 32
+                        Layout.topMargin: modelData.header && index > 0 ? 9 : 0
+                        height: modelData.header ? 22 : 34
                         radius: 6
-                        color: index === root.settingsSection ? "#213738" : "transparent"
+                        color: !modelData.header && modelData.page === root.settingsSection ? "#272729" : "transparent"
 
                         Text {
+                            visible: modelData.header
+                            anchors.left: parent.left
+                            anchors.leftMargin: 8
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: modelData.name
+                            color: root.tertiaryText
+                            font.pixelSize: 11
+                            font.weight: Font.Medium
+                        }
+                        Row {
+                            visible: !modelData.header
                             anchors.left: parent.left
                             anchors.leftMargin: 10
                             anchors.verticalCenter: parent.verticalCenter
-                            text: modelData
-                            color: index === root.settingsSection ? root.primaryText : root.secondaryText
-                            font.pixelSize: 14
-                            font.weight: Font.Normal
+                            spacing: 10
+                            Text {
+                                width: 18
+                                text: modelData.symbol || ""
+                                color: modelData.page === root.settingsSection ? root.primaryText : root.secondaryText
+                                font.pixelSize: 14
+                                horizontalAlignment: Text.AlignHCenter
+                            }
+                            Text {
+                                text: modelData.name
+                                color: modelData.page === root.settingsSection ? root.primaryText : root.secondaryText
+                                font.pixelSize: 14
+                            }
                         }
                         MouseArea {
                             anchors.fill: parent
+                            enabled: !modelData.header
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: root.showSettingsSection(index)
+                            onClicked: root.showSettingsSection(modelData.page)
                         }
                     }
                 }
@@ -198,10 +220,9 @@ ApplicationWindow {
             id: settingsFlick
             Layout.fillWidth: true
             Layout.fillHeight: true
-            // The trailing breathing room lets the last sidebar destination align
-            // at the same top position as the earlier sections.
-            contentHeight: contentColumn.implicitHeight + Math.max(52, height - 120)
+            contentHeight: contentColumn.implicitHeight + 48
             clip: true
+            ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 
             ColumnLayout {
                 id: contentColumn
@@ -212,21 +233,23 @@ ApplicationWindow {
 
                 ColumnLayout {
                     id: generalSection
+                    visible: root.settingsSection === 0
                     spacing: 5
                     Text {
-                        text: qsTr("General")
+                        text: qsTr("Settings")
                         color: root.primaryText
                         font.pixelSize: 22
                         font.weight: Font.Bold
                     }
                     Text {
-                        text: qsTr("Choose how FluidVoice listens and responds.")
+                        text: root.destinationDescriptions[0]
                         color: root.secondaryText
                         font.pixelSize: 14
                     }
                 }
 
                 Rectangle {
+                    visible: root.settingsSection === 0
                     Layout.fillWidth: true
                     height: 112
                     radius: 16
@@ -260,12 +283,14 @@ ApplicationWindow {
 
                 ColumnLayout {
                     id: audioSection
+                    visible: root.settingsSection === 1
                     spacing: 5
                     Text { text: qsTr("Audio"); color: root.primaryText; font.pixelSize: 22; font.weight: Font.Bold }
                     Text { text: qsTr("Choose and calibrate the microphone FluidVoice listens to."); color: root.secondaryText; font.pixelSize: 13 }
                 }
 
                 Rectangle {
+                    visible: root.settingsSection === 1
                     Layout.fillWidth: true
                     height: 196
                     radius: 16
@@ -314,6 +339,7 @@ ApplicationWindow {
 
                 ColumnLayout {
                     id: transcriptionSection
+                    visible: root.settingsSection === 1
                     spacing: 5
                     Text {
                         text: qsTr("Transcription")
@@ -329,6 +355,7 @@ ApplicationWindow {
                 }
 
                 Rectangle {
+                    visible: root.settingsSection === 1
                     Layout.fillWidth: true
                     implicitHeight: speechEngineColumn.implicitHeight + 32
                     radius: 16
@@ -507,12 +534,14 @@ ApplicationWindow {
 
                 ColumnLayout {
                     id: shortcutsSection
+                    visible: root.settingsSection === 0
                     spacing: 5
                     Text { text: qsTr("Shortcuts"); color: root.primaryText; font.pixelSize: 22; font.weight: Font.Bold }
                     Text { text: qsTr("Configure how dictation starts and what appears while you speak."); color: root.secondaryText; font.pixelSize: 13 }
                 }
 
                 Rectangle {
+                    visible: root.settingsSection === 0
                     Layout.fillWidth: true
                     height: 180
                     radius: 16
@@ -561,6 +590,7 @@ ApplicationWindow {
                 }
 
                 Rectangle {
+                    visible: root.settingsSection === 1
                     Layout.fillWidth: true
                     height: 102
                     radius: 16
@@ -615,6 +645,7 @@ ApplicationWindow {
                 }
 
                 Rectangle {
+                    visible: root.settingsSection === 1
                     Layout.fillWidth: true
                     implicitHeight: transcriptColumn.implicitHeight + 36
                     radius: 16
@@ -644,12 +675,14 @@ ApplicationWindow {
 
                 ColumnLayout {
                     id: appearanceSection
+                    visible: root.settingsSection === 0
                     spacing: 5
                     Text { text: qsTr("Appearance"); color: root.primaryText; font.pixelSize: 22; font.weight: Font.Bold }
                     Text { text: qsTr("A native KDE interpretation of FluidVoice's macOS visual language."); color: root.secondaryText; font.pixelSize: 13 }
                 }
 
                 Rectangle {
+                    visible: root.settingsSection === 0
                     Layout.fillWidth: true
                     height: 158
                     radius: 16
@@ -682,6 +715,68 @@ ApplicationWindow {
                             }
                             Rectangle { width: 18; height: 18; radius: 9; color: root.accent; border.color: "#66ffffff" }
                             Text { text: qsTr("Cyan"); color: root.secondaryText; font.pixelSize: 13 }
+                        }
+                    }
+                }
+
+                ColumnLayout {
+                    visible: root.settingsSection >= 2
+                    spacing: 5
+                    Text {
+                        text: root.destinationTitles[root.settingsSection]
+                        color: root.primaryText
+                        font.pixelSize: 22
+                        font.weight: Font.Bold
+                    }
+                    Text {
+                        text: root.destinationDescriptions[root.settingsSection]
+                        color: root.secondaryText
+                        font.pixelSize: 14
+                    }
+                }
+
+                Rectangle {
+                    visible: root.settingsSection >= 2
+                    Layout.fillWidth: true
+                    implicitHeight: unavailableContent.implicitHeight + 48
+                    radius: 16
+                    color: root.panel
+                    border.color: root.hairline
+
+                    ColumnLayout {
+                        id: unavailableContent
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.top: parent.top
+                        anchors.margins: 24
+                        spacing: 12
+                        Rectangle {
+                            width: 44
+                            height: 44
+                            radius: 12
+                            color: root.panelRaised
+                            border.color: root.hairline
+                            Text {
+                                anchors.centerIn: parent
+                                text: root.settingsSection === 2 ? "✦" : "…"
+                                color: root.secondaryText
+                                font.pixelSize: 20
+                            }
+                        }
+                        Text {
+                            text: qsTr("Not implemented yet")
+                            color: root.primaryText
+                            font.pixelSize: 15
+                            font.weight: Font.DemiBold
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            text: root.settingsSection === 2
+                                  ? qsTr("AI Enhancement is shown to match FluidVoice's upstream navigation, but no AI provider or text-processing service is connected in this Linux port yet. Local Whisper transcription continues to work without it.")
+                                  : qsTr("This upstream FluidVoice destination is not available in the Linux port yet. It is included here so the application structure stays familiar as functionality is added.")
+                            color: root.secondaryText
+                            font.pixelSize: 13
+                            wrapMode: Text.Wrap
                         }
                     }
                 }
