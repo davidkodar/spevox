@@ -44,6 +44,136 @@ ApplicationWindow {
         settingsSection = index
         settingsFlick.contentY = 0
     }
+    function historyTimestamp(entry) {
+        var separator = entry.indexOf("\t")
+        if (separator < 0)
+            return 0
+        var seconds = Number(entry.substring(0, separator))
+        return isFinite(seconds) ? seconds : 0
+    }
+    function historyText(entry) {
+        var separator = entry.indexOf("\t")
+        return separator >= 0 ? entry.substring(separator + 1) : entry
+    }
+    function historyWords(entry) {
+        var text = historyText(entry).trim()
+        return text.length === 0 ? 0 : text.split(/\s+/).length
+    }
+    function historyDate(entry) {
+        var seconds = historyTimestamp(entry)
+        return seconds > 0 ? Qt.formatDateTime(new Date(seconds * 1000), "d MMM yyyy, HH:mm") : qsTr("Date unavailable")
+    }
+    function historyRelativeTime(entry) {
+        var seconds = historyTimestamp(entry)
+        if (seconds <= 0)
+            return qsTr("Unknown time")
+        var elapsed = Math.max(0, Math.floor(Date.now() / 1000) - seconds)
+        if (elapsed < 60)
+            return qsTr("Just now")
+        if (elapsed < 3600)
+            return qsTr("%1m ago").arg(Math.floor(elapsed / 60))
+        if (elapsed < 86400)
+            return qsTr("%1h ago").arg(Math.floor(elapsed / 3600))
+        if (elapsed < 604800)
+            return qsTr("%1d ago").arg(Math.floor(elapsed / 86400))
+        return Qt.formatDateTime(new Date(seconds * 1000), "d MMM")
+    }
+    function dayKeyFromSeconds(seconds) {
+        var date = new Date(seconds * 1000)
+        return Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / 86400000
+    }
+    function todayHistoryWords() {
+        var today = new Date()
+        var key = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()) / 86400000
+        var total = 0
+        for (var i = 0; i < controller.historyEntries.length; ++i)
+            if (dayKeyFromSeconds(historyTimestamp(controller.historyEntries[i])) === key)
+                total += historyWords(controller.historyEntries[i])
+        return total
+    }
+    function todayHistorySessions() {
+        var today = new Date()
+        var key = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()) / 86400000
+        var total = 0
+        for (var i = 0; i < controller.historyEntries.length; ++i)
+            if (dayKeyFromSeconds(historyTimestamp(controller.historyEntries[i])) === key)
+                ++total
+        return total
+    }
+    function wordsOnDay(daysAgo) {
+        var date = new Date()
+        date = new Date(date.getFullYear(), date.getMonth(), date.getDate() - daysAgo)
+        var key = Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / 86400000
+        var total = 0
+        for (var i = 0; i < controller.historyEntries.length; ++i)
+            if (dayKeyFromSeconds(historyTimestamp(controller.historyEntries[i])) === key)
+                total += historyWords(controller.historyEntries[i])
+        return total
+    }
+    function maxDailyWords(days) {
+        var maximum = 1
+        for (var i = 0; i < days; ++i)
+            maximum = Math.max(maximum, wordsOnDay(i))
+        return maximum
+    }
+    function activeDayKeys() {
+        var keys = []
+        for (var i = 0; i < controller.historyEntries.length; ++i) {
+            var seconds = historyTimestamp(controller.historyEntries[i])
+            if (seconds <= 0)
+                continue
+            var key = dayKeyFromSeconds(seconds)
+            if (keys.indexOf(key) < 0)
+                keys.push(key)
+        }
+        keys.sort(function(a, b) { return b - a })
+        return keys
+    }
+    function currentStreak() {
+        var keys = activeDayKeys()
+        if (keys.length === 0)
+            return 0
+        var today = new Date()
+        var cursor = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()) / 86400000
+        if (keys.indexOf(cursor) < 0)
+            cursor -= 1
+        var streak = 0
+        while (keys.indexOf(cursor) >= 0) {
+            ++streak
+            cursor -= 1
+        }
+        return streak
+    }
+    function bestStreak() {
+        var keys = activeDayKeys().sort(function(a, b) { return a - b })
+        if (keys.length === 0)
+            return 0
+        var best = 1
+        var streak = 1
+        for (var i = 1; i < keys.length; ++i) {
+            streak = keys[i] - keys[i - 1] === 1 ? streak + 1 : 1
+            best = Math.max(best, streak)
+        }
+        return best
+    }
+    function timeSaved(words) {
+        var minutes = Math.max(0, words / 40 - words / 150)
+        if (minutes < 1)
+            return "< 1m"
+        if (minutes < 60)
+            return Math.floor(minutes) + "m"
+        return Math.floor(minutes / 60) + "h " + Math.floor(minutes % 60) + "m"
+    }
+    function filteredHistory(query) {
+        var normalized = query.trim().toLowerCase()
+        var entries = []
+        for (var i = 0; i < controller.historyEntries.length; ++i) {
+            var entry = controller.historyEntries[i]
+            if (normalized.length === 0 || historyText(entry).toLowerCase().indexOf(normalized) >= 0)
+                entries.push(entry)
+        }
+        return entries
+    }
     onClosing: function(close) {
         close.accepted = false
         root.hide()
@@ -982,12 +1112,41 @@ ApplicationWindow {
                         Button { text: qsTr("Clear history"); enabled: controller.historyEntries.length > 0; onClicked: controller.clearHistory() }
                     }
                     Text { text: root.destinationDescriptions[6]; color: root.secondaryText; font.pixelSize: 14 }
+                    TextField {
+                        id: historySearch
+                        Layout.fillWidth: true
+                        placeholderText: qsTr("Search transcriptions…")
+                        leftPadding: 14
+                        rightPadding: 14
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Text { text: historySearch.text.length > 0 ? qsTr("%1 matching entries").arg(root.filteredHistory(historySearch.text).length) : qsTr("%1 entries").arg(controller.historyEntries.length); color: root.secondaryText; font.pixelSize: 11 }
+                        Item { Layout.fillWidth: true }
+                        Text { visible: controller.historyEntries.length > 0; text: qsTr("Newest first"); color: root.tertiaryText; font.pixelSize: 11 }
+                    }
                     Text { visible: controller.historyEntries.length === 0; text: qsTr("No transcripts yet. Completed dictation and file transcripts appear here."); color: root.secondaryText; font.pixelSize: 13 }
+                    Text { visible: controller.historyEntries.length > 0 && root.filteredHistory(historySearch.text).length === 0; text: qsTr("No results. Try a different search term."); color: root.secondaryText; font.pixelSize: 13 }
                     Repeater {
-                        model: controller.historyEntries
+                        model: root.filteredHistory(historySearch.text)
                         delegate: Rectangle {
-                            required property string modelData; Layout.fillWidth: true; implicitHeight: historyText.implicitHeight + 28; radius: 10; color: root.panel; border.color: root.hairline
-                            Text { id: historyText; anchors.fill: parent; anchors.margins: 14; text: modelData.indexOf("\t") >= 0 ? modelData.substring(modelData.indexOf("\t") + 1) : modelData; color: root.primaryText; font.pixelSize: 13; wrapMode: Text.Wrap }
+                            required property string modelData; Layout.fillWidth: true; implicitHeight: historyContent.implicitHeight + 28; radius: 10; color: root.panel; border.color: root.hairline
+                            ColumnLayout {
+                                id: historyContent; anchors.fill: parent; anchors.margins: 14; spacing: 8
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    Text { text: qsTr("FluidVoice Linux"); color: root.secondaryText; font.pixelSize: 11; font.weight: Font.DemiBold }
+                                    Item { Layout.fillWidth: true }
+                                    Text { text: root.historyRelativeTime(modelData); color: root.tertiaryText; font.pixelSize: 10 }
+                                }
+                                Text { Layout.fillWidth: true; text: root.historyText(modelData); color: root.primaryText; font.pixelSize: 13; wrapMode: Text.Wrap }
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    Text { text: root.historyDate(modelData); color: root.secondaryText; font.pixelSize: 11 }
+                                    Item { Layout.fillWidth: true }
+                                    Text { text: qsTr("%1 words").arg(root.historyWords(modelData)); color: root.secondaryText; font.pixelSize: 11 }
+                                }
+                            }
                         }
                     }
                 }
@@ -997,13 +1156,66 @@ ApplicationWindow {
                     spacing: 14
                     Text { text: qsTr("Stats"); color: root.primaryText; font.pixelSize: 22; font.weight: Font.Bold }
                     Text { text: root.destinationDescriptions[7]; color: root.secondaryText; font.pixelSize: 14 }
+                    Rectangle {
+                        Layout.fillWidth: true; implicitHeight: todayStats.implicitHeight + 40; radius: 16; color: root.selectionSurface; border.color: root.accent
+                        ColumnLayout {
+                            id: todayStats; anchors.fill: parent; anchors.margins: 20; spacing: 14
+                            RowLayout {
+                                Layout.fillWidth: true
+                                ColumnLayout { spacing: 3
+                                    Text { text: qsTr("Today"); color: root.primaryText; font.pixelSize: 24; font.weight: Font.Bold }
+                                    Text { text: root.todayHistoryWords() > 0 ? qsTr("Every dictated word adds up.") : qsTr("Ready when you are. Start dictating to save time."); color: root.secondaryText; font.pixelSize: 12 }
+                                }
+                                Item { Layout.fillWidth: true }
+                                Rectangle { visible: root.currentStreak() > 0; implicitWidth: streakLabel.implicitWidth + 20; implicitHeight: 26; radius: 13; color: root.panelRaised; Text { id: streakLabel; anchors.centerIn: parent; text: qsTr("🔥 %1 day streak").arg(root.currentStreak()); color: root.primaryText; font.pixelSize: 11; font.weight: Font.DemiBold } }
+                            }
+                            RowLayout {
+                                Layout.fillWidth: true; spacing: 26
+                                ColumnLayout { Text { text: root.todayHistoryWords(); color: root.primaryText; font.pixelSize: 22; font.weight: Font.Bold } Text { text: qsTr("words"); color: root.secondaryText; font.pixelSize: 10 } }
+                                Rectangle { width: 1; height: 34; color: root.hairline }
+                                ColumnLayout { Text { text: root.timeSaved(root.todayHistoryWords()); color: root.primaryText; font.pixelSize: 22; font.weight: Font.Bold } Text { text: qsTr("estimated saved"); color: root.secondaryText; font.pixelSize: 10 } }
+                                Rectangle { width: 1; height: 34; color: root.hairline }
+                                ColumnLayout { Text { text: root.todayHistorySessions(); color: root.primaryText; font.pixelSize: 22; font.weight: Font.Bold } Text { text: qsTr("sessions"); color: root.secondaryText; font.pixelSize: 10 } }
+                                Item { Layout.fillWidth: true }
+                            }
+                        }
+                    }
                     RowLayout {
                         Layout.fillWidth: true; spacing: 12
                         Rectangle { Layout.fillWidth: true; height: 120; radius: 16; color: root.panel; border.color: root.hairline
-                            Column { anchors.centerIn: parent; spacing: 6; Text { anchors.horizontalCenter: parent.horizontalCenter; text: controller.transcriptCount; color: root.primaryText; font.pixelSize: 30; font.weight: Font.Bold } Text { anchors.horizontalCenter: parent.horizontalCenter; text: qsTr("Transcripts"); color: root.secondaryText; font.pixelSize: 13 } }
+                            Column { anchors.centerIn: parent; spacing: 6; Text { anchors.horizontalCenter: parent.horizontalCenter; text: root.timeSaved(controller.dictatedWordCount); color: root.primaryText; font.pixelSize: 30; font.weight: Font.Bold } Text { anchors.horizontalCenter: parent.horizontalCenter; text: qsTr("Time saved"); color: root.secondaryText; font.pixelSize: 13 } Text { anchors.horizontalCenter: parent.horizontalCenter; text: qsTr("Based on 40 WPM typing"); color: root.tertiaryText; font.pixelSize: 10 } }
                         }
                         Rectangle { Layout.fillWidth: true; height: 120; radius: 16; color: root.panel; border.color: root.hairline
-                            Column { anchors.centerIn: parent; spacing: 6; Text { anchors.horizontalCenter: parent.horizontalCenter; text: controller.dictatedWordCount; color: root.primaryText; font.pixelSize: 30; font.weight: Font.Bold } Text { anchors.horizontalCenter: parent.horizontalCenter; text: qsTr("Words processed"); color: root.secondaryText; font.pixelSize: 13 } }
+                            Column { anchors.centerIn: parent; spacing: 6; Text { anchors.horizontalCenter: parent.horizontalCenter; text: controller.dictatedWordCount; color: root.primaryText; font.pixelSize: 30; font.weight: Font.Bold } Text { anchors.horizontalCenter: parent.horizontalCenter; text: qsTr("Total words"); color: root.secondaryText; font.pixelSize: 13 } Text { anchors.horizontalCenter: parent.horizontalCenter; text: qsTr("+%1 today").arg(root.todayHistoryWords()); color: root.tertiaryText; font.pixelSize: 10 } }
+                        }
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true; spacing: 12
+                        Rectangle { Layout.fillWidth: true; height: 110; radius: 16; color: root.panel; border.color: root.hairline
+                            Column { anchors.centerIn: parent; spacing: 6; Text { anchors.horizontalCenter: parent.horizontalCenter; text: root.currentStreak(); color: root.primaryText; font.pixelSize: 28; font.weight: Font.Bold } Text { anchors.horizontalCenter: parent.horizontalCenter; text: qsTr("Current streak"); color: root.secondaryText; font.pixelSize: 12 } Text { anchors.horizontalCenter: parent.horizontalCenter; text: qsTr("Best: %1 days").arg(root.bestStreak()); color: root.tertiaryText; font.pixelSize: 10 } }
+                        }
+                        Rectangle { Layout.fillWidth: true; height: 110; radius: 16; color: root.panel; border.color: root.hairline
+                            Column { anchors.centerIn: parent; spacing: 6; Text { anchors.horizontalCenter: parent.horizontalCenter; text: controller.transcriptCount; color: root.primaryText; font.pixelSize: 28; font.weight: Font.Bold } Text { anchors.horizontalCenter: parent.horizontalCenter; text: qsTr("Transcriptions"); color: root.secondaryText; font.pixelSize: 12 } Text { anchors.horizontalCenter: parent.horizontalCenter; text: qsTr("Avg: %1 words each").arg(controller.transcriptCount > 0 ? Math.floor(controller.dictatedWordCount / controller.transcriptCount) : 0); color: root.tertiaryText; font.pixelSize: 10 } }
+                        }
+                    }
+                    Rectangle {
+                        Layout.fillWidth: true; height: 170; radius: 16; color: root.panel; border.color: root.hairline
+                        ColumnLayout {
+                            anchors.fill: parent; anchors.margins: 16; spacing: 10
+                            Text { text: qsTr("ACTIVITY · LAST 7 DAYS"); color: root.secondaryText; font.pixelSize: 11; font.weight: Font.DemiBold }
+                            RowLayout {
+                                Layout.fillWidth: true; Layout.fillHeight: true; spacing: 8
+                                Repeater {
+                                    model: 7
+                                    delegate: ColumnLayout {
+                                        required property int index; Layout.fillWidth: true; Layout.fillHeight: true; spacing: 4
+                                        Item { Layout.fillHeight: true }
+                                        Text { Layout.alignment: Qt.AlignHCenter; text: root.wordsOnDay(6 - index); color: root.secondaryText; font.pixelSize: 9 }
+                                        Rectangle { Layout.alignment: Qt.AlignHCenter; width: 28; height: Math.max(3, root.wordsOnDay(6 - index) / root.maxDailyWords(7) * 72); radius: 4; color: root.wordsOnDay(6 - index) > 0 ? root.accent : root.panelRaised }
+                                        Text { Layout.alignment: Qt.AlignHCenter; text: Qt.formatDateTime(new Date(new Date().setDate(new Date().getDate() - (6 - index))), "ddd"); color: root.secondaryText; font.pixelSize: 9 }
+                                    }
+                                }
+                            }
                         }
                     }
                     Text { text: qsTr("Statistics are derived locally from History and never leave this computer."); color: root.secondaryText; font.pixelSize: 12 }

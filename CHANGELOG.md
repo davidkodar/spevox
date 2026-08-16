@@ -6,7 +6,10 @@ All notable changes to FluidVoice Linux are documented here. The project uses
 ## Unreleased
 
 - Broader file-format support beyond 16-bit PCM WAV.
-- Richer history, statistics, and command-mode workflows are planned.
+- Added searchable history cards with relative and full local timestamps and word counts.
+- Expanded local statistics with today's activity, estimated time saved, streaks,
+  average session size, and a seven-day activity chart.
+- Richer history metadata, audio retention, and command-mode workflows are planned.
 
 ## 0.2.0 - 2026-08-16
 

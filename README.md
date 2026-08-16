@@ -103,8 +103,8 @@ usable but does not yet match the depth of the current macOS implementation.
 | Write/rewrite selected text | Missing | Available | Requires a richer Wayland text-selection and editing integration. |
 | AI Enhancement / Fluid Intelligence | Missing | Available | Fluid Intelligence is separately maintained and closed source; no cloud provider integration is included. |
 | File transcription | Partial | Available | Linux currently accepts 16-bit PCM WAV; broader formats and meeting workflows are planned. |
-| Transcript history | Partial | Available | Linux stores text locally; search, metadata, audio retention, ZIP export, and report flows are missing. |
-| Usage statistics | Partial | Available | Linux currently reports transcript and word totals, not daily charts or WPM analysis. |
+| Transcript history | Partial | Available | Linux provides search, local date/time, relative time, and word counts; app/window metadata, per-entry actions, audio retention, ZIP export, and reports are missing. |
+| Usage statistics | Partial | Available | Linux provides today/all-time totals, estimated time saved, streaks, averages, and a seven-day chart; editable typing speed, 30-day charts, milestones, insights, and records are still missing. |
 | Per-application configuration | Missing | Available | No app-specific prompt or behavior profiles yet. |
 | Audio recording history | Missing | Available | Linux does not retain microphone audio after transcription. |
 | Adaptive themes and accents | Available | Available | System/KDE defaults plus explicit FluidVoice themes and colors. |
