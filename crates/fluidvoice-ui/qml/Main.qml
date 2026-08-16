@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Window
+import QtQuick.Dialogs
 import io.github.davidkodar.FluidVoiceLinux
 
 ApplicationWindow {
@@ -56,6 +57,13 @@ ApplicationWindow {
 
     FluidVoiceController {
         id: controller
+    }
+
+    FileDialog {
+        id: audioFileDialog
+        title: qsTr("Choose an audio file")
+        nameFilters: [qsTr("PCM WAV audio (*.wav)")]
+        onAccepted: controller.transcribeFile(selectedFile.toString())
     }
 
     Component.onCompleted: {
@@ -721,7 +729,7 @@ ApplicationWindow {
                 }
 
                 ColumnLayout {
-                    visible: root.settingsSection >= 2
+                    visible: root.settingsSection === 2
                     spacing: 5
                     Text {
                         text: root.destinationTitles[root.settingsSection]
@@ -737,7 +745,7 @@ ApplicationWindow {
                 }
 
                 Rectangle {
-                    visible: root.settingsSection >= 2
+                    visible: root.settingsSection === 2
                     Layout.fillWidth: true
                     implicitHeight: unavailableContent.implicitHeight + 48
                     radius: 16
@@ -759,7 +767,7 @@ ApplicationWindow {
                             border.color: root.hairline
                             Text {
                                 anchors.centerIn: parent
-                                text: root.settingsSection === 2 ? "✦" : "…"
+                            text: "✦"
                                 color: root.secondaryText
                                 font.pixelSize: 20
                             }
@@ -772,12 +780,166 @@ ApplicationWindow {
                         }
                         Text {
                             Layout.fillWidth: true
-                            text: root.settingsSection === 2
-                                  ? qsTr("AI Enhancement is shown to match FluidVoice's upstream navigation, but no AI provider or text-processing service is connected in this Linux port yet. Local Whisper transcription continues to work without it.")
-                                  : qsTr("This upstream FluidVoice destination is not available in the Linux port yet. It is included here so the application structure stays familiar as functionality is added.")
+                            text: qsTr("AI Enhancement is shown to match FluidVoice's upstream navigation, but no AI provider or text-processing service is connected in this Linux port yet. Local Whisper transcription continues to work without it.")
                             color: root.secondaryText
                             font.pixelSize: 13
                             wrapMode: Text.Wrap
+                        }
+                    }
+                }
+
+                ColumnLayout {
+                    visible: root.settingsSection === 3
+                    spacing: 14
+                    Text { text: qsTr("Custom Dictionary"); color: root.primaryText; font.pixelSize: 22; font.weight: Font.Bold }
+                    Text { text: root.destinationDescriptions[3]; color: root.secondaryText; font.pixelSize: 14 }
+                    Rectangle {
+                        Layout.fillWidth: true; implicitHeight: dictionaryContent.implicitHeight + 32; radius: 16
+                        color: root.panel; border.color: root.hairline
+                        ColumnLayout {
+                            id: dictionaryContent; anchors.fill: parent; anchors.margins: 16; spacing: 12
+                            Text { text: qsTr("PREFERRED TERMS"); color: root.tertiaryText; font.pixelSize: 11; font.weight: Font.Medium }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                TextField { id: dictionaryInput; Layout.fillWidth: true; placeholderText: qsTr("Add a name, acronym, or preferred spelling"); onAccepted: addDictionaryButton.clicked() }
+                                Button { id: addDictionaryButton; text: qsTr("Add"); enabled: dictionaryInput.text.trim().length > 0; onClicked: { controller.addDictionaryTerm(dictionaryInput.text); dictionaryInput.clear() } }
+                            }
+                            Text { visible: controller.dictionaryTerms.length === 0; text: qsTr("No custom terms yet."); color: root.secondaryText; font.pixelSize: 13 }
+                            Repeater {
+                                model: controller.dictionaryTerms
+                                delegate: RowLayout {
+                                    required property string modelData; required property int index; Layout.fillWidth: true
+                                    Text { Layout.fillWidth: true; text: modelData; color: root.primaryText; font.pixelSize: 13 }
+                                    ToolButton { text: "×"; ToolTip.visible: hovered; ToolTip.text: qsTr("Remove"); onClicked: controller.removeDictionaryTerm(index) }
+                                }
+                            }
+                            Text { Layout.fillWidth: true; text: qsTr("Matching words in new transcripts are rewritten with this exact capitalization."); color: root.secondaryText; font.pixelSize: 12; wrapMode: Text.Wrap }
+                        }
+                    }
+                }
+
+                ColumnLayout {
+                    visible: root.settingsSection === 4
+                    spacing: 14
+                    Text { text: qsTr("Command Mode"); color: root.primaryText; font.pixelSize: 22; font.weight: Font.Bold }
+                    Text { text: root.destinationDescriptions[4]; color: root.secondaryText; font.pixelSize: 14 }
+                    Rectangle {
+                        Layout.fillWidth: true; implicitHeight: commandContent.implicitHeight + 32; radius: 16; color: root.panel; border.color: root.hairline
+                        ColumnLayout {
+                            id: commandContent; anchors.fill: parent; anchors.margins: 16; spacing: 14
+                            RowLayout {
+                                Layout.fillWidth: true
+                                ColumnLayout { Layout.fillWidth: true; spacing: 3
+                                    Text { text: qsTr("Spoken formatting commands"); color: root.primaryText; font.pixelSize: 14; font.weight: Font.Medium }
+                                    Text { text: qsTr("Convert recognized commands after local transcription."); color: root.secondaryText; font.pixelSize: 12 }
+                                }
+                                Switch { checked: controller.commandModeEnabled; onToggled: controller.updateCommandModeEnabled(checked) }
+                            }
+                            Rectangle { Layout.fillWidth: true; height: 1; color: root.hairline }
+                            Text { text: qsTr("AVAILABLE COMMANDS"); color: root.tertiaryText; font.pixelSize: 11; font.weight: Font.Medium }
+                            Text { Layout.fillWidth: true; text: qsTr("“new line”  “new paragraph”  “comma”  “period”  “question mark”  “exclamation mark”"); color: root.secondaryText; font.pixelSize: 13; wrapMode: Text.Wrap }
+                        }
+                    }
+                }
+
+                ColumnLayout {
+                    visible: root.settingsSection === 5
+                    spacing: 14
+                    Text { text: qsTr("File Transcription"); color: root.primaryText; font.pixelSize: 22; font.weight: Font.Bold }
+                    Text { text: root.destinationDescriptions[5]; color: root.secondaryText; font.pixelSize: 14 }
+                    Rectangle {
+                        Layout.fillWidth: true; implicitHeight: fileContent.implicitHeight + 40; radius: 16; color: root.panel; border.color: root.hairline
+                        ColumnLayout {
+                            id: fileContent; anchors.fill: parent; anchors.margins: 20; spacing: 12
+                            Text { text: qsTr("TRANSCRIBE AUDIO"); color: root.tertiaryText; font.pixelSize: 11; font.weight: Font.Medium }
+                            Text { Layout.fillWidth: true; text: qsTr("Uses the active Whisper model and language. Audio remains on this computer."); color: root.secondaryText; font.pixelSize: 13; wrapMode: Text.Wrap }
+                            Button { text: controller.transcribing ? qsTr("Transcribing…") : qsTr("Choose WAV file"); enabled: !controller.transcribing && !controller.recording; onClicked: audioFileDialog.open() }
+                            Text { Layout.fillWidth: true; text: controller.fileTranscriptionStatus; color: controller.transcribing ? root.accent : root.secondaryText; font.pixelSize: 12; wrapMode: Text.Wrap }
+                        }
+                    }
+                }
+
+                ColumnLayout {
+                    visible: root.settingsSection === 6
+                    spacing: 14
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Text { text: qsTr("History"); color: root.primaryText; font.pixelSize: 22; font.weight: Font.Bold }
+                        Item { Layout.fillWidth: true }
+                        Button { text: qsTr("Clear history"); enabled: controller.historyEntries.length > 0; onClicked: controller.clearHistory() }
+                    }
+                    Text { text: root.destinationDescriptions[6]; color: root.secondaryText; font.pixelSize: 14 }
+                    Text { visible: controller.historyEntries.length === 0; text: qsTr("No transcripts yet. Completed dictation and file transcripts appear here."); color: root.secondaryText; font.pixelSize: 13 }
+                    Repeater {
+                        model: controller.historyEntries
+                        delegate: Rectangle {
+                            required property string modelData; Layout.fillWidth: true; implicitHeight: historyText.implicitHeight + 28; radius: 10; color: root.panel; border.color: root.hairline
+                            Text { id: historyText; anchors.fill: parent; anchors.margins: 14; text: modelData.indexOf("\t") >= 0 ? modelData.substring(modelData.indexOf("\t") + 1) : modelData; color: root.primaryText; font.pixelSize: 13; wrapMode: Text.Wrap }
+                        }
+                    }
+                }
+
+                ColumnLayout {
+                    visible: root.settingsSection === 7
+                    spacing: 14
+                    Text { text: qsTr("Stats"); color: root.primaryText; font.pixelSize: 22; font.weight: Font.Bold }
+                    Text { text: root.destinationDescriptions[7]; color: root.secondaryText; font.pixelSize: 14 }
+                    RowLayout {
+                        Layout.fillWidth: true; spacing: 12
+                        Rectangle { Layout.fillWidth: true; height: 120; radius: 16; color: root.panel; border.color: root.hairline
+                            Column { anchors.centerIn: parent; spacing: 6; Text { anchors.horizontalCenter: parent.horizontalCenter; text: controller.transcriptCount; color: root.primaryText; font.pixelSize: 30; font.weight: Font.Bold } Text { anchors.horizontalCenter: parent.horizontalCenter; text: qsTr("Transcripts"); color: root.secondaryText; font.pixelSize: 13 } }
+                        }
+                        Rectangle { Layout.fillWidth: true; height: 120; radius: 16; color: root.panel; border.color: root.hairline
+                            Column { anchors.centerIn: parent; spacing: 6; Text { anchors.horizontalCenter: parent.horizontalCenter; text: controller.dictatedWordCount; color: root.primaryText; font.pixelSize: 30; font.weight: Font.Bold } Text { anchors.horizontalCenter: parent.horizontalCenter; text: qsTr("Words processed"); color: root.secondaryText; font.pixelSize: 13 } }
+                        }
+                    }
+                    Text { text: qsTr("Statistics are derived locally from History and never leave this computer."); color: root.secondaryText; font.pixelSize: 12 }
+                }
+
+                ColumnLayout {
+                    visible: root.settingsSection === 8
+                    spacing: 14
+                    Text { text: qsTr("Getting Started"); color: root.primaryText; font.pixelSize: 22; font.weight: Font.Bold }
+                    Text { text: root.destinationDescriptions[8]; color: root.secondaryText; font.pixelSize: 14 }
+                    Repeater {
+                        model: [
+                            { "title": qsTr("Choose a microphone"), "detail": controller.selectedInput >= 0 ? controller.microphoneName : qsTr("Open Voice Engine and select an input"), "done": controller.selectedInput >= 0 },
+                            { "title": qsTr("Install a speech model"), "detail": controller.modelName, "done": controller.modelStates[controller.selectedModel] === "Downloaded" },
+                            { "title": qsTr("Test the global shortcut"), "detail": qsTr("Hold %1 and speak").arg(controller.shortcuts[controller.selectedShortcut]), "done": controller.transcriptCount > 0 }
+                        ]
+                        delegate: Rectangle {
+                            required property var modelData; Layout.fillWidth: true; height: 72; radius: 10; color: root.panel; border.color: root.hairline
+                            RowLayout { anchors.fill: parent; anchors.margins: 14; spacing: 12
+                                Rectangle { width: 26; height: 26; radius: 13; color: modelData.done ? "#234b3b" : root.panelRaised; border.color: modelData.done ? "#39755a" : root.hairline; Text { anchors.centerIn: parent; text: modelData.done ? "✓" : "·"; color: modelData.done ? "#70d59b" : root.secondaryText; font.pixelSize: 13 } }
+                                ColumnLayout { Layout.fillWidth: true; spacing: 2; Text { text: modelData.title; color: root.primaryText; font.pixelSize: 14; font.weight: Font.Medium } Text { text: modelData.detail; color: root.secondaryText; font.pixelSize: 12 } }
+                            }
+                        }
+                    }
+                }
+
+                ColumnLayout {
+                    visible: root.settingsSection === 9
+                    spacing: 14
+                    Text { text: qsTr("Change logs"); color: root.primaryText; font.pixelSize: 22; font.weight: Font.Bold }
+                    Text { text: root.destinationDescriptions[9]; color: root.secondaryText; font.pixelSize: 14 }
+                    Rectangle { Layout.fillWidth: true; implicitHeight: changeContent.implicitHeight + 32; radius: 16; color: root.panel; border.color: root.hairline
+                        ColumnLayout { id: changeContent; anchors.fill: parent; anchors.margins: 16; spacing: 10
+                            Text { text: qsTr("0.1.0 · Private preview"); color: root.primaryText; font.pixelSize: 15; font.weight: Font.DemiBold }
+                            Text { Layout.fillWidth: true; text: qsTr("Native KDE Wayland dictation, PipeWire microphone selection, local Whisper models, language selection, live overlay, model management, custom dictionary, formatting commands, WAV transcription, history, and statistics."); color: root.secondaryText; font.pixelSize: 13; wrapMode: Text.Wrap }
+                        }
+                    }
+                }
+
+                ColumnLayout {
+                    visible: root.settingsSection === 10
+                    spacing: 14
+                    Text { text: qsTr("Feedback"); color: root.primaryText; font.pixelSize: 22; font.weight: Font.Bold }
+                    Text { text: root.destinationDescriptions[10]; color: root.secondaryText; font.pixelSize: 14 }
+                    Rectangle { Layout.fillWidth: true; implicitHeight: feedbackContent.implicitHeight + 40; radius: 16; color: root.panel; border.color: root.hairline
+                        ColumnLayout { id: feedbackContent; anchors.fill: parent; anchors.margins: 20; spacing: 12
+                            Text { text: qsTr("HELP IMPROVE FLUIDVOICE LINUX"); color: root.tertiaryText; font.pixelSize: 11; font.weight: Font.Medium }
+                            Text { Layout.fillWidth: true; text: qsTr("Report a bug or share an idea through GitHub. The browser opens outside FluidVoice; nothing is submitted automatically."); color: root.secondaryText; font.pixelSize: 13; wrapMode: Text.Wrap }
+                            Button { text: qsTr("Open GitHub issues"); onClicked: Qt.openUrlExternally("https://github.com/davidkodar/fluidvoice-linux/issues") }
                         }
                     }
                 }

@@ -38,6 +38,16 @@ pub mod ffi {
         #[qproperty(f32, model_download_progress, cxx_name = "modelDownloadProgress")]
         #[qproperty(QStringList, shortcuts)]
         #[qproperty(i32, selected_shortcut, cxx_name = "selectedShortcut")]
+        #[qproperty(QStringList, dictionary_terms, cxx_name = "dictionaryTerms")]
+        #[qproperty(QStringList, history_entries, cxx_name = "historyEntries")]
+        #[qproperty(i32, transcript_count, cxx_name = "transcriptCount")]
+        #[qproperty(i32, dictated_word_count, cxx_name = "dictatedWordCount")]
+        #[qproperty(bool, command_mode_enabled, cxx_name = "commandModeEnabled")]
+        #[qproperty(
+            QString,
+            file_transcription_status,
+            cxx_name = "fileTranscriptionStatus"
+        )]
         type FluidVoiceController = super::FluidVoiceControllerRust;
 
         #[qinvokable]
@@ -91,6 +101,26 @@ pub mod ffi {
         #[qinvokable]
         #[cxx_name = "setOverlayPreview"]
         fn set_overlay_preview(self: Pin<&mut Self>, visible: bool);
+
+        #[qinvokable]
+        #[cxx_name = "addDictionaryTerm"]
+        fn add_dictionary_term(self: Pin<&mut Self>, term: &QString);
+
+        #[qinvokable]
+        #[cxx_name = "removeDictionaryTerm"]
+        fn remove_dictionary_term(self: Pin<&mut Self>, index: i32);
+
+        #[qinvokable]
+        #[cxx_name = "clearHistory"]
+        fn clear_history(self: Pin<&mut Self>);
+
+        #[qinvokable]
+        #[cxx_name = "updateCommandModeEnabled"]
+        fn update_command_mode_enabled(self: Pin<&mut Self>, enabled: bool);
+
+        #[qinvokable]
+        #[cxx_name = "transcribeFile"]
+        fn transcribe_file(self: Pin<&mut Self>, path: &QString);
     }
 
     impl cxx_qt::Threading for FluidVoiceController {}
@@ -152,6 +182,12 @@ pub struct FluidVoiceControllerRust {
     model_download_cancel: Option<Arc<AtomicBool>>,
     shortcuts: QStringList,
     selected_shortcut: i32,
+    dictionary_terms: QStringList,
+    history_entries: QStringList,
+    transcript_count: i32,
+    dictated_word_count: i32,
+    command_mode_enabled: bool,
+    file_transcription_status: QString,
 }
 
 impl Default for FluidVoiceControllerRust {
@@ -209,6 +245,17 @@ impl Default for FluidVoiceControllerRust {
                 },
             );
         let (model_states, model_details) = model_ui_lists(&model_paths);
+        let dictionary = load_lines(&dictionary_path());
+        let history = load_lines(&history_path());
+        let dictated_word_count = history
+            .iter()
+            .map(|entry| {
+                entry
+                    .split_once('\t')
+                    .map_or(entry.as_str(), |(_, text)| text)
+            })
+            .map(|text| text.split_whitespace().count())
+            .sum::<usize>();
         Self {
             status_text: QString::from("Ready"),
             microphone_name: QString::from("Detecting PipeWire inputs…"),
@@ -246,6 +293,12 @@ impl Default for FluidVoiceControllerRust {
                 .map(|(label, _)| QString::from(*label))
                 .collect(),
             selected_shortcut,
+            dictionary_terms: dictionary.iter().map(QString::from).collect(),
+            history_entries: history.iter().rev().map(QString::from).collect(),
+            transcript_count: i32::try_from(history.len()).unwrap_or(i32::MAX),
+            dictated_word_count: i32::try_from(dictated_word_count).unwrap_or(i32::MAX),
+            command_mode_enabled: preferences.command_mode_enabled,
+            file_transcription_status: QString::from("Choose a WAV file to transcribe locally."),
         }
     }
 }
@@ -580,6 +633,113 @@ impl ffi::FluidVoiceController {
         self.as_ref().rust().save_preferences();
     }
 
+    pub fn update_command_mode_enabled(mut self: Pin<&mut Self>, enabled: bool) {
+        self.as_mut().set_command_mode_enabled(enabled);
+        self.as_ref().rust().save_preferences();
+    }
+
+    pub fn add_dictionary_term(mut self: Pin<&mut Self>, term: &QString) {
+        let term = term.to_string().trim().to_owned();
+        if term.is_empty() {
+            return;
+        }
+        let mut terms = load_lines(&dictionary_path());
+        if terms
+            .iter()
+            .any(|existing| existing.eq_ignore_ascii_case(&term))
+        {
+            self.as_mut()
+                .set_status_text(QString::from("Dictionary entry already exists"));
+            return;
+        }
+        terms.push(term);
+        terms.sort_by_key(|value| value.to_lowercase());
+        if save_lines(&dictionary_path(), &terms).is_ok() {
+            self.as_mut()
+                .set_dictionary_terms(terms.iter().map(QString::from).collect());
+            self.as_mut()
+                .set_status_text(QString::from("Dictionary updated"));
+        }
+    }
+
+    pub fn remove_dictionary_term(mut self: Pin<&mut Self>, index: i32) {
+        let mut terms = load_lines(&dictionary_path());
+        let Ok(index) = usize::try_from(index) else {
+            return;
+        };
+        if index >= terms.len() {
+            return;
+        }
+        terms.remove(index);
+        if save_lines(&dictionary_path(), &terms).is_ok() {
+            self.as_mut()
+                .set_dictionary_terms(terms.iter().map(QString::from).collect());
+            self.as_mut()
+                .set_status_text(QString::from("Dictionary entry removed"));
+        }
+    }
+
+    pub fn clear_history(mut self: Pin<&mut Self>) {
+        save_lines(&history_path(), &[]).ok();
+        self.as_mut().set_history_entries(QStringList::default());
+        self.as_mut().set_transcript_count(0);
+        self.as_mut().set_dictated_word_count(0);
+        self.as_mut()
+            .set_status_text(QString::from("History cleared"));
+    }
+
+    pub fn transcribe_file(mut self: Pin<&mut Self>, path: &QString) {
+        if *self.as_ref().transcribing() || *self.as_ref().recording() {
+            return;
+        }
+        let Some(model) = selected_model_path(self.as_ref().rust()) else {
+            self.as_mut().set_file_transcription_status(QString::from(
+                "Download and activate a Whisper model first.",
+            ));
+            return;
+        };
+        let path = PathBuf::from(decode_file_url(&path.to_string()));
+        let language = selected_language_code(self.as_ref().rust());
+        let qt_thread = self.qt_thread();
+        self.as_mut().set_transcribing(true);
+        self.as_mut()
+            .set_file_transcription_status(QString::from("Transcribing locally…"));
+        std::thread::spawn(move || {
+            let result = transcribe_wav_file(&path, &model, language);
+            qt_thread
+                .queue(move |mut controller| {
+                    controller.as_mut().set_transcribing(false);
+                    match result {
+                        Ok(text) => {
+                            let processed = process_transcript(
+                                &text,
+                                controller.as_ref().rust().command_mode_enabled,
+                                &load_lines(&dictionary_path()),
+                            );
+                            record_history(controller.as_mut(), &processed);
+                            controller
+                                .as_mut()
+                                .set_transcript_text(QString::from(&processed));
+                            controller
+                                .as_mut()
+                                .set_file_transcription_status(QString::from(
+                                    "Complete — transcript added to History.",
+                                ));
+                            controller
+                                .set_status_text(QString::from("File transcription complete"));
+                        }
+                        Err(error) => {
+                            controller
+                                .as_mut()
+                                .set_file_transcription_status(QString::from(&error));
+                            controller.set_status_text(QString::from("File transcription failed"));
+                        }
+                    }
+                })
+                .ok();
+        });
+    }
+
     #[allow(clippy::too_many_lines)]
     pub fn toggle_recording(mut self: Pin<&mut Self>) {
         if *self.as_ref().recording() {
@@ -763,6 +923,11 @@ impl ffi::FluidVoiceController {
                     }
                     match transcription {
                         Ok(transcript) if !transcript.text.is_empty() => {
+                            let processed = process_transcript(
+                                &transcript.text,
+                                controller.as_ref().rust().command_mode_enabled,
+                                &load_lines(&dictionary_path()),
+                            );
                             let detected_language = transcript
                                 .detected_language
                                 .as_deref()
@@ -770,7 +935,7 @@ impl ffi::FluidVoiceController {
                                 .unwrap_or("Unknown language");
                             controller
                                 .as_mut()
-                                .set_live_transcript(QString::from(&transcript.text));
+                                .set_live_transcript(QString::from(&processed));
                             let rust = controller.as_mut().rust_mut().get_mut();
                             if rust.clipboard.is_none() {
                                 rust.clipboard = ClipboardDelivery::connect().ok();
@@ -780,16 +945,15 @@ impl ffi::FluidVoiceController {
                                 .as_mut()
                                 .ok_or(())
                                 .and_then(|delivery| {
-                                    delivery.copy_transcript(&transcript.text).map_err(|_| ())
+                                    delivery.copy_transcript(&processed).map_err(|_| ())
                                 });
                             if delivery_result.is_ok() {
                                 if let Some(sender) = controller.as_ref().rust().desktop_sender.as_ref() {
                                     sender.send(DesktopCommand::Paste).ok();
                                 }
                             }
-                            controller
-                                .as_mut()
-                                .set_transcript_text(QString::from(&transcript.text));
+                            record_history(controller.as_mut(), &processed);
+                            controller.as_mut().set_transcript_text(QString::from(&processed));
                             controller.set_status_text(QString::from(if delivery_result.is_ok() {
                                 format!("Dictated {:.1}s · {detected_language} · pasted or copied", duration.as_secs_f32())
                             } else {
@@ -851,6 +1015,7 @@ impl FluidVoiceControllerRust {
             input: self.capture_target.clone().unwrap_or_default(),
             gain_db: self.gain_db,
             overlay_enabled: self.overlay_enabled,
+            command_mode_enabled: self.command_mode_enabled,
         };
         if let Err(error) = preferences.save() {
             eprintln!("Failed to save preferences: {error}");
@@ -865,6 +1030,7 @@ struct Preferences {
     input: String,
     gain_db: f32,
     overlay_enabled: bool,
+    command_mode_enabled: bool,
 }
 
 impl Default for Preferences {
@@ -876,6 +1042,7 @@ impl Default for Preferences {
             input: String::new(),
             gain_db: 0.0,
             overlay_enabled: true,
+            command_mode_enabled: false,
         }
     }
 }
@@ -899,6 +1066,8 @@ impl Preferences {
                 preferences.gain_db = value.parse().unwrap_or(0.0);
             } else if let Some(value) = line.strip_prefix("overlay_enabled=") {
                 preferences.overlay_enabled = value == "true";
+            } else if let Some(value) = line.strip_prefix("command_mode_enabled=") {
+                preferences.command_mode_enabled = value == "true";
             }
         }
         preferences
@@ -913,13 +1082,14 @@ impl Preferences {
         fs::write(
             path,
             format!(
-                "language={}\nmodel={}\nshortcut={}\ninput={}\ngain_db={}\noverlay_enabled={}\n",
+                "language={}\nmodel={}\nshortcut={}\ninput={}\ngain_db={}\noverlay_enabled={}\ncommand_mode_enabled={}\n",
                 self.language,
                 self.model.display(),
                 self.shortcut,
                 self.input,
                 self.gain_db,
-                self.overlay_enabled
+                self.overlay_enabled,
+                self.command_mode_enabled
             ),
         )
         .map_err(|error| error.to_string())
@@ -939,6 +1109,188 @@ fn preferences_path() -> PathBuf {
         || PathBuf::from(".fluidvoice-settings.conf"),
         |home| PathBuf::from(home).join(".config/fluidvoice/settings.conf"),
     )
+}
+
+fn data_directory() -> PathBuf {
+    if let Some(directory) = std::env::var_os("XDG_DATA_HOME") {
+        return PathBuf::from(directory).join("fluidvoice");
+    }
+    std::env::var_os("HOME").map_or_else(
+        || PathBuf::from(".fluidvoice"),
+        |home| PathBuf::from(home).join(".local/share/fluidvoice"),
+    )
+}
+
+fn dictionary_path() -> PathBuf {
+    data_directory().join("dictionary.txt")
+}
+
+fn history_path() -> PathBuf {
+    data_directory().join("history.tsv")
+}
+
+fn load_lines(path: &PathBuf) -> Vec<String> {
+    fs::read_to_string(path)
+        .map(|contents| {
+            contents
+                .lines()
+                .map(str::trim)
+                .filter(|line| !line.is_empty())
+                .map(str::to_owned)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn save_lines(path: &PathBuf, lines: &[String]) -> Result<(), String> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| "data path has no parent".to_owned())?;
+    fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    let mut contents = lines.join("\n");
+    if !contents.is_empty() {
+        contents.push('\n');
+    }
+    fs::write(path, contents).map_err(|error| error.to_string())
+}
+
+fn process_transcript(text: &str, command_mode: bool, dictionary: &[String]) -> String {
+    let mut processed = text.trim().to_owned();
+    if command_mode {
+        for (spoken, replacement) in [
+            ("new paragraph", "\n\n"),
+            ("new line", "\n"),
+            ("question mark", "?"),
+            ("exclamation mark", "!"),
+            ("comma", ","),
+            ("period", "."),
+        ] {
+            processed = replace_ascii_case_insensitive(&processed, spoken, replacement);
+        }
+        processed = processed
+            .replace(" ,", ",")
+            .replace(" .", ".")
+            .replace(" ?", "?")
+            .replace(" !", "!")
+            .replace(" \n", "\n")
+            .replace("\n ", "\n");
+    }
+    for preferred in dictionary {
+        processed = replace_ascii_case_insensitive(&processed, preferred, preferred);
+    }
+    processed
+}
+
+fn replace_ascii_case_insensitive(text: &str, needle: &str, replacement: &str) -> String {
+    let lowercase = text.to_ascii_lowercase();
+    let needle = needle.to_ascii_lowercase();
+    let mut result = String::with_capacity(text.len());
+    let mut cursor = 0;
+    while let Some(offset) = lowercase[cursor..].find(&needle) {
+        let start = cursor + offset;
+        let end = start + needle.len();
+        let boundary_before =
+            start == 0 || !lowercase.as_bytes()[start - 1].is_ascii_alphanumeric();
+        let boundary_after =
+            end == lowercase.len() || !lowercase.as_bytes()[end].is_ascii_alphanumeric();
+        if boundary_before && boundary_after {
+            result.push_str(&text[cursor..start]);
+            result.push_str(replacement);
+            cursor = end;
+        } else {
+            result.push_str(&text[cursor..end]);
+            cursor = end;
+        }
+    }
+    result.push_str(&text[cursor..]);
+    result
+}
+
+fn record_history(mut controller: Pin<&mut ffi::FluidVoiceController>, text: &str) {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_secs());
+    let mut history = load_lines(&history_path());
+    history.push(format!("{timestamp}\t{}", text.replace(['\n', '\t'], " ")));
+    if history.len() > 500 {
+        history.drain(..history.len() - 500);
+    }
+    save_lines(&history_path(), &history).ok();
+    let word_count = history
+        .iter()
+        .map(|entry| {
+            entry
+                .split_once('\t')
+                .map_or(entry.as_str(), |(_, value)| value)
+        })
+        .map(|value| value.split_whitespace().count())
+        .sum::<usize>();
+    controller
+        .as_mut()
+        .set_history_entries(history.iter().rev().map(QString::from).collect());
+    controller
+        .as_mut()
+        .set_transcript_count(i32::try_from(history.len()).unwrap_or(i32::MAX));
+    controller
+        .as_mut()
+        .set_dictated_word_count(i32::try_from(word_count).unwrap_or(i32::MAX));
+}
+
+fn decode_file_url(value: &str) -> String {
+    let value = value.strip_prefix("file://").unwrap_or(value);
+    let bytes = value.as_bytes();
+    let mut result = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] == b'%' && index + 2 < bytes.len() {
+            if let Ok(decoded) = u8::from_str_radix(&value[index + 1..index + 3], 16) {
+                result.push(decoded);
+                index += 3;
+                continue;
+            }
+        }
+        result.push(bytes[index]);
+        index += 1;
+    }
+    String::from_utf8_lossy(&result).into_owned()
+}
+
+fn transcribe_wav_file(
+    path: &PathBuf,
+    model: &PathBuf,
+    language: String,
+) -> Result<String, String> {
+    let mut reader = hound::WavReader::open(path)
+        .map_err(|error| format!("Could not open WAV file: {error}"))?;
+    let specification = reader.spec();
+    if specification.sample_format != hound::SampleFormat::Int
+        || specification.bits_per_sample != 16
+    {
+        return Err("Only 16-bit PCM WAV files are supported in this release.".to_owned());
+    }
+    let samples = reader
+        .samples::<i16>()
+        .map(|sample| sample.map(|value| f32::from(value) / f32::from(i16::MAX)))
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("Could not decode WAV file: {error}"))?;
+    let native = AudioBuffer::new(
+        samples,
+        specification.sample_rate,
+        u32::from(specification.channels),
+        false,
+    )
+    .map_err(|error| error.to_string())?;
+    let audio = native.to_asr_mono();
+    let config = TranscriptionConfig::default().with_language(Some(language));
+    let transcript = WhisperTranscriber::load(model, config)
+        .map_err(|error| error.to_string())?
+        .transcribe(&audio)
+        .map_err(|error| error.to_string())?;
+    if transcript.text.trim().is_empty() {
+        return Err("No speech was recognized in this file.".to_owned());
+    }
+    Ok(transcript.text)
 }
 
 fn supported_languages() -> &'static [(&'static str, &'static str)] {
@@ -1300,8 +1652,8 @@ mod tests {
     use std::time::Duration;
 
     use super::{
-        asr_gain, meter_level, peak_db, supported_languages, suspicious_single_word,
-        whisper_model_catalog,
+        asr_gain, decode_file_url, meter_level, peak_db, process_transcript, supported_languages,
+        suspicious_single_word, whisper_model_catalog,
     };
 
     #[test]
@@ -1347,6 +1699,31 @@ mod tests {
             whisper_model_catalog()
                 .iter()
                 .all(|model| model.expected_bytes > 70_000_000)
+        );
+    }
+
+    #[test]
+    fn applies_commands_and_preferred_spellings() {
+        let dictionary = vec!["FluidVoice".to_owned(), "KDE".to_owned()];
+        assert_eq!(
+            process_transcript(
+                "fluidvoice comma new line kde question mark",
+                true,
+                &dictionary
+            ),
+            "FluidVoice,\nKDE?"
+        );
+        assert_eq!(
+            process_transcript("fluidvoice comma", false, &dictionary),
+            "FluidVoice comma"
+        );
+    }
+
+    #[test]
+    fn decodes_local_file_urls() {
+        assert_eq!(
+            decode_file_url("file:///tmp/Voice%20Sample.wav"),
+            "/tmp/Voice Sample.wav"
         );
     }
 }
