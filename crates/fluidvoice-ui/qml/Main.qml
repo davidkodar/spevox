@@ -159,6 +159,15 @@ ApplicationWindow {
         var fields = entry.split("\t")
         return fields.length > 7 && fields[7] === "file" ? qsTr("Audio file") : qsTr("Dictation")
     }
+    function historyAudioPath(entry) {
+        var fields = entry.split("\t")
+        return fields.length > 8 ? fields[8] : ""
+    }
+    function audioBudgetIndex() {
+        var budgets = [100, 500, 1000, 2500, 5000, 10000]
+        var index = budgets.indexOf(controller.audioHistoryBudgetMb)
+        return index >= 0 ? index : 1
+    }
     function historyWords(entry) {
         var text = historyText(entry).trim()
         return text.length === 0 ? 0 : text.split(/\s+/).length
@@ -353,6 +362,15 @@ ApplicationWindow {
         defaultSuffix: "csv"
         nameFilters: [qsTr("CSV files (*.csv)")]
         onAccepted: controller.exportHistory(selectedFile.toString(), "csv")
+    }
+
+    FileDialog {
+        id: audioHistoryZipDialog
+        title: qsTr("Export retained audio history")
+        fileMode: FileDialog.SaveFile
+        defaultSuffix: "zip"
+        nameFilters: [qsTr("ZIP archives (*.zip)")]
+        onAccepted: controller.exportAudioHistory(selectedFile.toString())
     }
 
     Component.onCompleted: {
@@ -1372,9 +1390,36 @@ ApplicationWindow {
                         Item { Layout.fillWidth: true }
                         Button { text: qsTr("Export JSON"); enabled: controller.historyEntries.length > 0; onClicked: historyJsonDialog.open() }
                         Button { text: qsTr("Export CSV"); enabled: controller.historyEntries.length > 0; onClicked: historyCsvDialog.open() }
+                        Button { text: qsTr("Export audio ZIP"); enabled: !controller.transcribing && controller.audioHistoryStatus.indexOf("0 retained") < 0 && controller.audioHistoryStatus.indexOf("No retained") < 0; onClicked: audioHistoryZipDialog.open() }
                         Button { text: qsTr("Clear history"); enabled: controller.historyEntries.length > 0; onClicked: controller.clearHistory() }
                     }
                     Text { text: root.destinationDescriptions[6]; color: root.secondaryText; font.pixelSize: 14 }
+                    Rectangle {
+                        Layout.fillWidth: true; implicitHeight: audioHistorySettings.implicitHeight + 32; radius: 16; color: root.panel; border.color: root.hairline
+                        ColumnLayout {
+                            id: audioHistorySettings; anchors.fill: parent; anchors.margins: 16; spacing: 10
+                            RowLayout {
+                                Layout.fillWidth: true
+                                ColumnLayout { Layout.fillWidth: true; spacing: 2
+                                    Text { text: qsTr("Optional audio history"); color: root.primaryText; font.pixelSize: 14; font.weight: Font.DemiBold }
+                                    Text { Layout.fillWidth: true; text: qsTr("Retain a local 16 kHz WAV copy of successful microphone dictations. Disabled by default; microphone audio is never uploaded."); color: root.secondaryText; font.pixelSize: 11; wrapMode: Text.Wrap }
+                                }
+                                Switch { id: audioHistorySwitch; checked: controller.audioHistoryEnabled; onToggled: controller.updateAudioHistory(checked, controller.audioHistoryBudgetMb) }
+                            }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Text { text: qsTr("Storage budget"); color: root.secondaryText; font.pixelSize: 12 }
+                                Item { Layout.fillWidth: true }
+                                ComboBox {
+                                    model: [qsTr("100 MB"), qsTr("500 MB"), qsTr("1 GB"), qsTr("2.5 GB"), qsTr("5 GB"), qsTr("10 GB")]
+                                    currentIndex: root.audioBudgetIndex()
+                                    enabled: !controller.recording
+                                    onActivated: function(index) { controller.updateAudioHistory(audioHistorySwitch.checked, [100, 500, 1000, 2500, 5000, 10000][index]) }
+                                }
+                            }
+                            Text { Layout.fillWidth: true; text: controller.audioHistoryStatus; color: root.tertiaryText; font.pixelSize: 11; wrapMode: Text.Wrap }
+                        }
+                    }
                     TextField {
                         id: historySearch
                         Layout.fillWidth: true
@@ -1427,6 +1472,14 @@ ApplicationWindow {
                                     }
                                 }
                                 Text { Layout.fillWidth: true; text: root.historySource(modelData) + " · " + root.historyAiSummary(modelData); color: root.tertiaryText; font.pixelSize: 10; elide: Text.ElideRight }
+                                RowLayout {
+                                    visible: root.historyAudioPath(modelData).length > 0
+                                    Layout.fillWidth: true
+                                    Text { text: qsTr("Local recording retained"); color: root.accent; font.pixelSize: 10 }
+                                    Item { Layout.fillWidth: true }
+                                    Button { text: qsTr("Play recording"); onClicked: Qt.openUrlExternally("file://" + root.historyAudioPath(modelData)) }
+                                    Button { text: qsTr("Delete recording"); onClicked: controller.deleteHistoryAudio(modelData) }
+                                }
                                 RowLayout {
                                     Layout.fillWidth: true
                                     Text { text: root.historyDate(modelData); color: root.secondaryText; font.pixelSize: 11 }

@@ -40,6 +40,9 @@ pub mod ffi {
         #[qproperty(i32, selected_shortcut, cxx_name = "selectedShortcut")]
         #[qproperty(QStringList, dictionary_terms, cxx_name = "dictionaryTerms")]
         #[qproperty(QStringList, history_entries, cxx_name = "historyEntries")]
+        #[qproperty(bool, audio_history_enabled, cxx_name = "audioHistoryEnabled")]
+        #[qproperty(i32, audio_history_budget_mb, cxx_name = "audioHistoryBudgetMb")]
+        #[qproperty(QString, audio_history_status, cxx_name = "audioHistoryStatus")]
         #[qproperty(i32, transcript_count, cxx_name = "transcriptCount")]
         #[qproperty(i32, dictated_word_count, cxx_name = "dictatedWordCount")]
         #[qproperty(bool, command_mode_enabled, cxx_name = "commandModeEnabled")]
@@ -142,6 +145,18 @@ pub mod ffi {
         #[qinvokable]
         #[cxx_name = "clearHistory"]
         fn clear_history(self: Pin<&mut Self>);
+
+        #[qinvokable]
+        #[cxx_name = "updateAudioHistory"]
+        fn update_audio_history(self: Pin<&mut Self>, enabled: bool, budget_mb: i32);
+
+        #[qinvokable]
+        #[cxx_name = "deleteHistoryAudio"]
+        fn delete_history_audio(self: Pin<&mut Self>, entry: &QString);
+
+        #[qinvokable]
+        #[cxx_name = "exportAudioHistory"]
+        fn export_audio_history(self: Pin<&mut Self>, path: &QString);
 
         #[qinvokable]
         #[cxx_name = "exportHistory"]
@@ -320,6 +335,9 @@ pub struct FluidVoiceControllerRust {
     selected_shortcut: i32,
     dictionary_terms: QStringList,
     history_entries: QStringList,
+    audio_history_enabled: bool,
+    audio_history_budget_mb: i32,
+    audio_history_status: QString,
     transcript_count: i32,
     dictated_word_count: i32,
     command_mode_enabled: bool,
@@ -413,6 +431,7 @@ impl Default for FluidVoiceControllerRust {
             );
         let (model_states, model_details) = model_ui_lists(&model_paths);
         let dictionary = load_lines(&dictionary_path());
+        clear_missing_audio_history_references().ok();
         let history = load_lines(&history_path());
         let selected_ai_provider = if preferences.ai_local_only {
             let saved = preferences.ai_provider.clamp(0, 9);
@@ -493,6 +512,9 @@ impl Default for FluidVoiceControllerRust {
             selected_shortcut,
             dictionary_terms: dictionary.iter().map(QString::from).collect(),
             history_entries: history.iter().rev().map(QString::from).collect(),
+            audio_history_enabled: preferences.audio_history_enabled,
+            audio_history_budget_mb: preferences.audio_history_budget_mb,
+            audio_history_status: QString::from(audio_history_summary()),
             transcript_count: i32::try_from(history.len()).unwrap_or(i32::MAX),
             dictated_word_count: i32::try_from(dictated_word_count).unwrap_or(i32::MAX),
             command_mode_enabled: preferences.command_mode_enabled,
@@ -1613,11 +1635,108 @@ impl ffi::FluidVoiceController {
 
     pub fn clear_history(mut self: Pin<&mut Self>) {
         save_lines(&history_path(), &[]).ok();
+        if audio_history_directory().is_dir() {
+            fs::remove_dir_all(audio_history_directory()).ok();
+        }
         self.as_mut().set_history_entries(QStringList::default());
         self.as_mut().set_transcript_count(0);
         self.as_mut().set_dictated_word_count(0);
         self.as_mut()
             .set_status_text(QString::from("History cleared"));
+        self.as_mut()
+            .set_audio_history_status(QString::from(audio_history_summary()));
+        self.as_mut().set_history_entries(
+            load_lines(&history_path())
+                .iter()
+                .rev()
+                .map(QString::from)
+                .collect(),
+        );
+    }
+
+    pub fn update_audio_history(mut self: Pin<&mut Self>, enabled: bool, budget_mb: i32) {
+        let budget_mb = budget_mb.clamp(100, 10_000);
+        self.as_mut().set_audio_history_enabled(enabled);
+        self.as_mut().set_audio_history_budget_mb(budget_mb);
+        self.as_ref().rust().save_preferences();
+        if let Err(error) = prune_audio_history(u64::try_from(budget_mb).unwrap_or(500) * 1_048_576)
+        {
+            self.as_mut()
+                .set_audio_history_status(QString::from(&format!(
+                    "Audio retention updated, but pruning failed: {error}"
+                )));
+            return;
+        }
+        self.as_mut()
+            .set_audio_history_status(QString::from(audio_history_summary()));
+        self.as_mut().set_history_entries(
+            load_lines(&history_path())
+                .iter()
+                .rev()
+                .map(QString::from)
+                .collect(),
+        );
+        self.as_mut().set_status_text(QString::from(if enabled {
+            "Audio history enabled · recordings stay local"
+        } else {
+            "Audio history disabled · existing recordings are retained"
+        }));
+    }
+
+    pub fn delete_history_audio(mut self: Pin<&mut Self>, entry: &QString) {
+        let entry = entry.to_string();
+        let Some(path) = history_field(&entry, 8).filter(|value| !value.is_empty()) else {
+            return;
+        };
+        let path = PathBuf::from(path);
+        let directory = audio_history_directory();
+        let safe = path
+            .canonicalize()
+            .ok()
+            .zip(directory.canonicalize().ok())
+            .is_some_and(|(path, directory)| path.starts_with(directory));
+        if !safe || fs::remove_file(&path).is_err() {
+            self.as_mut()
+                .set_status_text(QString::from("Recording could not be deleted safely"));
+            return;
+        }
+        let mut history = load_lines(&history_path());
+        if let Some(saved) = history.iter_mut().find(|saved| saved.as_str() == entry) {
+            let mut fields = saved.split('\t').map(str::to_owned).collect::<Vec<_>>();
+            fields.resize(9, String::new());
+            fields[8].clear();
+            *saved = fields.join("\t");
+            save_lines(&history_path(), &history).ok();
+            self.as_mut()
+                .set_history_entries(history.iter().rev().map(QString::from).collect());
+        }
+        self.as_mut()
+            .set_audio_history_status(QString::from(audio_history_summary()));
+        self.as_mut()
+            .set_status_text(QString::from("Local recording deleted"));
+    }
+
+    pub fn export_audio_history(mut self: Pin<&mut Self>, path: &QString) {
+        if *self.as_ref().transcribing() {
+            return;
+        }
+        let path = PathBuf::from(decode_file_url(&path.to_string()));
+        let qt_thread = self.qt_thread();
+        self.as_mut().set_transcribing(true);
+        self.as_mut()
+            .set_status_text(QString::from("Exporting audio history…"));
+        std::thread::spawn(move || {
+            let result = write_audio_history_zip(&path);
+            qt_thread
+                .queue(move |mut controller| {
+                    controller.as_mut().set_transcribing(false);
+                    controller.set_status_text(QString::from(match result {
+                        Ok(count) => format!("Exported {count} recording(s) and history metadata"),
+                        Err(error) => format!("Audio-history export failed: {error}"),
+                    }));
+                })
+                .ok();
+        });
     }
 
     pub fn export_history(mut self: Pin<&mut Self>, path: &QString, format: &QString) {
@@ -1715,6 +1834,7 @@ impl ffi::FluidVoiceController {
                                     ai_status,
                                     ai_duration_ms,
                                     source: "file",
+                                    audio_path: "",
                                 },
                             );
                             controller
@@ -1767,6 +1887,9 @@ impl ffi::FluidVoiceController {
         let use_gpu = self.as_ref().rust().selected_compute_backend != 2;
         let model = selected_model_path(self.as_ref().rust());
         let ai_config = self.as_ref().rust().ai_config();
+        let retain_audio = *self.as_ref().audio_history_enabled();
+        let audio_budget_bytes =
+            u64::try_from(*self.as_ref().audio_history_budget_mb()).unwrap_or(500) * 1_048_576;
         let gain = 10.0_f32.powf(*self.as_ref().gain_db() / 20.0);
         self.as_mut().rust_mut().get_mut().stop_token = Some(stop_token.clone());
         self.as_mut().set_audio_level(0.0);
@@ -1958,6 +2081,15 @@ impl ffi::FluidVoiceController {
             } else {
                 0
             };
+            let retained_audio = if retain_audio
+                && transcription
+                    .as_ref()
+                    .is_ok_and(|transcript| !transcript.text.is_empty())
+            {
+                save_audio_history(&asr_audio, audio_budget_bytes).ok()
+            } else {
+                None
+            };
             qt_thread
                 .queue(move |mut controller| {
                     controller.as_mut().set_transcribing(false);
@@ -2016,8 +2148,15 @@ impl ffi::FluidVoiceController {
                                     ai_status,
                                     ai_duration_ms,
                                     source: "dictation",
+                                    audio_path: retained_audio
+                                        .as_deref()
+                                        .and_then(std::path::Path::to_str)
+                                        .unwrap_or(""),
                                 },
                             );
+                            controller.as_mut().set_audio_history_status(QString::from(
+                                audio_history_summary(),
+                            ));
                             controller.as_mut().set_transcript_text(QString::from(&processed));
                             controller.set_status_text(QString::from(if let Some(error) = ai_error {
                                 format!("AI enhancement failed · raw transcript delivered · {error}")
@@ -2092,6 +2231,8 @@ impl FluidVoiceControllerRust {
             ai_base_url: self.ai_base_url.to_string(),
             ai_prompt: self.ai_prompt.to_string(),
             ai_local_only: self.ai_local_only,
+            audio_history_enabled: self.audio_history_enabled,
+            audio_history_budget_mb: self.audio_history_budget_mb,
         };
         if let Err(error) = preferences.save() {
             eprintln!("Failed to save preferences: {error}");
@@ -2137,6 +2278,8 @@ struct Preferences {
     ai_base_url: String,
     ai_prompt: String,
     ai_local_only: bool,
+    audio_history_enabled: bool,
+    audio_history_budget_mb: i32,
 }
 
 #[derive(Clone)]
@@ -2200,6 +2343,8 @@ impl Default for Preferences {
             ai_base_url: String::new(),
             ai_prompt: String::new(),
             ai_local_only: true,
+            audio_history_enabled: false,
+            audio_history_budget_mb: 500,
         }
     }
 }
@@ -2243,6 +2388,11 @@ impl Preferences {
                 preferences.ai_prompt = unescape_setting(value);
             } else if let Some(value) = line.strip_prefix("ai_local_only=") {
                 preferences.ai_local_only = value == "true";
+            } else if let Some(value) = line.strip_prefix("audio_history_enabled=") {
+                preferences.audio_history_enabled = value == "true";
+            } else if let Some(value) = line.strip_prefix("audio_history_budget_mb=") {
+                preferences.audio_history_budget_mb =
+                    value.parse().unwrap_or(500).clamp(100, 10_000);
             }
         }
         preferences
@@ -2257,7 +2407,7 @@ impl Preferences {
         fs::write(
             path,
             format!(
-                "language={}\nmodel={}\nshortcut={}\ninput={}\ngain_db={}\noverlay_enabled={}\ncommand_mode_enabled={}\ncompute_backend={}\ntheme={}\naccent={}\nai_enabled={}\nai_provider={}\nai_model={}\nai_base_url={}\nai_prompt={}\nai_local_only={}\n",
+                "language={}\nmodel={}\nshortcut={}\ninput={}\ngain_db={}\noverlay_enabled={}\ncommand_mode_enabled={}\ncompute_backend={}\ntheme={}\naccent={}\nai_enabled={}\nai_provider={}\nai_model={}\nai_base_url={}\nai_prompt={}\nai_local_only={}\naudio_history_enabled={}\naudio_history_budget_mb={}\n",
                 self.language,
                 self.model.display(),
                 self.shortcut,
@@ -2273,7 +2423,9 @@ impl Preferences {
                 escape_setting(&self.ai_model),
                 escape_setting(&self.ai_base_url),
                 escape_setting(&self.ai_prompt),
-                self.ai_local_only
+                self.ai_local_only,
+                self.audio_history_enabled,
+                self.audio_history_budget_mb
             ),
         )
         .map_err(|error| error.to_string())
@@ -2562,6 +2714,154 @@ fn history_path() -> PathBuf {
     data_directory().join("history.tsv")
 }
 
+fn audio_history_directory() -> PathBuf {
+    data_directory().join("audio-history")
+}
+
+fn audio_history_summary() -> String {
+    let Ok(entries) = fs::read_dir(audio_history_directory()) else {
+        return "No retained recordings · retention is off by default".to_owned();
+    };
+    let (count, bytes) = entries
+        .flatten()
+        .filter_map(|entry| entry.metadata().ok())
+        .filter(|metadata| metadata.is_file())
+        .fold((0_u64, 0_u64), |(count, bytes), metadata| {
+            (count + 1, bytes.saturating_add(metadata.len()))
+        });
+    format!(
+        "{count} retained recording(s) · {:.1} MB used",
+        bytes as f64 / 1_048_576.0
+    )
+}
+
+fn save_audio_history(
+    audio: &fluidvoice_audio::MonoAudioBuffer,
+    budget_bytes: u64,
+) -> Result<PathBuf, String> {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let directory = audio_history_directory();
+    fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_millis());
+    let path = directory.join(format!("dictation-{timestamp}.wav"));
+    let spec = hound::WavSpec {
+        channels: 1,
+        sample_rate: audio.sample_rate(),
+        bits_per_sample: 16,
+        sample_format: hound::SampleFormat::Int,
+    };
+    let mut writer = hound::WavWriter::create(&path, spec).map_err(|error| error.to_string())?;
+    for sample in audio.samples() {
+        let value = (sample.clamp(-1.0, 1.0) * f32::from(i16::MAX)).round() as i16;
+        writer
+            .write_sample(value)
+            .map_err(|error| error.to_string())?;
+    }
+    writer.finalize().map_err(|error| error.to_string())?;
+    prune_audio_history(budget_bytes)?;
+    Ok(path)
+}
+
+fn prune_audio_history(budget_bytes: u64) -> Result<(), String> {
+    let directory = audio_history_directory();
+    let Ok(entries) = fs::read_dir(&directory) else {
+        return Ok(());
+    };
+    let mut files = entries
+        .filter_map(Result::ok)
+        .filter_map(|entry| {
+            let metadata = entry.metadata().ok()?;
+            metadata
+                .is_file()
+                .then_some((entry.path(), metadata.len(), metadata.modified().ok()))
+        })
+        .collect::<Vec<_>>();
+    files.sort_by_key(|(_, _, modified)| *modified);
+    let mut total = files.iter().map(|(_, size, _)| *size).sum::<u64>();
+    for (path, size, _) in files {
+        if total <= budget_bytes {
+            break;
+        }
+        fs::remove_file(path).map_err(|error| error.to_string())?;
+        total = total.saturating_sub(size);
+    }
+    clear_missing_audio_history_references()?;
+    Ok(())
+}
+
+fn clear_missing_audio_history_references() -> Result<(), String> {
+    let path = history_path();
+    let mut history = load_lines(&path);
+    let mut changed = false;
+    for entry in &mut history {
+        let mut fields = entry.split('\t').map(str::to_owned).collect::<Vec<_>>();
+        if fields.get(8).is_some_and(|audio| !audio.is_empty())
+            && !fields
+                .get(8)
+                .is_some_and(|audio| PathBuf::from(audio).is_file())
+        {
+            fields[8].clear();
+            *entry = fields.join("\t");
+            changed = true;
+        }
+    }
+    if changed {
+        save_lines(&path, &history).map_err(|error| error.to_string())?;
+    }
+    Ok(())
+}
+
+fn write_audio_history_zip(output_path: &PathBuf) -> Result<usize, String> {
+    let parent = output_path
+        .parent()
+        .ok_or_else(|| "export path has no parent".to_owned())?;
+    fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    let file = fs::File::create(output_path).map_err(|error| error.to_string())?;
+    let mut archive = zip::ZipWriter::new(file);
+    let options = zip::write::SimpleFileOptions::default()
+        .compression_method(zip::CompressionMethod::Deflated)
+        .unix_permissions(0o600);
+    archive
+        .start_file("history.tsv", options)
+        .map_err(|error| error.to_string())?;
+    archive
+        .write_all(&fs::read(history_path()).unwrap_or_default())
+        .map_err(|error| error.to_string())?;
+    let directory = audio_history_directory();
+    let canonical_directory = directory.canonicalize().ok();
+    let mut count = 0;
+    if let Ok(entries) = fs::read_dir(&directory) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path == *output_path {
+                continue;
+            }
+            let safe = path
+                .canonicalize()
+                .ok()
+                .zip(canonical_directory.clone())
+                .is_some_and(|(path, directory)| path.starts_with(directory));
+            if !safe || !path.is_file() {
+                continue;
+            }
+            let Some(name) = path.file_name().and_then(std::ffi::OsStr::to_str) else {
+                continue;
+            };
+            archive
+                .start_file(format!("audio/{name}"), options)
+                .map_err(|error| error.to_string())?;
+            archive
+                .write_all(&fs::read(&path).map_err(|error| error.to_string())?)
+                .map_err(|error| error.to_string())?;
+            count += 1;
+        }
+    }
+    archive.finish().map_err(|error| error.to_string())?;
+    Ok(count)
+}
+
 fn ai_profiles_path() -> PathBuf {
     data_directory().join("ai-profiles.json")
 }
@@ -2670,6 +2970,7 @@ struct HistoryContext<'a> {
     ai_status: &'a str,
     ai_duration_ms: u128,
     source: &'a str,
+    audio_path: &'a str,
 }
 
 fn record_history(
@@ -2683,14 +2984,15 @@ fn record_history(
         .map_or(0, |duration| duration.as_secs());
     let mut history = load_lines(&history_path());
     history.push(format!(
-        "{timestamp}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+        "{timestamp}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
         history_value(text),
         history_value(context.raw_text),
         history_value(context.provider),
         history_value(context.model),
         history_value(context.ai_status),
         context.ai_duration_ms,
-        history_value(context.source)
+        history_value(context.source),
+        history_value(context.audio_path)
     ));
     if history.len() > 500 {
         history.drain(..history.len() - 500);
@@ -2760,12 +3062,13 @@ fn write_history_export(path: &PathBuf, format: &str, history: &[String]) -> Res
                 "ai_status": history_field(entry, 5).unwrap_or("not_recorded"),
                 "ai_duration_ms": history_field(entry, 6).and_then(|value| value.parse::<u128>().ok()).unwrap_or(0),
                 "source": history_field(entry, 7).unwrap_or("dictation"),
+                "audio_path": history_field(entry, 8).unwrap_or(""),
             })
         })
         .collect::<Vec<_>>();
     let contents = if format.eq_ignore_ascii_case("csv") {
         let mut output =
-            "timestamp,text,raw_text,ai_provider,ai_model,ai_status,ai_duration_ms,source\n"
+            "timestamp,text,raw_text,ai_provider,ai_model,ai_status,ai_duration_ms,source,audio_path\n"
                 .to_owned();
         for record in &records {
             let fields = [
@@ -2780,6 +3083,7 @@ fn write_history_export(path: &PathBuf, format: &str, history: &[String]) -> Res
                 record["ai_status"].as_str().unwrap_or_default().to_owned(),
                 record["ai_duration_ms"].to_string(),
                 record["source"].as_str().unwrap_or_default().to_owned(),
+                record["audio_path"].as_str().unwrap_or_default().to_owned(),
             ];
             output.push_str(
                 &fields

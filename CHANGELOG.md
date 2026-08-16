@@ -5,6 +5,9 @@ All notable changes to FluidVoice Linux are documented here. The project uses
 
 ## Unreleased
 
+- Began the 0.4.0 development cycle with optional local audio retention,
+  configurable storage budgets, oldest-first pruning, playback, individual
+  deletion, and ZIP export with history metadata.
 - Added AI enhancement analytics for usage, success/fallback rate, average
   latency, and provider/model activity.
 - Added per-entry raw/final visual diffs, word and character deltas, and copy

@@ -5,8 +5,9 @@ Native, local-first voice dictation for KDE Plasma on Wayland.
 > [!IMPORTANT]
 > This is an unofficial Linux port inspired by
 > [FluidVoice for macOS](https://github.com/altic-dev/FluidVoice). It is not
-> sponsored or endorsed by Altic or the upstream maintainers. Version 0.3.0 is
-> a private preview and is not yet packaged for general distribution.
+> sponsored or endorsed by Altic or the upstream maintainers. Development is
+> now targeting 0.4.0; the project remains a private preview and is not yet
+> packaged for general distribution.
 
 FluidVoice Linux combines a Rust 2024 core, Qt Quick/CXX-Qt interface,
 PipeWire capture, XDG desktop portals, and local whisper.cpp inference. The
@@ -33,6 +34,8 @@ configures.
   LM Studio, or a custom OpenAI-compatible endpoint, with local model discovery
   and raw-text fallback.
 - Persistent application/workflow profiles with profile-specific cleanup prompts.
+- Optional local microphone-audio history with a storage budget, automatic
+  pruning, playback, individual deletion, and ZIP export.
 - Upstream-inspired settings navigation, onboarding, changelog, and feedback pages.
 
 See [CHANGELOG.md](CHANGELOG.md) for release-by-release details.
@@ -96,7 +99,7 @@ the settings window leaves FluidVoice running in the system tray.
 This table is intentionally conservative. “Partial” means the Linux feature is
 usable but does not yet match the depth of the current macOS implementation.
 
-| Capability | Linux 0.3.0 | Current macOS FluidVoice | Notes |
+| Capability | Linux 0.4.0 development | Current macOS FluidVoice | Notes |
 | --- | --- | --- | --- |
 | Global hold-to-dictate | Available | Available | Linux uses the XDG Global Shortcuts portal. |
 | Direct typing into applications | Partial | Available | Linux uses Wayland portal/clipboard delivery; application support can vary. |
@@ -113,16 +116,16 @@ usable but does not yet match the depth of the current macOS implementation.
 | AI Enhancement | Partial | Available | Linux supports configurable cloud and local providers, streamed overlay updates, application/workflow prompt profiles, and safe raw-text fallback. It cannot reproduce the closed Fluid-1 model. |
 | Fluid Intelligence / Fluid-1 | Missing | Available | Fluid-1 weights, runtime, and training code are separately maintained and not available in the GPL repository. |
 | File transcription | Partial | Available | Linux accepts MP3, FLAC, Ogg/Opus, M4A/AAC, WebM, MP4, and varied WAV encodings through FFmpeg with a two-hour decoded-audio safety limit; meeting workflows remain planned. |
-| Transcript history | Partial | Available | Linux provides search, timestamps, raw/final visual diffs, change counts, copy/undo actions, AI provider/model/status/latency metadata, source labels, word counts, and JSON/CSV export; app/window metadata, audio retention, and reports are still missing. |
+| Transcript history | Partial | Available | Linux provides search, timestamps, raw/final visual diffs, change counts, copy/undo actions, optional retained audio, AI metadata, word counts, and JSON/CSV/ZIP export; app/window metadata and feedback reports remain missing. |
 | Usage statistics | Partial | Available | Linux provides today/all-time totals, estimated time saved, streaks, averages, a seven-day chart, AI enhancement rate, success/fallback rate, latency, and provider/model activity; editable typing speed, 30-day charts, milestones, and records are still missing. |
 | Per-application configuration | Partial | Available | Linux provides persistent named prompt profiles with explicit selection; automatic focused-app matching is unavailable to ordinary Plasma Wayland clients. |
-| Audio recording history | Missing | Available | Linux does not retain microphone audio after transcription. |
+| Audio recording history | Available | Available | Optional and off by default; Linux retains local mono WAV recordings within a configurable budget, supports playback and deletion, and exports audio plus metadata as ZIP. |
 | Adaptive themes and accents | Available | Available | System/KDE defaults plus explicit FluidVoice themes and colors. |
 | Tray/menu-bar integration | Available | Available | Plasma tray is the Linux equivalent of the macOS menu bar item. |
 | Automatic updates / beta channel | Partial | Available | Linux can check GitHub Releases and ships checksummed archives; unattended and cryptographically signed updates are not yet available. The feed remains unavailable while the repository is private. |
 
 The macOS feature set changes quickly. This matrix reflects the upstream source
-and README reviewed for the 0.3.0 preview; it is not a promise of identical
+and README reviewed during 0.4.0 development; it is not a promise of identical
 platform behavior.
 
 ## Models, languages, and storage
@@ -141,9 +144,11 @@ User data follows XDG conventions:
 - Application profiles: `$XDG_DATA_HOME/fluidvoice/ai-profiles.json`.
 - Command history: `$XDG_DATA_HOME/fluidvoice/command-history.tsv`.
 
-Audio is processed locally and is not retained by the normal dictation flow.
-History and dictionary data can be cleared from the interface or removed from
-the paths above.
+Audio is processed locally and is not retained unless optional Audio History is
+explicitly enabled. Retained recordings use
+`$XDG_DATA_HOME/fluidvoice/audio-history`, are capped by the selected budget,
+and are removed when History is cleared. History and dictionary data can be
+cleared from the interface or removed from the paths above.
 
 AI enhancement is disabled by default. Ollama and LM Studio can keep the
 cleanup step local, and FluidVoice can query either server for installed models.
