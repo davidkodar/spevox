@@ -64,6 +64,7 @@ pub mod ffi {
         #[qproperty(bool, ai_key_configured, cxx_name = "aiKeyConfigured")]
         #[qproperty(QStringList, ai_local_models, cxx_name = "aiLocalModels")]
         #[qproperty(bool, ai_local_endpoint, cxx_name = "aiLocalEndpoint")]
+        #[qproperty(bool, ai_local_only, cxx_name = "aiLocalOnly")]
         #[qproperty(QString, app_version, cxx_name = "appVersion")]
         type FluidVoiceController = super::FluidVoiceControllerRust;
 
@@ -186,6 +187,10 @@ pub mod ffi {
         #[qinvokable]
         #[cxx_name = "selectLocalAiModel"]
         fn select_local_ai_model(self: Pin<&mut Self>, index: i32);
+
+        #[qinvokable]
+        #[cxx_name = "updateAiLocalOnly"]
+        fn update_ai_local_only(self: Pin<&mut Self>, enabled: bool);
     }
 
     impl cxx_qt::Threading for FluidVoiceController {}
@@ -271,6 +276,7 @@ pub struct FluidVoiceControllerRust {
     ai_key_configured: bool,
     ai_local_models: QStringList,
     ai_local_endpoint: bool,
+    ai_local_only: bool,
     app_version: QString,
 }
 
@@ -331,7 +337,12 @@ impl Default for FluidVoiceControllerRust {
         let (model_states, model_details) = model_ui_lists(&model_paths);
         let dictionary = load_lines(&dictionary_path());
         let history = load_lines(&history_path());
-        let selected_ai_provider = preferences.ai_provider.clamp(0, 9);
+        let selected_ai_provider = if preferences.ai_local_only {
+            let saved = preferences.ai_provider.clamp(0, 9);
+            if ai_provider(saved).local { saved } else { 7 }
+        } else {
+            preferences.ai_provider.clamp(0, 9)
+        };
         let provider = ai_provider(selected_ai_provider);
         let ai_model = if preferences.ai_model.is_empty() {
             provider.default_model.to_owned()
@@ -351,6 +362,8 @@ impl Default for FluidVoiceControllerRust {
                 base_url: ai_base_url.clone(),
                 prompt: String::new(),
                 api_key: String::new(),
+                local_only: false,
+                timeout_seconds: 45,
             })
             .is_local()
         {
@@ -452,8 +465,11 @@ impl Default for FluidVoiceControllerRust {
                 base_url: ai_base_url.clone(),
                 prompt: String::new(),
                 api_key: String::new(),
+                local_only: false,
+                timeout_seconds: 45,
             }
             .is_local(),
+            ai_local_only: preferences.ai_local_only,
             app_version: QString::from(env!("CARGO_PKG_VERSION")),
         }
     }
@@ -839,6 +855,11 @@ impl ffi::FluidVoiceController {
             return;
         }
         let provider = ai_provider(index);
+        if *self.as_ref().ai_local_only() && !provider.local {
+            self.as_mut()
+                .set_ai_status(QString::from("Local-only mode blocks network AI providers"));
+            return;
+        }
         self.as_mut().set_selected_ai_provider(index);
         self.as_mut()
             .set_ai_model(QString::from(provider.default_model));
@@ -873,6 +894,8 @@ impl ffi::FluidVoiceController {
             base_url: value.clone(),
             prompt: String::new(),
             api_key: String::new(),
+            local_only: false,
+            timeout_seconds: 45,
         }
         .is_local();
         if provider.local && !is_local {
@@ -985,6 +1008,19 @@ impl ffi::FluidVoiceController {
         self.as_mut().set_ai_model(model);
         self.as_mut()
             .set_ai_status(QString::from("Fully local · installed model selected"));
+        self.as_ref().rust().save_preferences();
+    }
+
+    pub fn update_ai_local_only(mut self: Pin<&mut Self>, enabled: bool) {
+        self.as_mut().set_ai_local_only(enabled);
+        if enabled && !*self.as_ref().ai_local_endpoint() {
+            self.as_mut().select_ai_provider(7);
+        }
+        self.as_mut().set_ai_status(QString::from(if enabled {
+            "Privacy lock active · network AI providers are disabled"
+        } else {
+            "Privacy lock off · cloud providers may be selected explicitly"
+        }));
         self.as_ref().rust().save_preferences();
     }
 
@@ -1412,6 +1448,7 @@ impl FluidVoiceControllerRust {
             ai_model: self.ai_model.to_string(),
             ai_base_url: self.ai_base_url.to_string(),
             ai_prompt: self.ai_prompt.to_string(),
+            ai_local_only: self.ai_local_only,
         };
         if let Err(error) = preferences.save() {
             eprintln!("Failed to save preferences: {error}");
@@ -1427,6 +1464,8 @@ impl FluidVoiceControllerRust {
             base_url: self.ai_base_url.to_string(),
             prompt: self.ai_prompt.to_string(),
             api_key: ai::load_api_key(provider.id),
+            local_only: self.ai_local_only,
+            timeout_seconds: 45,
         }
     }
 }
@@ -1447,6 +1486,7 @@ struct Preferences {
     ai_model: String,
     ai_base_url: String,
     ai_prompt: String,
+    ai_local_only: bool,
 }
 
 impl Default for Preferences {
@@ -1467,6 +1507,7 @@ impl Default for Preferences {
             ai_model: String::new(),
             ai_base_url: String::new(),
             ai_prompt: String::new(),
+            ai_local_only: true,
         }
     }
 }
@@ -1508,6 +1549,8 @@ impl Preferences {
                 preferences.ai_base_url = unescape_setting(value);
             } else if let Some(value) = line.strip_prefix("ai_prompt=") {
                 preferences.ai_prompt = unescape_setting(value);
+            } else if let Some(value) = line.strip_prefix("ai_local_only=") {
+                preferences.ai_local_only = value == "true";
             }
         }
         preferences
@@ -1522,7 +1565,7 @@ impl Preferences {
         fs::write(
             path,
             format!(
-                "language={}\nmodel={}\nshortcut={}\ninput={}\ngain_db={}\noverlay_enabled={}\ncommand_mode_enabled={}\ncompute_backend={}\ntheme={}\naccent={}\nai_enabled={}\nai_provider={}\nai_model={}\nai_base_url={}\nai_prompt={}\n",
+                "language={}\nmodel={}\nshortcut={}\ninput={}\ngain_db={}\noverlay_enabled={}\ncommand_mode_enabled={}\ncompute_backend={}\ntheme={}\naccent={}\nai_enabled={}\nai_provider={}\nai_model={}\nai_base_url={}\nai_prompt={}\nai_local_only={}\n",
                 self.language,
                 self.model.display(),
                 self.shortcut,
@@ -1537,7 +1580,8 @@ impl Preferences {
                 self.ai_provider,
                 escape_setting(&self.ai_model),
                 escape_setting(&self.ai_base_url),
-                escape_setting(&self.ai_prompt)
+                escape_setting(&self.ai_prompt),
+                self.ai_local_only
             ),
         )
         .map_err(|error| error.to_string())

@@ -1006,6 +1006,16 @@ ApplicationWindow {
                             Switch { checked: controller.aiEnabled; onToggled: controller.updateAiEnabled(checked) }
                         }
                         Rectangle { Layout.fillWidth: true; height: 1; color: root.hairline }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            ColumnLayout {
+                                Layout.fillWidth: true; spacing: 3
+                                Text { text: qsTr("Local providers only"); color: root.primaryText; font.pixelSize: 14; font.weight: Font.DemiBold }
+                                Text { Layout.fillWidth: true; text: qsTr("Prevent FluidVoice from sending transcripts or cleanup prompts to any network AI provider."); color: root.secondaryText; font.pixelSize: 12; wrapMode: Text.Wrap }
+                            }
+                            Switch { checked: controller.aiLocalOnly; onToggled: controller.updateAiLocalOnly(checked) }
+                        }
+                        Rectangle { Layout.fillWidth: true; height: 1; color: root.hairline }
                         Text { text: qsTr("PROVIDER"); color: root.tertiaryText; font.pixelSize: 11; font.weight: Font.Medium }
                         ComboBox {
                             Layout.fillWidth: true; model: controller.aiProviders; currentIndex: controller.selectedAiProvider

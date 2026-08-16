@@ -12,6 +12,8 @@ All notable changes to FluidVoice Linux are documented here. The project uses
   cleanup prompts, provider verification, and raw-transcript fallback.
 - Added Ollama and LM Studio model discovery, installed-model selection, a
   fully-local privacy indicator, and loopback-only enforcement for local presets.
+- Added a persistent local-provider privacy lock, enabled by default, plus
+  bounded provider responses and retries for transient failures.
 - Broader file-format support beyond 16-bit PCM WAV.
 - Added searchable history cards with relative and full local timestamps and word counts.
 - Expanded local statistics with today's activity, estimated time saved, streaks,

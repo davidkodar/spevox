@@ -142,11 +142,14 @@ the paths above.
 AI enhancement is disabled by default. Ollama and LM Studio can keep the
 cleanup step local, and FluidVoice can query either server for installed models.
 Their built-in presets reject non-loopback endpoints to prevent an accidental
-privacy downgrade. When a cloud provider is enabled, the cleanup prompt and
+privacy downgrade. The local-provider privacy lock is enabled by default and
+must be explicitly switched off before a cloud provider can be selected. When
+a cloud provider is enabled, the cleanup prompt and
 raw transcript—not microphone audio—are sent to that provider. API keys are
 stored through the desktop Secret Service using `secret-tool`; they are never
 written to `settings.conf`. If enhancement is unavailable or fails, FluidVoice
-delivers the unenhanced transcript.
+delivers the unenhanced transcript. Provider responses are time-bounded,
+size-limited, and transient failures are retried before fallback.
 
 ## GPU acceleration
 
