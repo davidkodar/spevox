@@ -29,7 +29,8 @@ fn main() {
         qml_engine.on_quit(|_| {}).release();
     }
 
-    if let Some(application) = application.as_mut() {
+    if let Some(mut application) = application.as_mut() {
+        application::refresh_application_icon(application.as_mut());
         application::exec_application(application);
     }
 }

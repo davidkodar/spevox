@@ -83,6 +83,20 @@ void FluidVoiceApplication::showSettingsWindow() {
     }
 }
 
+void FluidVoiceApplication::refreshApplicationIcon() {
+    const QIcon icon(":/qt/qml/io/github/davidkodar/FluidVoiceLinux/assets/fluidvoice-app.png");
+    if (icon.isNull()) {
+        return;
+    }
+    setWindowIcon(icon);
+    if (trayIcon) {
+        trayIcon->setIcon(icon);
+    }
+    for (QWindow *window : topLevelWindows()) {
+        window->setIcon(icon);
+    }
+}
+
 bool FluidVoiceApplication::isPrimaryInstance() const { return primaryInstance; }
 
 std::unique_ptr<FluidVoiceApplication> newApplication() {
@@ -99,6 +113,10 @@ int execApplication(FluidVoiceApplication &application) {
 
 bool isPrimaryInstance(const FluidVoiceApplication &application) {
     return application.isPrimaryInstance();
+}
+
+void refreshApplicationIcon(FluidVoiceApplication &application) {
+    application.refreshApplicationIcon();
 }
 
 } // namespace fluidvoice

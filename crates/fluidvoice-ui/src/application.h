@@ -13,6 +13,7 @@ class FluidVoiceApplication final : public QApplication {
 public:
     FluidVoiceApplication(int &argc, char **argv);
     bool isPrimaryInstance() const;
+    void refreshApplicationIcon();
 
 private:
     void showSettingsWindow();
@@ -27,5 +28,6 @@ private:
 std::unique_ptr<FluidVoiceApplication> newApplication();
 int execApplication(FluidVoiceApplication &application);
 bool isPrimaryInstance(const FluidVoiceApplication &application);
+void refreshApplicationIcon(FluidVoiceApplication &application);
 
 } // namespace fluidvoice

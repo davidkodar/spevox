@@ -13,7 +13,10 @@ mod ffi {
 
         #[cxx_name = "isPrimaryInstance"]
         fn is_primary_instance(application: &FluidVoiceApplication) -> bool;
+
+        #[cxx_name = "refreshApplicationIcon"]
+        fn refresh_application_icon(application: Pin<&mut FluidVoiceApplication>);
     }
 }
 
-pub use ffi::{exec_application, is_primary_instance, new_application};
+pub use ffi::{exec_application, is_primary_instance, new_application, refresh_application_icon};
