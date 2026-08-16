@@ -1838,7 +1838,7 @@ ApplicationWindow {
                     RowLayout {
                         Layout.fillWidth: true; spacing: 12
                         Rectangle { Layout.fillWidth: true; height: 120; radius: 16; color: root.panel; border.color: root.hairline
-                            Column { anchors.centerIn: parent; spacing: 6; Text { anchors.horizontalCenter: parent.horizontalCenter; text: root.timeSaved(controller.dictatedWordCount); color: root.primaryText; font.pixelSize: 30; font.weight: Font.Bold } Text { anchors.horizontalCenter: parent.horizontalCenter; text: qsTr("Time saved"); color: root.secondaryText; font.pixelSize: 13 } Text { anchors.horizontalCenter: parent.horizontalCenter; text: qsTr("Based on 40 WPM typing"); color: root.tertiaryText; font.pixelSize: 10 } }
+                            Column { anchors.centerIn: parent; spacing: 6; Text { anchors.horizontalCenter: parent.horizontalCenter; text: root.timeSaved(controller.dictatedWordCount); color: root.primaryText; font.pixelSize: 30; font.weight: Font.Bold } Text { anchors.horizontalCenter: parent.horizontalCenter; text: qsTr("Time saved"); color: root.secondaryText; font.pixelSize: 13 } Text { anchors.horizontalCenter: parent.horizontalCenter; text: qsTr("Based on %1 WPM typing").arg(controller.typingWpm); color: root.tertiaryText; font.pixelSize: 10 } }
                         }
                         Rectangle { Layout.fillWidth: true; height: 120; radius: 16; color: root.panel; border.color: root.hairline
                             Column { anchors.centerIn: parent; spacing: 6; Text { anchors.horizontalCenter: parent.horizontalCenter; text: controller.dictatedWordCount; color: root.primaryText; font.pixelSize: 30; font.weight: Font.Bold } Text { anchors.horizontalCenter: parent.horizontalCenter; text: qsTr("Total words"); color: root.secondaryText; font.pixelSize: 13 } Text { anchors.horizontalCenter: parent.horizontalCenter; text: qsTr("+%1 today").arg(root.todayHistoryWords()); color: root.tertiaryText; font.pixelSize: 10 } }
@@ -1855,15 +1855,27 @@ ApplicationWindow {
                     }
                     Rectangle {
                         Layout.fillWidth: true; implicitHeight: statsPreferences.implicitHeight + 28; radius: 16; color: root.panel; border.color: root.hairline
-                        RowLayout { id: statsPreferences; anchors.fill: parent; anchors.margins: 14; spacing: 14
-                            ColumnLayout { Layout.fillWidth: true; spacing: 2
-                                Text { text: qsTr("Statistics preferences"); color: root.primaryText; font.pixelSize: 13; font.weight: Font.Medium }
-                                Text { text: qsTr("Time saved compares your typing speed with an estimated 150 WPM dictation rate."); color: root.secondaryText; font.pixelSize: 11 }
+                        ColumnLayout { id: statsPreferences; anchors.fill: parent; anchors.margins: 14; spacing: 10
+                            Text { text: qsTr("Statistics preferences"); color: root.primaryText; font.pixelSize: 13; font.weight: Font.Medium }
+                            Text {
+                                Layout.fillWidth: true
+                                text: qsTr("Time saved compares your typing speed with an estimated 150 WPM dictation rate.")
+                                color: root.secondaryText
+                                font.pixelSize: 11
+                                wrapMode: Text.Wrap
                             }
-                            Text { text: qsTr("Typing WPM"); color: root.secondaryText; font.pixelSize: 11 }
-                            SpinBox { id: typingWpmInput; from: 10; to: 250; value: controller.typingWpm; editable: true; onValueModified: controller.updateStatsPreferences(value, controller.skipWeekends) }
-                            Text { text: qsTr("Weekends don't break streaks"); color: root.secondaryText; font.pixelSize: 11 }
-                            Switch { checked: controller.skipWeekends; onToggled: controller.updateStatsPreferences(controller.typingWpm, checked) }
+                            RowLayout { Layout.fillWidth: true; spacing: 24
+                                RowLayout { Layout.fillWidth: true; spacing: 12
+                                    Text { text: qsTr("Typing speed"); color: root.secondaryText; font.pixelSize: 11 }
+                                    Item { Layout.fillWidth: true }
+                                    SpinBox { id: typingWpmInput; from: 10; to: 250; value: controller.typingWpm; editable: true; onValueModified: controller.updateStatsPreferences(value, controller.skipWeekends) }
+                                    Text { text: qsTr("WPM"); color: root.tertiaryText; font.pixelSize: 10 }
+                                }
+                                RowLayout { Layout.fillWidth: true; spacing: 12
+                                    Text { Layout.fillWidth: true; text: qsTr("Weekends don't break streaks"); color: root.secondaryText; font.pixelSize: 11; horizontalAlignment: Text.AlignRight }
+                                    Switch { checked: controller.skipWeekends; onToggled: controller.updateStatsPreferences(controller.typingWpm, checked) }
+                                }
+                            }
                         }
                     }
                     Text { text: qsTr("Last 30 days"); color: root.primaryText; font.pixelSize: 17; font.weight: Font.DemiBold; Layout.topMargin: 4 }

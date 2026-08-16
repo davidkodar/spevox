@@ -8,6 +8,9 @@ All notable changes to FluidVoice Linux are documented here. The project uses
 - Redesigned the dictation result popup with responsive sizing, balanced visual
   hierarchy, equal-width actions, a dedicated dismiss control, and reliable
   suppression of listening and AI result popups when the setting is disabled.
+- Reflowed statistics preferences into a bounded two-row layout so controls and
+  labels remain inside the card, and made its typing-speed summary reflect the
+  configured WPM value.
 - Began the 0.4.0 development cycle with optional local audio retention,
   configurable storage budgets, oldest-first pruning, playback, individual
   deletion, and ZIP export with history metadata.
