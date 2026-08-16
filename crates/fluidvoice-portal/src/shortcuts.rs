@@ -98,6 +98,16 @@ impl GlobalShortcutBinding {
     /// Returns [`GlobalShortcutError`] if the portal is unavailable, is too old
     /// for hold events, the user rejects the request, or no shortcut is bound.
     pub async fn bind(config: &GlobalShortcutConfig) -> Result<Self, GlobalShortcutError> {
+        Self::bind_many(std::slice::from_ref(config)).await
+    }
+
+    /// Creates one portal session containing every application shortcut.
+    pub async fn bind_many(configs: &[GlobalShortcutConfig]) -> Result<Self, GlobalShortcutError> {
+        if configs.is_empty() {
+            return Err(GlobalShortcutError::InvalidConfiguration(
+                "at least one shortcut must be configured".into(),
+            ));
+        }
         let app_id = ashpd::AppID::try_from(FLUIDVOICE_APP_ID)?;
         ashpd::register_host_app(app_id).await?;
         let portal = GlobalShortcuts::new().await?;
@@ -109,10 +119,15 @@ impl GlobalShortcutBinding {
         let session = portal
             .create_session(CreateSessionOptions::default())
             .await?;
-        let shortcut = NewShortcut::new(&config.id, &config.description)
-            .preferred_trigger(config.preferred_trigger.as_deref());
+        let shortcuts = configs
+            .iter()
+            .map(|config| {
+                NewShortcut::new(&config.id, &config.description)
+                    .preferred_trigger(config.preferred_trigger.as_deref())
+            })
+            .collect::<Vec<_>>();
         let request = portal
-            .bind_shortcuts(&session, &[shortcut], None, BindShortcutsOptions::default())
+            .bind_shortcuts(&session, &shortcuts, None, BindShortcutsOptions::default())
             .await?;
         let response = request.response()?;
         let shortcuts = response

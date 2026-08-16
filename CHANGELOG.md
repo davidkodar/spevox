@@ -11,6 +11,10 @@ All notable changes to FluidVoice Linux are documented here. The project uses
 - Added compact, standard, and expanded overlay layouts, requested screen
   placement, opacity and live-text controls, plus result copy, raw recovery,
   undo, streamed AI retry, dismissal, and hover-aware timeout actions.
+- Added a dedicated Plasma portal shortcut for Write Mode (`Ctrl+Alt+W`), an
+  upstream-inspired writing and rewrite workspace, provider/model visibility,
+  instruction-based drafting, selected-text replacement, result preview, retry,
+  undo, and copy recovery controls.
 - Added AI enhancement analytics for usage, success/fallback rate, average
   latency, and provider/model activity.
 - Added per-entry raw/final visual diffs, word and character deltas, and copy

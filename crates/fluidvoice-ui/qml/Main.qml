@@ -331,6 +331,17 @@ ApplicationWindow {
         id: controller
     }
 
+    Connections {
+        target: controller
+        function onWriteModeActivationChanged() {
+            root.showSettingsSection(2)
+            root.show()
+            root.raise()
+            root.requestActivate()
+            rewriteInstruction.forceActiveFocus()
+        }
+    }
+
     FileDialog {
         id: audioFileDialog
         title: qsTr("Choose an audio file")
@@ -1393,10 +1404,28 @@ ApplicationWindow {
                         Layout.fillWidth: true; implicitHeight: rewriteContent.implicitHeight + 32; radius: 16; color: root.panel; border.color: root.hairline
                         ColumnLayout {
                             id: rewriteContent; anchors.fill: parent; anchors.margins: 16; spacing: 12
-                            Text { text: qsTr("REWRITE SELECTED TEXT"); color: root.tertiaryText; font.pixelSize: 11; font.weight: Font.Medium }
-                            Text { Layout.fillWidth: true; text: qsTr("Select text in another application, return here without changing that selection, enter an instruction, and rewrite it through the configured AI provider. Plasma may request keyboard-control permission."); color: root.secondaryText; font.pixelSize: 12; wrapMode: Text.Wrap }
-                            TextField { id: rewriteInstruction; Layout.fillWidth: true; placeholderText: qsTr("For example: Make this concise and professional") }
-                            Button { text: controller.transcribing ? qsTr("Rewriting…") : qsTr("Rewrite selection"); enabled: !controller.transcribing && rewriteInstruction.text.trim().length > 0; onClicked: { rewriteDelay.instruction = rewriteInstruction.text; root.hide(); rewriteDelay.restart() } }
+                            Text { text: qsTr("WRITE MODE"); color: root.tertiaryText; font.pixelSize: 11; font.weight: Font.Medium }
+                            Text { Layout.fillWidth: true; text: qsTr("Press Ctrl+Alt+W anywhere to open Write Mode. Select text in another application, describe the result you want, and FluidVoice will replace it through the provider and model configured above. Plasma may request keyboard-control permission."); color: root.secondaryText; font.pixelSize: 12; wrapMode: Text.Wrap }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Text { Layout.fillWidth: true; text: qsTr("Provider: %1 · Model: %2").arg(controller.aiProviders[controller.selectedAiProvider]).arg(controller.aiModel.length > 0 ? controller.aiModel : qsTr("provider default")); color: root.secondaryText; font.pixelSize: 11; elide: Text.ElideRight }
+                                Text { text: qsTr("Ctrl Alt W"); color: root.primaryText; font.pixelSize: 11; font.family: "monospace" }
+                            }
+                            TextField { id: rewriteInstruction; Layout.fillWidth: true; placeholderText: qsTr("For example: Draft a friendly reply, or make my selection concise") }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Button { text: controller.transcribing ? qsTr("Writing…") : qsTr("Create draft"); enabled: !controller.transcribing && rewriteInstruction.text.trim().length > 0; onClicked: controller.writeFromInstruction(rewriteInstruction.text) }
+                                Button { text: controller.transcribing ? qsTr("Rewriting…") : qsTr("Rewrite selection"); enabled: !controller.transcribing && rewriteInstruction.text.trim().length > 0; onClicked: { rewriteDelay.instruction = rewriteInstruction.text; root.hide(); rewriteDelay.restart() } }
+                                Item { Layout.fillWidth: true }
+                                Button { text: qsTr("Retry"); enabled: !controller.transcribing && controller.lastRawText.length > 0; onClicked: controller.retryWriteMode() }
+                                Button { text: qsTr("Undo"); enabled: controller.lastRawText.length > 0; onClicked: controller.undoLastAi() }
+                                Button { text: qsTr("Copy result"); enabled: controller.transcriptText.length > 0; onClicked: controller.copyLastResult(false) }
+                            }
+                            Rectangle {
+                                visible: controller.transcriptText.length > 0
+                                Layout.fillWidth: true; implicitHeight: writeResult.implicitHeight + 24; radius: 10; color: root.panelRaised; border.color: root.hairline
+                                Text { id: writeResult; anchors.fill: parent; anchors.margins: 12; text: controller.transcriptText; color: root.primaryText; font.pixelSize: 12; wrapMode: Text.Wrap }
+                            }
                             Text { Layout.fillWidth: true; text: controller.aiStatus; color: root.secondaryText; font.pixelSize: 11; wrapMode: Text.Wrap }
                         }
                     }

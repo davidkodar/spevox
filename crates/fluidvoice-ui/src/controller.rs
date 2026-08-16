@@ -75,6 +75,7 @@ pub mod ffi {
         #[qproperty(QString, ai_base_url, cxx_name = "aiBaseUrl")]
         #[qproperty(QString, ai_prompt, cxx_name = "aiPrompt")]
         #[qproperty(QString, ai_status, cxx_name = "aiStatus")]
+        #[qproperty(i32, write_mode_activation, cxx_name = "writeModeActivation")]
         #[qproperty(bool, ai_key_configured, cxx_name = "aiKeyConfigured")]
         #[qproperty(QStringList, ai_local_models, cxx_name = "aiLocalModels")]
         #[qproperty(bool, ai_local_endpoint, cxx_name = "aiLocalEndpoint")]
@@ -301,6 +302,14 @@ pub mod ffi {
         fn rewrite_selected_text(self: Pin<&mut Self>, instruction: &QString);
 
         #[qinvokable]
+        #[cxx_name = "writeFromInstruction"]
+        fn write_from_instruction(self: Pin<&mut Self>, instruction: &QString);
+
+        #[qinvokable]
+        #[cxx_name = "retryWriteMode"]
+        fn retry_write_mode(self: Pin<&mut Self>);
+
+        #[qinvokable]
         #[cxx_name = "checkForUpdates"]
         fn check_for_updates(self: Pin<&mut Self>);
     }
@@ -401,6 +410,7 @@ pub struct FluidVoiceControllerRust {
     ai_base_url: QString,
     ai_prompt: QString,
     ai_status: QString,
+    write_mode_activation: i32,
     ai_key_configured: bool,
     ai_local_models: QStringList,
     ai_local_endpoint: bool,
@@ -413,6 +423,7 @@ pub struct FluidVoiceControllerRust {
     ai_profile_prompt: QString,
     ai_profile_name: QString,
     ai_profiles: Vec<AiProfile>,
+    last_write_instruction: String,
     app_version: QString,
     update_status: QString,
 }
@@ -618,6 +629,7 @@ impl Default for FluidVoiceControllerRust {
             } else {
                 "Off · raw transcription stays fully local"
             }),
+            write_mode_activation: 0,
             ai_key_configured,
             ai_local_models: QStringList::default(),
             ai_local_endpoint: AiConfig {
@@ -646,6 +658,7 @@ impl Default for FluidVoiceControllerRust {
             ai_profile_prompt: QString::default(),
             ai_profile_name: QString::default(),
             ai_profiles,
+            last_write_instruction: String::new(),
             app_version: QString::from(env!("CARGO_PKG_VERSION")),
             update_status: QString::from("Updates have not been checked."),
         }
@@ -687,7 +700,18 @@ impl ffi::FluidVoiceController {
                             break;
                         }
                     };
-                    let binding = match GlobalShortcutBinding::bind(&config).await {
+                    let write_config = match GlobalShortcutConfig::new(
+                        "write_mode",
+                        "Open FluidVoice Write Mode",
+                        Some("CTRL+ALT+W"),
+                    ) {
+                        Ok(config) => config,
+                        Err(error) => {
+                            eprintln!("Write Mode shortcut configuration failed: {error}");
+                            break;
+                        }
+                    };
+                    let binding = match GlobalShortcutBinding::bind_many(&[config, write_config]).await {
                         Ok(binding) => binding,
                         Err(error) => {
                             eprintln!("Global shortcut unavailable: {error}");
@@ -719,7 +743,7 @@ impl ffi::FluidVoiceController {
                     loop {
                         tokio::select! {
                             event = events.recv() => match event {
-                                Some(GlobalShortcutEvent::Activated { .. }) => {
+                                Some(GlobalShortcutEvent::Activated { id, .. }) if id == "dictate_hold" => {
                                     qt_thread.queue(|mut controller| {
                                         if !*controller.as_ref().recording()
                                             && !*controller.as_ref().transcribing()
@@ -728,13 +752,20 @@ impl ffi::FluidVoiceController {
                                         }
                                     }).ok();
                                 }
-                                Some(GlobalShortcutEvent::Deactivated { .. }) => {
+                                Some(GlobalShortcutEvent::Deactivated { id, .. }) if id == "dictate_hold" => {
                                     qt_thread.queue(|mut controller| {
                                         if *controller.as_ref().recording() {
                                             controller.as_mut().toggle_recording();
                                         }
                                     }).ok();
                                 }
+                                Some(GlobalShortcutEvent::Activated { id, .. }) if id == "write_mode" => {
+                                    qt_thread.queue(|mut controller| {
+                                        let next = controller.as_ref().write_mode_activation().wrapping_add(1);
+                                        controller.as_mut().set_write_mode_activation(next);
+                                    }).ok();
+                                }
+                                Some(_) => {}
                                 None => break,
                             },
                             request = desktop_receiver.recv() => match request {
@@ -1709,6 +1740,7 @@ impl ffi::FluidVoiceController {
         let mut config = self.as_ref().rust().ai_config();
         config.enabled = true;
         config.prompt = "Rewrite the selected text according to the user's instruction. Preserve meaning unless the instruction asks otherwise. Output only the replacement text, with no explanation or markdown fences.".to_owned();
+        self.as_mut().rust_mut().get_mut().last_write_instruction = instruction.clone();
         let qt_thread = self.qt_thread();
         self.as_mut().set_transcribing(true);
         self.as_mut()
@@ -1736,16 +1768,18 @@ impl ffi::FluidVoiceController {
                 if selected.trim().is_empty() {
                     return Err("The clipboard contains no selected text".to_owned());
                 }
-                ai::enhance(
+                let text = ai::enhance(
                     &config,
                     &format!("User instruction: {instruction}\n\nSelected text:\n{selected}"),
-                )
+                )?;
+                Ok((selected, text))
             });
             qt_thread
                 .queue(move |mut controller| {
                     controller.as_mut().set_transcribing(false);
                     match rewritten {
-                        Ok(text) => {
+                        Ok((selected, text)) => {
+                            controller.as_mut().set_last_raw_text(QString::from(&selected));
                             let rust = controller.as_mut().rust_mut().get_mut();
                             if rust.clipboard.is_none() {
                                 rust.clipboard = ClipboardDelivery::connect().ok();
@@ -1759,6 +1793,9 @@ impl ffi::FluidVoiceController {
                                     sender.send(DesktopCommand::Paste).ok();
                                 }
                                 controller.as_mut().set_transcript_text(QString::from(&text));
+                                controller.as_mut().set_live_transcript(QString::from(&text));
+                                controller.as_mut().set_overlay_result_available(true);
+                                controller.as_mut().set_overlay_visible(true);
                                 controller.as_mut().set_ai_status(QString::from(
                                     "Selected text rewritten · replacement pasted or left on clipboard",
                                 ));
@@ -1770,6 +1807,122 @@ impl ffi::FluidVoiceController {
                         }
                         Err(error) => controller.as_mut().set_ai_status(QString::from(&format!(
                             "Rewrite failed · {error}"
+                        ))),
+                    }
+                })
+                .ok();
+        });
+    }
+
+    pub fn write_from_instruction(mut self: Pin<&mut Self>, instruction: &QString) {
+        let instruction = instruction.to_string().trim().to_owned();
+        if instruction.is_empty() || *self.as_ref().transcribing() {
+            return;
+        }
+        let mut config = self.as_ref().rust().ai_config();
+        config.enabled = true;
+        config.prompt = "Write the requested text. Follow the user's instruction precisely. Output only the finished text, with no explanation or markdown fences.".to_owned();
+        let qt_thread = self.qt_thread();
+        self.as_mut().set_transcribing(true);
+        self.as_mut().set_ai_status(QString::from("Writing draft…"));
+        std::thread::spawn(move || {
+            let result = ai::enhance(&config, &instruction);
+            qt_thread
+                .queue(move |mut controller| {
+                    controller.as_mut().set_transcribing(false);
+                    match result {
+                        Ok(text) => {
+                            let rust = controller.as_mut().rust_mut().get_mut();
+                            if rust.clipboard.is_none() {
+                                rust.clipboard = ClipboardDelivery::connect().ok();
+                            }
+                            let copied = rust
+                                .clipboard
+                                .as_mut()
+                                .is_some_and(|clipboard| clipboard.copy_transcript(&text).is_ok());
+                            controller.as_mut().set_last_raw_text(QString::default());
+                            controller
+                                .as_mut()
+                                .set_transcript_text(QString::from(&text));
+                            controller
+                                .as_mut()
+                                .set_live_transcript(QString::from(&text));
+                            controller.as_mut().set_ai_status(QString::from(if copied {
+                                "Draft written and copied to the clipboard"
+                            } else {
+                                "Draft written · use Copy result to recover it"
+                            }));
+                        }
+                        Err(error) => controller
+                            .as_mut()
+                            .set_ai_status(QString::from(&format!("Write Mode failed · {error}"))),
+                    }
+                })
+                .ok();
+        });
+    }
+
+    pub fn retry_write_mode(mut self: Pin<&mut Self>) {
+        if *self.as_ref().transcribing() {
+            return;
+        }
+        let selected = self.as_ref().last_raw_text().to_string();
+        let instruction = self.as_ref().rust().last_write_instruction.clone();
+        if selected.trim().is_empty() || instruction.trim().is_empty() {
+            self.as_mut()
+                .set_ai_status(QString::from("No Write Mode result is available to retry"));
+            return;
+        }
+        let mut config = self.as_ref().rust().ai_config();
+        config.enabled = true;
+        config.prompt = "Rewrite the selected text according to the user's instruction. Preserve meaning unless the instruction asks otherwise. Output only the replacement text, with no explanation or markdown fences.".to_owned();
+        let qt_thread = self.qt_thread();
+        self.as_mut().set_transcribing(true);
+        self.as_mut()
+            .set_ai_status(QString::from("Retrying Write Mode…"));
+        std::thread::spawn(move || {
+            let result = ai::enhance(
+                &config,
+                &format!("User instruction: {instruction}\n\nSelected text:\n{selected}"),
+            );
+            qt_thread
+                .queue(move |mut controller| {
+                    controller.as_mut().set_transcribing(false);
+                    match result {
+                        Ok(text) => {
+                            let rust = controller.as_mut().rust_mut().get_mut();
+                            if rust.clipboard.is_none() {
+                                rust.clipboard = ClipboardDelivery::connect().ok();
+                            }
+                            let copied = rust
+                                .clipboard
+                                .as_mut()
+                                .is_some_and(|clipboard| clipboard.copy_transcript(&text).is_ok());
+                            if copied {
+                                if let Some(sender) =
+                                    controller.as_ref().rust().desktop_sender.as_ref()
+                                {
+                                    sender.send(DesktopCommand::Paste).ok();
+                                }
+                                controller
+                                    .as_mut()
+                                    .set_transcript_text(QString::from(&text));
+                                controller
+                                    .as_mut()
+                                    .set_live_transcript(QString::from(&text));
+                                controller.as_mut().set_overlay_result_available(true);
+                                controller.as_mut().set_overlay_visible(true);
+                                controller.as_mut().set_ai_status(QString::from(
+                                    "Write Mode retry pasted or left on clipboard",
+                                ));
+                            } else {
+                                controller.as_mut().set_ai_status(QString::from(
+                                    "Write Mode retry completed but clipboard delivery failed",
+                                ));
+                            }
+                        }
+                        Err(error) => controller.as_mut().set_ai_status(QString::from(&format!(
+                            "Write Mode retry failed · {error}"
                         ))),
                     }
                 })
