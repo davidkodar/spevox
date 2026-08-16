@@ -16,6 +16,22 @@ ApplicationWindow {
     color: "#121212"
     property bool quitting: false
     property int settingsSection: 0
+
+    function showSettingsSection(index) {
+        var target = generalSection
+        if (index === 1)
+            target = audioSection
+        else if (index === 2)
+            target = transcriptionSection
+        else if (index === 3)
+            target = shortcutsSection
+        else if (index === 4)
+            target = appearanceSection
+        settingsSection = index
+        settingsFlick.contentY = Math.max(0, Math.min(
+            target.y - 8,
+            settingsFlick.contentHeight - settingsFlick.height))
+    }
     onClosing: function(close) {
         if (quitting) {
             close.accepted = true
@@ -206,10 +222,7 @@ ApplicationWindow {
                         MouseArea {
                             anchors.fill: parent
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: {
-                                root.settingsSection = index
-                                settingsFlick.contentY = [0, 0, 250, 480, 650][index]
-                            }
+                            onClicked: root.showSettingsSection(index)
                         }
                     }
                 }
@@ -229,7 +242,9 @@ ApplicationWindow {
             id: settingsFlick
             Layout.fillWidth: true
             Layout.fillHeight: true
-            contentHeight: contentColumn.implicitHeight + 52
+            // The trailing breathing room lets the last sidebar destination align
+            // at the same top position as the earlier sections.
+            contentHeight: contentColumn.implicitHeight + Math.max(52, height - 120)
             clip: true
 
             ColumnLayout {
@@ -240,6 +255,7 @@ ApplicationWindow {
                 spacing: 16
 
                 ColumnLayout {
+                    id: generalSection
                     spacing: 5
                     Text {
                         text: qsTr("General")
@@ -252,6 +268,45 @@ ApplicationWindow {
                         color: root.secondaryText
                         font.pixelSize: 14
                     }
+                }
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    height: 112
+                    radius: 16
+                    color: root.panel
+                    border.color: root.hairline
+
+                    ColumnLayout {
+                        anchors.fill: parent
+                        anchors.margins: 16
+                        spacing: 10
+                        Text { text: qsTr("APP SETTINGS"); color: root.tertiaryText; font.pixelSize: 11; font.weight: Font.Medium }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                spacing: 2
+                                Text { text: qsTr("Background operation"); color: root.primaryText; font.pixelSize: 14; font.weight: Font.Medium }
+                                Text { text: qsTr("FluidVoice stays available in the Plasma system tray when this window is closed."); color: root.secondaryText; font.pixelSize: 13 }
+                            }
+                            Rectangle {
+                                implicitWidth: backgroundStatus.implicitWidth + 18
+                                implicitHeight: 26
+                                radius: 13
+                                color: "#173334"
+                                border.color: "#3f7475"
+                                Text { id: backgroundStatus; anchors.centerIn: parent; text: qsTr("Active"); color: root.accent; font.pixelSize: 11; font.weight: Font.Medium }
+                            }
+                        }
+                    }
+                }
+
+                ColumnLayout {
+                    id: audioSection
+                    spacing: 5
+                    Text { text: qsTr("Audio"); color: root.primaryText; font.pixelSize: 22; font.weight: Font.Bold }
+                    Text { text: qsTr("Choose and calibrate the microphone FluidVoice listens to."); color: root.secondaryText; font.pixelSize: 13 }
                 }
 
                 Rectangle {
@@ -302,12 +357,13 @@ ApplicationWindow {
                 }
 
                 ColumnLayout {
+                    id: transcriptionSection
                     spacing: 5
                     Text {
                         text: qsTr("Transcription")
                         color: root.primaryText
-                        font.pixelSize: 15
-                        font.weight: Font.DemiBold
+                        font.pixelSize: 22
+                        font.weight: Font.Bold
                     }
                     Text {
                         text: qsTr("Choose the local speech model and spoken language.")
@@ -361,6 +417,13 @@ ApplicationWindow {
                             font.pixelSize: 11
                         }
                     }
+                }
+
+                ColumnLayout {
+                    id: shortcutsSection
+                    spacing: 5
+                    Text { text: qsTr("Shortcuts"); color: root.primaryText; font.pixelSize: 22; font.weight: Font.Bold }
+                    Text { text: qsTr("Configure how dictation starts and what appears while you speak."); color: root.secondaryText; font.pixelSize: 13 }
                 }
 
                 Rectangle {
@@ -489,6 +552,50 @@ ApplicationWindow {
                             color: controller.transcriptText.length > 0 ? root.primaryText : root.secondaryText
                             font.pixelSize: 13
                             wrapMode: Text.Wrap
+                        }
+                    }
+                }
+
+                ColumnLayout {
+                    id: appearanceSection
+                    spacing: 5
+                    Text { text: qsTr("Appearance"); color: root.primaryText; font.pixelSize: 22; font.weight: Font.Bold }
+                    Text { text: qsTr("A native KDE interpretation of FluidVoice's macOS visual language."); color: root.secondaryText; font.pixelSize: 13 }
+                }
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    height: 158
+                    radius: 16
+                    color: root.panel
+                    border.color: root.hairline
+
+                    ColumnLayout {
+                        anchors.fill: parent
+                        anchors.margins: 16
+                        spacing: 12
+                        Text { text: qsTr("INTERFACE"); color: root.tertiaryText; font.pixelSize: 11; font.weight: Font.Medium }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                spacing: 2
+                                Text { text: qsTr("Theme"); color: root.primaryText; font.pixelSize: 14; font.weight: Font.Medium }
+                                Text { text: qsTr("Dark appearance optimized for Plasma and the upstream FluidVoice design."); color: root.secondaryText; font.pixelSize: 13 }
+                            }
+                            Text { text: qsTr("Dark"); color: root.secondaryText; font.pixelSize: 13 }
+                        }
+                        Rectangle { Layout.fillWidth: true; height: 1; color: root.hairline }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                spacing: 2
+                                Text { text: qsTr("Accent color"); color: root.primaryText; font.pixelSize: 14; font.weight: Font.Medium }
+                                Text { text: qsTr("Uses the current FluidVoice default accent."); color: root.secondaryText; font.pixelSize: 13 }
+                            }
+                            Rectangle { width: 18; height: 18; radius: 9; color: root.accent; border.color: "#66ffffff" }
+                            Text { text: qsTr("Cyan"); color: root.secondaryText; font.pixelSize: 13 }
                         }
                     }
                 }
