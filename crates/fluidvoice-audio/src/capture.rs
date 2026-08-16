@@ -223,7 +223,10 @@ impl PipeWireCapture {
                 if let Some(bytes) = data.data() {
                     let peak = sample_output.borrow_mut().append_chunk(bytes, offset, size);
                     report_level(peak);
-                    if last_preview.elapsed() >= Duration::from_millis(1_250) {
+                    // FluidVoice's non-native streaming engines refresh near
+                    // 0.6 seconds. Slow models naturally coalesce updates via
+                    // the bounded channel in the UI layer.
+                    if last_preview.elapsed() >= Duration::from_millis(650) {
                         let output = sample_output.borrow();
                         if output.sample_rate > 0
                             && output.channels > 0

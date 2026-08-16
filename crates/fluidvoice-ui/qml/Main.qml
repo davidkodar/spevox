@@ -496,6 +496,51 @@ ApplicationWindow {
         flags: Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
                | Qt.WindowDoesNotAcceptFocus
         title: qsTr("FluidVoice Recording")
+        property string animatedTranscript: ""
+        property string targetTranscript: ""
+
+        function commonPrefixLength(left, right) {
+            var limit = Math.min(left.length, right.length)
+            var index = 0
+            while (index < limit && left[index] === right[index])
+                index++
+            return index
+        }
+
+        function animateToward(text) {
+            targetTranscript = text
+            if (text.length === 0) {
+                animatedTranscript = ""
+                revealTimer.stop()
+                return
+            }
+            var shared = commonPrefixLength(animatedTranscript, text)
+            animatedTranscript = animatedTranscript.substring(0, shared)
+            revealTimer.restart()
+        }
+
+        Connections {
+            target: controller
+            function onLiveTranscriptChanged() {
+                overlay.animateToward(controller.liveTranscript)
+            }
+        }
+
+        Timer {
+            id: revealTimer
+            interval: 22
+            repeat: true
+            onTriggered: {
+                if (overlay.animatedTranscript === overlay.targetTranscript) {
+                    stop()
+                    return
+                }
+                var remaining = overlay.targetTranscript.length - overlay.animatedTranscript.length
+                var step = remaining > 36 ? 4 : remaining > 16 ? 2 : 1
+                overlay.animatedTranscript = overlay.targetTranscript.substring(
+                    0, overlay.animatedTranscript.length + step)
+            }
+        }
 
         Rectangle {
             anchors.fill: parent
@@ -545,10 +590,10 @@ ApplicationWindow {
                         }
                         Text {
                             Layout.fillWidth: true
-                            text: controller.liveTranscript.length > 0
-                                  ? controller.liveTranscript
+                            text: overlay.animatedTranscript.length > 0
+                                  ? overlay.animatedTranscript
                                   : qsTr("Speak naturally — text will appear here")
-                            color: controller.liveTranscript.length > 0 ? "#d9d5e7" : "#85838e"
+                            color: overlay.animatedTranscript.length > 0 ? "#d9d5e7" : "#85838e"
                             font.pixelSize: 10
                             elide: Text.ElideLeft
                             maximumLineCount: 1
