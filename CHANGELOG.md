@@ -8,6 +8,9 @@ All notable changes to FluidVoice Linux are documented here. The project uses
 - Began the 0.4.0 development cycle with optional local audio retention,
   configurable storage budgets, oldest-first pruning, playback, individual
   deletion, and ZIP export with history metadata.
+- Added compact, standard, and expanded overlay layouts, requested screen
+  placement, opacity and live-text controls, plus result copy, raw recovery,
+  undo, streamed AI retry, dismissal, and hover-aware timeout actions.
 - Added AI enhancement analytics for usage, success/fallback rate, average
   latency, and provider/model activity.
 - Added per-entry raw/final visual diffs, word and character deltas, and copy

@@ -19,6 +19,14 @@ pub mod ffi {
         #[qproperty(bool, recording)]
         #[qproperty(bool, overlay_visible, cxx_name = "overlayVisible")]
         #[qproperty(bool, overlay_enabled, cxx_name = "overlayEnabled")]
+        #[qproperty(QStringList, overlay_sizes, cxx_name = "overlaySizes")]
+        #[qproperty(i32, selected_overlay_size, cxx_name = "selectedOverlaySize")]
+        #[qproperty(QStringList, overlay_positions, cxx_name = "overlayPositions")]
+        #[qproperty(i32, selected_overlay_position, cxx_name = "selectedOverlayPosition")]
+        #[qproperty(bool, overlay_show_text, cxx_name = "overlayShowText")]
+        #[qproperty(f32, overlay_opacity, cxx_name = "overlayOpacity")]
+        #[qproperty(bool, overlay_result_available, cxx_name = "overlayResultAvailable")]
+        #[qproperty(QString, last_raw_text, cxx_name = "lastRawText")]
         #[qproperty(f32, audio_level, cxx_name = "audioLevel")]
         #[qproperty(f32, input_db, cxx_name = "inputDb")]
         #[qproperty(i32, audio_updates, cxx_name = "audioUpdates")]
@@ -129,6 +137,32 @@ pub mod ffi {
         #[qinvokable]
         #[cxx_name = "updateOverlayEnabled"]
         fn update_overlay_enabled(self: Pin<&mut Self>, enabled: bool);
+
+        #[qinvokable]
+        #[cxx_name = "updateOverlayPreferences"]
+        fn update_overlay_preferences(
+            self: Pin<&mut Self>,
+            size: i32,
+            position: i32,
+            show_text: bool,
+            opacity: f32,
+        );
+
+        #[qinvokable]
+        #[cxx_name = "copyLastResult"]
+        fn copy_last_result(self: Pin<&mut Self>, raw: bool);
+
+        #[qinvokable]
+        #[cxx_name = "undoLastAi"]
+        fn undo_last_ai(self: Pin<&mut Self>);
+
+        #[qinvokable]
+        #[cxx_name = "retryLastAi"]
+        fn retry_last_ai(self: Pin<&mut Self>);
+
+        #[qinvokable]
+        #[cxx_name = "dismissOverlay"]
+        fn dismiss_overlay(self: Pin<&mut Self>);
 
         #[qinvokable]
         #[cxx_name = "setOverlayPreview"]
@@ -306,6 +340,14 @@ pub struct FluidVoiceControllerRust {
     recording: bool,
     overlay_visible: bool,
     overlay_enabled: bool,
+    overlay_sizes: QStringList,
+    selected_overlay_size: i32,
+    overlay_positions: QStringList,
+    selected_overlay_position: i32,
+    overlay_show_text: bool,
+    overlay_opacity: f32,
+    overlay_result_available: bool,
+    last_raw_text: QString,
     audio_level: f32,
     input_db: f32,
     audio_updates: i32,
@@ -480,6 +522,20 @@ impl Default for FluidVoiceControllerRust {
             recording: false,
             overlay_visible: false,
             overlay_enabled: preferences.overlay_enabled,
+            overlay_sizes: ["Compact", "Standard", "Expanded"]
+                .into_iter()
+                .map(QString::from)
+                .collect(),
+            selected_overlay_size: preferences.overlay_size.clamp(0, 2),
+            overlay_positions: ["Top center", "Bottom center", "Screen center"]
+                .into_iter()
+                .map(QString::from)
+                .collect(),
+            selected_overlay_position: preferences.overlay_position.clamp(0, 2),
+            overlay_show_text: preferences.overlay_show_text,
+            overlay_opacity: preferences.overlay_opacity.clamp(0.55, 1.0),
+            overlay_result_available: false,
+            last_raw_text: QString::default(),
             audio_level: 0.0,
             input_db: -60.0,
             audio_updates: 0,
@@ -935,6 +991,156 @@ impl ffi::FluidVoiceController {
     pub fn update_overlay_enabled(mut self: Pin<&mut Self>, enabled: bool) {
         self.as_mut().set_overlay_enabled(enabled);
         self.as_ref().rust().save_preferences();
+    }
+
+    pub fn update_overlay_preferences(
+        mut self: Pin<&mut Self>,
+        size: i32,
+        position: i32,
+        show_text: bool,
+        opacity: f32,
+    ) {
+        self.as_mut().set_selected_overlay_size(size.clamp(0, 2));
+        self.as_mut()
+            .set_selected_overlay_position(position.clamp(0, 2));
+        self.as_mut().set_overlay_show_text(show_text);
+        self.as_mut().set_overlay_opacity(opacity.clamp(0.55, 1.0));
+        self.as_ref().rust().save_preferences();
+        self.as_mut()
+            .set_status_text(QString::from("Overlay appearance updated"));
+    }
+
+    pub fn copy_last_result(mut self: Pin<&mut Self>, raw: bool) {
+        let text = if raw {
+            self.as_ref().last_raw_text().to_string()
+        } else {
+            self.as_ref().transcript_text().to_string()
+        };
+        if text.trim().is_empty() {
+            return;
+        }
+        let rust = self.as_mut().rust_mut().get_mut();
+        if rust.clipboard.is_none() {
+            rust.clipboard = ClipboardDelivery::connect().ok();
+        }
+        let copied = rust
+            .clipboard
+            .as_mut()
+            .is_some_and(|clipboard| clipboard.copy_transcript(&text).is_ok());
+        self.as_mut().set_status_text(QString::from(if copied {
+            if raw {
+                "Raw transcript copied"
+            } else {
+                "Final transcript copied"
+            }
+        } else {
+            "Clipboard delivery failed"
+        }));
+    }
+
+    pub fn undo_last_ai(mut self: Pin<&mut Self>) {
+        let raw = self.as_ref().last_raw_text().to_string();
+        if raw.trim().is_empty() {
+            return;
+        }
+        let rust = self.as_mut().rust_mut().get_mut();
+        if rust.clipboard.is_none() {
+            rust.clipboard = ClipboardDelivery::connect().ok();
+        }
+        let copied = rust
+            .clipboard
+            .as_mut()
+            .is_some_and(|clipboard| clipboard.copy_transcript(&raw).is_ok());
+        if copied {
+            if let Some(sender) = self.as_ref().rust().desktop_sender.as_ref() {
+                sender.send(DesktopCommand::Paste).ok();
+            }
+            self.as_mut().set_transcript_text(QString::from(&raw));
+            self.as_mut().set_live_transcript(QString::from(&raw));
+            self.as_mut().set_status_text(QString::from(
+                "AI cleanup undone · raw text pasted or copied",
+            ));
+        } else {
+            self.as_mut()
+                .set_status_text(QString::from("Could not restore raw text to clipboard"));
+        }
+    }
+
+    pub fn retry_last_ai(mut self: Pin<&mut Self>) {
+        if *self.as_ref().transcribing() {
+            return;
+        }
+        let raw = self.as_ref().last_raw_text().to_string();
+        if raw.trim().is_empty() {
+            self.as_mut()
+                .set_status_text(QString::from("No raw transcript is available to retry"));
+            return;
+        }
+        let mut config = self.as_ref().rust().ai_config();
+        config.enabled = true;
+        let qt_thread = self.qt_thread();
+        self.as_mut().set_transcribing(true);
+        self.as_mut().set_overlay_visible(true);
+        self.as_mut().set_overlay_result_available(false);
+        self.as_mut()
+            .set_status_text(QString::from("Retrying AI enhancement…"));
+        std::thread::spawn(move || {
+            let stream_thread = qt_thread.clone();
+            let result = ai::enhance_streaming(&config, &raw, move |text| {
+                let text = text.to_owned();
+                stream_thread
+                    .queue(move |mut controller| {
+                        controller
+                            .as_mut()
+                            .set_live_transcript(QString::from(&text));
+                    })
+                    .ok();
+            });
+            qt_thread
+                .queue(move |mut controller| {
+                    controller.as_mut().set_transcribing(false);
+                    controller.as_mut().set_overlay_result_available(true);
+                    match result {
+                        Ok(text) => {
+                            let rust = controller.as_mut().rust_mut().get_mut();
+                            if rust.clipboard.is_none() {
+                                rust.clipboard = ClipboardDelivery::connect().ok();
+                            }
+                            let copied = rust
+                                .clipboard
+                                .as_mut()
+                                .is_some_and(|clipboard| clipboard.copy_transcript(&text).is_ok());
+                            if copied {
+                                if let Some(sender) =
+                                    controller.as_ref().rust().desktop_sender.as_ref()
+                                {
+                                    sender.send(DesktopCommand::Paste).ok();
+                                }
+                            }
+                            controller
+                                .as_mut()
+                                .set_transcript_text(QString::from(&text));
+                            controller
+                                .as_mut()
+                                .set_live_transcript(QString::from(&text));
+                            controller.set_status_text(QString::from(if copied {
+                                "AI enhancement retried · result pasted or copied"
+                            } else {
+                                "AI retry succeeded · clipboard delivery failed"
+                            }));
+                        }
+                        Err(error) => controller.set_status_text(QString::from(&format!(
+                            "AI retry failed · raw text remains available · {error}"
+                        ))),
+                    }
+                })
+                .ok();
+        });
+    }
+
+    pub fn dismiss_overlay(mut self: Pin<&mut Self>) {
+        self.as_mut().set_overlay_visible(false);
+        self.as_mut().set_overlay_result_available(false);
     }
 
     pub fn update_command_mode_enabled(mut self: Pin<&mut Self>, enabled: bool) {
@@ -1897,6 +2103,8 @@ impl ffi::FluidVoiceController {
         self.as_mut().set_audio_updates(0);
         self.as_mut().set_transcript_text(QString::default());
         self.as_mut().set_live_transcript(QString::default());
+        self.as_mut().set_last_raw_text(QString::default());
+        self.as_mut().set_overlay_result_available(false);
         self.as_mut().set_recording(true);
         self.as_mut().set_status_text(QString::from("Listening…"));
         let overlay_enabled = *self.as_ref().overlay_enabled();
@@ -2117,6 +2325,9 @@ impl ffi::FluidVoiceController {
                             controller
                                 .as_mut()
                                 .set_live_transcript(QString::from(&processed));
+                            controller
+                                .as_mut()
+                                .set_last_raw_text(QString::from(&transcript.text));
                             let rust = controller.as_mut().rust_mut().get_mut();
                             if rust.clipboard.is_none() {
                                 rust.clipboard = ClipboardDelivery::connect().ok();
@@ -2158,6 +2369,10 @@ impl ffi::FluidVoiceController {
                                 audio_history_summary(),
                             ));
                             controller.as_mut().set_transcript_text(QString::from(&processed));
+                            controller.as_mut().set_overlay_result_available(true);
+                            if *controller.as_ref().overlay_enabled() {
+                                controller.as_mut().set_overlay_visible(true);
+                            }
                             controller.set_status_text(QString::from(if let Some(error) = ai_error {
                                 format!("AI enhancement failed · raw transcript delivered · {error}")
                             } else if delivery_result.is_ok() {
@@ -2221,6 +2436,10 @@ impl FluidVoiceControllerRust {
             input: self.capture_target.clone().unwrap_or_default(),
             gain_db: self.gain_db,
             overlay_enabled: self.overlay_enabled,
+            overlay_size: self.selected_overlay_size,
+            overlay_position: self.selected_overlay_position,
+            overlay_show_text: self.overlay_show_text,
+            overlay_opacity: self.overlay_opacity,
             command_mode_enabled: self.command_mode_enabled,
             compute_backend: self.selected_compute_backend,
             theme: self.selected_theme,
@@ -2268,6 +2487,10 @@ struct Preferences {
     input: String,
     gain_db: f32,
     overlay_enabled: bool,
+    overlay_size: i32,
+    overlay_position: i32,
+    overlay_show_text: bool,
+    overlay_opacity: f32,
     command_mode_enabled: bool,
     compute_backend: i32,
     theme: i32,
@@ -2333,6 +2556,10 @@ impl Default for Preferences {
             input: String::new(),
             gain_db: 0.0,
             overlay_enabled: true,
+            overlay_size: 1,
+            overlay_position: 0,
+            overlay_show_text: true,
+            overlay_opacity: 0.98,
             command_mode_enabled: false,
             compute_backend: 0,
             theme: 0,
@@ -2368,6 +2595,14 @@ impl Preferences {
                 preferences.gain_db = value.parse().unwrap_or(0.0);
             } else if let Some(value) = line.strip_prefix("overlay_enabled=") {
                 preferences.overlay_enabled = value == "true";
+            } else if let Some(value) = line.strip_prefix("overlay_size=") {
+                preferences.overlay_size = value.parse().unwrap_or(1).clamp(0, 2);
+            } else if let Some(value) = line.strip_prefix("overlay_position=") {
+                preferences.overlay_position = value.parse().unwrap_or(0).clamp(0, 2);
+            } else if let Some(value) = line.strip_prefix("overlay_show_text=") {
+                preferences.overlay_show_text = value == "true";
+            } else if let Some(value) = line.strip_prefix("overlay_opacity=") {
+                preferences.overlay_opacity = value.parse::<f32>().unwrap_or(0.98).clamp(0.55, 1.0);
             } else if let Some(value) = line.strip_prefix("command_mode_enabled=") {
                 preferences.command_mode_enabled = value == "true";
             } else if let Some(value) = line.strip_prefix("compute_backend=") {
@@ -2407,13 +2642,17 @@ impl Preferences {
         fs::write(
             path,
             format!(
-                "language={}\nmodel={}\nshortcut={}\ninput={}\ngain_db={}\noverlay_enabled={}\ncommand_mode_enabled={}\ncompute_backend={}\ntheme={}\naccent={}\nai_enabled={}\nai_provider={}\nai_model={}\nai_base_url={}\nai_prompt={}\nai_local_only={}\naudio_history_enabled={}\naudio_history_budget_mb={}\n",
+                "language={}\nmodel={}\nshortcut={}\ninput={}\ngain_db={}\noverlay_enabled={}\noverlay_size={}\noverlay_position={}\noverlay_show_text={}\noverlay_opacity={}\ncommand_mode_enabled={}\ncompute_backend={}\ntheme={}\naccent={}\nai_enabled={}\nai_provider={}\nai_model={}\nai_base_url={}\nai_prompt={}\nai_local_only={}\naudio_history_enabled={}\naudio_history_budget_mb={}\n",
                 self.language,
                 self.model.display(),
                 self.shortcut,
                 self.input,
                 self.gain_db,
                 self.overlay_enabled,
+                self.overlay_size,
+                self.overlay_position,
+                self.overlay_show_text,
+                self.overlay_opacity,
                 self.command_mode_enabled,
                 self.compute_backend,
                 self.theme,

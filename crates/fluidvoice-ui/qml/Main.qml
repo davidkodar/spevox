@@ -346,6 +346,12 @@ ApplicationWindow {
         onTriggered: controller.rewriteSelectedText(instruction)
     }
 
+    Timer {
+        id: overlayPreviewTimer
+        interval: 4000
+        onTriggered: if (!controller.recording && !controller.transcribing && !controller.overlayResultAvailable) controller.setOverlayPreview(false)
+    }
+
     FileDialog {
         id: historyJsonDialog
         title: qsTr("Export history as JSON")
@@ -611,6 +617,38 @@ ApplicationWindow {
                                 Text { id: backgroundStatus; anchors.centerIn: parent; text: qsTr("Active"); color: root.accent; font.pixelSize: 11; font.weight: Font.Medium }
                             }
                         }
+                    }
+                }
+
+                Rectangle {
+                    visible: root.settingsSection === 0
+                    Layout.fillWidth: true
+                    implicitHeight: overlayAppearance.implicitHeight + 32
+                    radius: 16
+                    color: root.panel
+                    border.color: root.hairline
+                    ColumnLayout {
+                        id: overlayAppearance; anchors.fill: parent; anchors.margins: 16; spacing: 12
+                        RowLayout { Layout.fillWidth: true
+                            Text { text: qsTr("OVERLAY APPEARANCE"); color: root.tertiaryText; font.pixelSize: 11; font.weight: Font.Medium }
+                            Item { Layout.fillWidth: true }
+                            Button { text: qsTr("Preview"); onClicked: { controller.setOverlayPreview(true); overlayPreviewTimer.restart() } }
+                        }
+                        GridLayout {
+                            Layout.fillWidth: true; columns: 2; columnSpacing: 18; rowSpacing: 10
+                            Text { text: qsTr("Size"); color: root.secondaryText; font.pixelSize: 12 }
+                            ComboBox { Layout.fillWidth: true; model: controller.overlaySizes; currentIndex: controller.selectedOverlaySize; onActivated: function(index) { controller.updateOverlayPreferences(index, controller.selectedOverlayPosition, controller.overlayShowText, controller.overlayOpacity) } }
+                            Text { text: qsTr("Position"); color: root.secondaryText; font.pixelSize: 12 }
+                            ComboBox { Layout.fillWidth: true; model: controller.overlayPositions; currentIndex: controller.selectedOverlayPosition; onActivated: function(index) { controller.updateOverlayPreferences(controller.selectedOverlaySize, index, controller.overlayShowText, controller.overlayOpacity) } }
+                            Text { text: qsTr("Live text"); color: root.secondaryText; font.pixelSize: 12 }
+                            Switch { checked: controller.overlayShowText; onToggled: controller.updateOverlayPreferences(controller.selectedOverlaySize, controller.selectedOverlayPosition, checked, controller.overlayOpacity) }
+                            Text { text: qsTr("Opacity"); color: root.secondaryText; font.pixelSize: 12 }
+                            RowLayout { Layout.fillWidth: true
+                                Slider { Layout.fillWidth: true; from: 0.55; to: 1.0; stepSize: 0.05; value: controller.overlayOpacity; onMoved: controller.updateOverlayPreferences(controller.selectedOverlaySize, controller.selectedOverlayPosition, controller.overlayShowText, value) }
+                                Text { text: Math.round(controller.overlayOpacity * 100) + "%"; color: root.secondaryText; font.pixelSize: 11; Layout.preferredWidth: 42 }
+                            }
+                        }
+                        Text { Layout.fillWidth: true; text: qsTr("Plasma controls final Wayland window placement; FluidVoice requests the selected screen position and keeps the result recoverable if the compositor adjusts it."); color: root.tertiaryText; font.pixelSize: 10; wrapMode: Text.Wrap }
                     }
                 }
 
@@ -1681,17 +1719,28 @@ ApplicationWindow {
 
     Window {
         id: overlay
-        width: 380
-        height: 156
+        width: controller.selectedOverlaySize === 0 ? 300 : controller.selectedOverlaySize === 2 ? 560 : 380
+        height: (controller.selectedOverlaySize === 0 ? (controller.overlayShowText ? 112 : 84) : controller.selectedOverlaySize === 2 ? (controller.overlayShowText ? 240 : 128) : (controller.overlayShowText ? 156 : 104)) + (controller.overlayResultAvailable ? 52 : 0)
+        x: Math.round((Screen.width - width) / 2)
+        y: controller.selectedOverlayPosition === 1 ? Screen.height - height - 54 : controller.selectedOverlayPosition === 2 ? Math.round((Screen.height - height) / 2) : 42
         visible: controller.overlayVisible
         color: "transparent"
+        opacity: controller.overlayOpacity
         transientParent: null
         modality: Qt.NonModal
         flags: Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
-               | Qt.WindowDoesNotAcceptFocus
+               | (controller.overlayResultAvailable ? 0 : Qt.WindowDoesNotAcceptFocus)
         title: qsTr("FluidVoice Recording")
         property string animatedTranscript: ""
         property string targetTranscript: ""
+
+        HoverHandler { id: overlayHover }
+
+        Timer {
+            id: overlayResultTimer
+            interval: 15000
+            onTriggered: overlayHover.hovered ? restart() : controller.dismissOverlay()
+        }
 
         function commonPrefixLength(left, right) {
             var limit = Math.min(left.length, right.length)
@@ -1717,6 +1766,12 @@ ApplicationWindow {
             target: controller
             function onLiveTranscriptChanged() {
                 overlay.animateToward(controller.liveTranscript)
+            }
+            function onOverlayResultAvailableChanged() {
+                if (controller.overlayResultAvailable)
+                    overlayResultTimer.restart()
+                else
+                    overlayResultTimer.stop()
             }
         }
 
@@ -1766,6 +1821,7 @@ ApplicationWindow {
                 }
 
                 Text {
+                    visible: controller.overlayShowText
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     text: overlay.animatedTranscript.length > 0
@@ -1778,6 +1834,18 @@ ApplicationWindow {
                     elide: Text.ElideLeft
                     maximumLineCount: 3
                     verticalAlignment: Text.AlignVCenter
+                }
+
+                RowLayout {
+                    visible: controller.overlayResultAvailable
+                    Layout.fillWidth: true
+                    spacing: 6
+                    Button { text: qsTr("Copy"); onClicked: controller.copyLastResult(false) }
+                    Button { text: qsTr("Raw"); enabled: controller.lastRawText.length > 0; onClicked: controller.copyLastResult(true) }
+                    Button { text: qsTr("Undo AI"); enabled: controller.lastRawText.length > 0 && controller.lastRawText !== controller.transcriptText; onClicked: controller.undoLastAi() }
+                    Button { text: qsTr("Retry AI"); enabled: controller.lastRawText.length > 0 && !controller.transcribing; onClicked: controller.retryLastAi() }
+                    Item { Layout.fillWidth: true }
+                    Button { text: "×"; onClicked: controller.dismissOverlay() }
                 }
 
                 RowLayout {

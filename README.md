@@ -23,7 +23,8 @@ configures.
 - Automatic language detection or a fixed language for more reliable short dictation.
 - Tiny, Base, Small, Medium, Large Turbo, and Large v3 model management.
 - Vulkan acceleration on compatible NVIDIA, AMD, and Intel GPUs with CPU fallback.
-- Live transcript overlay with animated typewriter-style updates.
+- Configurable live transcript overlay with animated typewriter-style updates,
+  three sizes, placement, opacity, text visibility, and recovery actions.
 - Wayland-aware direct paste where available, with verified clipboard recovery.
 - Native Plasma system tray, single-instance activation, and correct desktop identity.
 - Persistent custom spellings and optional spoken formatting commands.
@@ -103,7 +104,7 @@ usable but does not yet match the depth of the current macOS implementation.
 | --- | --- | --- | --- |
 | Global hold-to-dictate | Available | Available | Linux uses the XDG Global Shortcuts portal. |
 | Direct typing into applications | Partial | Available | Linux uses Wayland portal/clipboard delivery; application support can vary. |
-| Live transcript overlay | Available | Available | Linux uses periodic local Whisper previews rather than the newest Parakeet streaming path. |
+| Live transcript overlay | Available | Available | Linux provides compact/standard/expanded layouts, placement, opacity, text visibility, streamed AI retry, copy, raw recovery, and undo; previews use periodic local Whisper rather than the newest Parakeet streaming path. |
 | Whisper models | Available | Available | Linux supports all six listed multilingual GGML sizes. |
 | Parakeet, Nemotron, Cohere, Apple Speech | Missing | Available | Linux currently ships only the Whisper engine. |
 | Vulkan GPU acceleration | Available | Not applicable | Linux supports cross-vendor Vulkan with CPU fallback. |
