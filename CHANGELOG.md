@@ -35,6 +35,11 @@ All notable changes to FluidVoice Linux are documented here. The project uses
   TXT, Markdown, SRT, WebVTT, and JSON exports. The segment schema carries an
   optional speaker field for future diarization and labels it unassigned today
   rather than inventing speaker identities.
+- Added an optional local automation API bound exclusively to `127.0.0.1`,
+  disabled by default and protected by a rotatable 256-bit bearer token stored
+  with owner-only permissions. It exposes only health, status, and dictation
+  toggle operations, rejects browser origins, caps requests, and applies short
+  connection timeouts.
 - Added AI enhancement analytics for usage, success/fallback rate, average
   latency, and provider/model activity.
 - Added per-entry raw/final visual diffs, word and character deltas, and copy

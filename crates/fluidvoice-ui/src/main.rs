@@ -1,6 +1,7 @@
 mod ai;
 mod application;
 mod controller;
+mod local_api;
 
 use cxx_qt::casting::Upcast;
 use cxx_qt_lib::{QQmlApplicationEngine, QQmlEngine, QUrl};

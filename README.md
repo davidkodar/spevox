@@ -39,6 +39,7 @@ configures.
   streaks, 7/30-day activity, milestones, insights, records, and AI edit impact.
 - Optional local microphone-audio history with a storage budget, automatic
   pruning, playback, individual deletion, and ZIP export.
+- Optional authenticated loopback API for local automation and dictation control.
 - Upstream-inspired settings navigation, onboarding, changelog, and feedback pages.
 
 See [CHANGELOG.md](CHANGELOG.md) for release-by-release details.
@@ -120,7 +121,7 @@ usable but does not yet match the depth of the current macOS implementation.
 | Fluid Intelligence / Fluid-1 | Missing | Available | Fluid-1 weights, runtime, and training code are separately maintained and not available in the GPL repository. |
 | File and meeting transcription | Available | Available | Linux accepts MP3, FLAC, Ogg/Opus, M4A/AAC, WebM, MP4, and varied WAV through FFmpeg, then runs bounded timestamped Whisper segments with progress/cancellation and TXT, Markdown, SRT, WebVTT, or JSON export. Speaker fields are diarization-ready but honestly remain unassigned until a real backend is added. |
 | Transcript history | Partial | Available | Linux provides search, timestamps, raw/final visual diffs, change counts, copy/undo actions, optional retained audio, AI metadata, word counts, and JSON/CSV/ZIP export; app/window metadata and feedback reports remain missing. |
-| Usage statistics | Partial | Available | Linux provides today/all-time totals, estimated time saved, streaks, averages, a seven-day chart, AI enhancement rate, success/fallback rate, latency, and provider/model activity; editable typing speed, 30-day charts, milestones, and records are still missing. |
+| Usage statistics | Available | Available | Linux provides today/all-time totals, estimated time saved, configurable typing speed, weekend-aware streaks, 7/30-day charts, milestones, insights, records, and AI enhancement impact/provider activity. |
 | Per-application configuration | Available | Available | Linux provides persistent named prompt profiles and opt-in automatic matching through a packaged KWin script. Only application class and window title cross the local session bus; the bridge is disabled by default. |
 | Audio recording history | Available | Available | Optional and off by default; Linux retains local mono WAV recordings within a configurable budget, supports playback and deletion, and exports audio plus metadata as ZIP. |
 | Adaptive themes and accents | Available | Available | System/KDE defaults plus explicit FluidVoice themes and colors. |
@@ -146,6 +147,7 @@ User data follows XDG conventions:
 - Settings: `$XDG_CONFIG_HOME/fluidvoice/settings.conf` or `~/.config/fluidvoice/settings.conf`.
 - Application profiles: `$XDG_DATA_HOME/fluidvoice/ai-profiles.json`.
 - Command history: `$XDG_DATA_HOME/fluidvoice/command-history.tsv`.
+- Local API token: `$XDG_CONFIG_HOME/fluidvoice/local-api.token` (mode `0600`).
 
 Audio is processed locally and is not retained unless optional Audio History is
 explicitly enabled. Retained recordings use
@@ -177,6 +179,25 @@ user turns on **Automatic KWin profile selection**. KWin then reports the active
 application class and window title to FluidVoice's session-local D-Bus endpoint.
 Profile rules use comma-separated, case-insensitive fragments; blank rules stay
 manual-only. Disabling the option disables the KWin script again.
+
+## Local automation API
+
+The local API is disabled by default. Enable it under **Settings → Local API**,
+choose a non-privileged port, and restart FluidVoice. It binds exclusively to
+IPv4 loopback (`127.0.0.1`), rejects browser `Origin` requests, limits request
+headers, applies short I/O timeouts, and never accepts filesystem paths or shell
+commands. Copy or rotate its 256-bit bearer token from the same settings card.
+
+```bash
+TOKEN="$(cat "${XDG_CONFIG_HOME:-$HOME/.config}/fluidvoice/local-api.token")"
+curl http://127.0.0.1:43128/v1/health
+curl -H "Authorization: Bearer $TOKEN" http://127.0.0.1:43128/v1/status
+curl -X POST -H "Authorization: Bearer $TOKEN" \
+  http://127.0.0.1:43128/v1/dictation/toggle
+```
+
+Only health is unauthenticated. Status and dictation control require the token;
+rotating it immediately revokes existing clients.
 
 ## GPU acceleration
 

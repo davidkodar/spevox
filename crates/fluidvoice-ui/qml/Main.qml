@@ -770,6 +770,54 @@ ApplicationWindow {
                 Rectangle {
                     visible: root.settingsSection === 0
                     Layout.fillWidth: true
+                    implicitHeight: localApiSettings.implicitHeight + 32
+                    radius: 16
+                    color: root.panel
+                    border.color: root.hairline
+                    ColumnLayout {
+                        id: localApiSettings
+                        anchors.fill: parent
+                        anchors.margins: 16
+                        spacing: 12
+                        Text { text: qsTr("LOCAL API"); color: root.tertiaryText; font.pixelSize: 11; font.weight: Font.Medium }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            ColumnLayout {
+                                Layout.fillWidth: true; spacing: 3
+                                Text { text: qsTr("Loopback automation"); color: root.primaryText; font.pixelSize: 14; font.weight: Font.Medium }
+                                Text { Layout.fillWidth: true; text: qsTr("Optional authenticated API bound only to 127.0.0.1. Disabled by default."); color: root.secondaryText; font.pixelSize: 12; wrapMode: Text.Wrap }
+                            }
+                            Switch {
+                                checked: controller.localApiEnabled
+                                onToggled: controller.updateLocalApi(checked, localApiPort.value)
+                            }
+                        }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Text { text: qsTr("Port"); color: root.secondaryText; font.pixelSize: 12 }
+                            Item { Layout.fillWidth: true }
+                            SpinBox {
+                                id: localApiPort
+                                from: 1024; to: 65535
+                                value: controller.localApiPort
+                                editable: true
+                                onValueModified: controller.updateLocalApi(controller.localApiEnabled, value)
+                            }
+                        }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Button { text: qsTr("Copy bearer token"); onClicked: controller.copyLocalApiToken() }
+                            Button { text: qsTr("Rotate token"); onClicked: controller.rotateLocalApiToken() }
+                            Item { Layout.fillWidth: true }
+                        }
+                        Text { Layout.fillWidth: true; text: controller.localApiStatus; color: root.secondaryText; font.pixelSize: 11; wrapMode: Text.Wrap }
+                        Text { Layout.fillWidth: true; text: qsTr("Endpoints: GET /v1/health, GET /v1/status, POST /v1/dictation/toggle. Browser Origin requests are rejected."); color: root.tertiaryText; font.pixelSize: 11; wrapMode: Text.Wrap }
+                    }
+                }
+
+                Rectangle {
+                    visible: root.settingsSection === 0
+                    Layout.fillWidth: true
                     implicitHeight: overlayAppearance.implicitHeight + 32
                     radius: 16
                     color: root.panel

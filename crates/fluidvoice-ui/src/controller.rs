@@ -97,6 +97,9 @@ pub mod ffi {
         #[qproperty(QString, active_application, cxx_name = "activeApplication")]
         #[qproperty(QString, app_version, cxx_name = "appVersion")]
         #[qproperty(QString, update_status, cxx_name = "updateStatus")]
+        #[qproperty(bool, local_api_enabled, cxx_name = "localApiEnabled")]
+        #[qproperty(i32, local_api_port, cxx_name = "localApiPort")]
+        #[qproperty(QString, local_api_status, cxx_name = "localApiStatus")]
         type FluidVoiceController = super::FluidVoiceControllerRust;
 
         #[qinvokable]
@@ -357,6 +360,18 @@ pub mod ffi {
         #[qinvokable]
         #[cxx_name = "checkForUpdates"]
         fn check_for_updates(self: Pin<&mut Self>);
+
+        #[qinvokable]
+        #[cxx_name = "updateLocalApi"]
+        fn update_local_api(self: Pin<&mut Self>, enabled: bool, port: i32);
+
+        #[qinvokable]
+        #[cxx_name = "rotateLocalApiToken"]
+        fn rotate_local_api_token(self: Pin<&mut Self>);
+
+        #[qinvokable]
+        #[cxx_name = "copyLocalApiToken"]
+        fn copy_local_api_token(self: Pin<&mut Self>);
     }
 
     impl cxx_qt::Threading for FluidVoiceController {}
@@ -387,6 +402,7 @@ use fluidvoice_transcription::{TranscriptionConfig, WhisperTranscriber};
 use tokio::sync::mpsc;
 
 use crate::ai::{self, AiConfig};
+use crate::local_api::{self, LocalApiAction};
 
 pub struct FluidVoiceControllerRust {
     status_text: QString,
@@ -482,6 +498,9 @@ pub struct FluidVoiceControllerRust {
     last_write_instruction: String,
     app_version: QString,
     update_status: QString,
+    local_api_enabled: bool,
+    local_api_port: i32,
+    local_api_status: QString,
 }
 
 impl Default for FluidVoiceControllerRust {
@@ -732,6 +751,13 @@ impl Default for FluidVoiceControllerRust {
             last_write_instruction: String::new(),
             app_version: QString::from(env!("CARGO_PKG_VERSION")),
             update_status: QString::from("Updates have not been checked."),
+            local_api_enabled: preferences.local_api_enabled,
+            local_api_port: preferences.local_api_port,
+            local_api_status: QString::from(if preferences.local_api_enabled {
+                format!("Starting on 127.0.0.1:{}…", preferences.local_api_port)
+            } else {
+                "Off · no local port is open".to_owned()
+            }),
         }
     }
 }
@@ -744,6 +770,38 @@ impl ffi::FluidVoiceController {
         let (desktop_sender, mut desktop_receiver) = mpsc::unbounded_channel();
         self.as_mut().rust_mut().get_mut().desktop_sender = Some(desktop_sender);
         let qt_thread = self.qt_thread();
+        let api_preferences = Preferences::load();
+        if api_preferences.local_api_enabled {
+            let (api_actions, api_events) = std::sync::mpsc::channel();
+            match u16::try_from(api_preferences.local_api_port)
+                .map_err(|_| "port is outside the valid range".to_owned())
+                .and_then(|port| local_api::start(port, api_actions))
+            {
+                Ok(()) => {
+                    self.as_mut().set_local_api_status(QString::from(&format!(
+                        "Listening securely on 127.0.0.1:{}",
+                        api_preferences.local_api_port
+                    )));
+                    let api_qt_thread = self.qt_thread();
+                    std::thread::spawn(move || {
+                        while let Ok(action) = api_events.recv() {
+                            match action {
+                                LocalApiAction::ToggleDictation => {
+                                    api_qt_thread
+                                        .queue(|mut controller| {
+                                            controller.as_mut().toggle_recording();
+                                        })
+                                        .ok();
+                                }
+                            }
+                        }
+                    });
+                }
+                Err(error) => self.as_mut().set_local_api_status(QString::from(&format!(
+                    "Local API unavailable: {error}"
+                ))),
+            }
+        }
         let shortcut = selected_shortcut_trigger(self.as_ref().rust());
         std::thread::spawn(move || {
             let runtime = match tokio::runtime::Builder::new_current_thread()
@@ -2176,6 +2234,46 @@ impl ffi::FluidVoiceController {
         });
     }
 
+    pub fn update_local_api(mut self: Pin<&mut Self>, enabled: bool, port: i32) {
+        let port = port.clamp(1024, 65_535);
+        self.as_mut().set_local_api_enabled(enabled);
+        self.as_mut().set_local_api_port(port);
+        self.as_ref().rust().save_preferences();
+        self.as_mut()
+            .set_local_api_status(QString::from(if enabled {
+                format!("Enabled for 127.0.0.1:{port} · restart FluidVoice to apply")
+            } else {
+                "Disabled · restart FluidVoice to close the current listener".to_owned()
+            }));
+    }
+
+    pub fn rotate_local_api_token(mut self: Pin<&mut Self>) {
+        let message = match local_api::rotate_token(&local_api::token_path()) {
+            Ok(_) => "Local API token rotated · existing clients are now revoked".to_owned(),
+            Err(error) => format!("Could not rotate local API token: {error}"),
+        };
+        self.as_mut().set_local_api_status(QString::from(&message));
+    }
+
+    pub fn copy_local_api_token(mut self: Pin<&mut Self>) {
+        let result = local_api::ensure_token(&local_api::token_path()).and_then(|token| {
+            let rust = self.as_mut().rust_mut().get_mut();
+            if rust.clipboard.is_none() {
+                rust.clipboard = ClipboardDelivery::connect().ok();
+            }
+            rust.clipboard
+                .as_mut()
+                .ok_or_else(|| "clipboard integration is unavailable".to_owned())?
+                .copy_transcript(&token)
+                .map_err(|error| error.to_string())
+        });
+        self.as_mut()
+            .set_local_api_status(QString::from(match result {
+                Ok(()) => "Bearer token copied · treat it like a password".to_owned(),
+                Err(error) => format!("Could not copy local API token: {error}"),
+            }));
+    }
+
     pub fn add_dictionary_term(mut self: Pin<&mut Self>, term: &QString) {
         let term = term.to_string().trim().to_owned();
         if term.is_empty() {
@@ -3013,6 +3111,8 @@ impl FluidVoiceControllerRust {
             skip_weekends: self.skip_weekends,
             audio_history_enabled: self.audio_history_enabled,
             audio_history_budget_mb: self.audio_history_budget_mb,
+            local_api_enabled: self.local_api_enabled,
+            local_api_port: self.local_api_port,
         };
         if let Err(error) = preferences.save() {
             eprintln!("Failed to save preferences: {error}");
@@ -3067,6 +3167,8 @@ struct Preferences {
     skip_weekends: bool,
     audio_history_enabled: bool,
     audio_history_budget_mb: i32,
+    local_api_enabled: bool,
+    local_api_port: i32,
 }
 
 #[derive(Clone)]
@@ -3161,6 +3263,8 @@ impl Default for Preferences {
             skip_weekends: true,
             audio_history_enabled: false,
             audio_history_budget_mb: 500,
+            local_api_enabled: false,
+            local_api_port: 43_128,
         }
     }
 }
@@ -3223,6 +3327,10 @@ impl Preferences {
             } else if let Some(value) = line.strip_prefix("audio_history_budget_mb=") {
                 preferences.audio_history_budget_mb =
                     value.parse().unwrap_or(500).clamp(100, 10_000);
+            } else if let Some(value) = line.strip_prefix("local_api_enabled=") {
+                preferences.local_api_enabled = value == "true";
+            } else if let Some(value) = line.strip_prefix("local_api_port=") {
+                preferences.local_api_port = value.parse().unwrap_or(43_128).clamp(1024, 65_535);
             }
         }
         preferences
@@ -3237,7 +3345,7 @@ impl Preferences {
         fs::write(
             path,
             format!(
-                "language={}\nmodel={}\nshortcut={}\ninput={}\ngain_db={}\noverlay_enabled={}\noverlay_size={}\noverlay_position={}\noverlay_show_text={}\noverlay_opacity={}\ncommand_mode_enabled={}\ncompute_backend={}\ntheme={}\naccent={}\nai_enabled={}\nai_provider={}\nai_model={}\nai_base_url={}\nai_prompt={}\nai_local_only={}\nauto_profiles_enabled={}\ntyping_wpm={}\nskip_weekends={}\naudio_history_enabled={}\naudio_history_budget_mb={}\n",
+                "language={}\nmodel={}\nshortcut={}\ninput={}\ngain_db={}\noverlay_enabled={}\noverlay_size={}\noverlay_position={}\noverlay_show_text={}\noverlay_opacity={}\ncommand_mode_enabled={}\ncompute_backend={}\ntheme={}\naccent={}\nai_enabled={}\nai_provider={}\nai_model={}\nai_base_url={}\nai_prompt={}\nai_local_only={}\nauto_profiles_enabled={}\ntyping_wpm={}\nskip_weekends={}\naudio_history_enabled={}\naudio_history_budget_mb={}\nlocal_api_enabled={}\nlocal_api_port={}\n",
                 self.language,
                 self.model.display(),
                 self.shortcut,
@@ -3262,7 +3370,9 @@ impl Preferences {
                 self.typing_wpm,
                 self.skip_weekends,
                 self.audio_history_enabled,
-                self.audio_history_budget_mb
+                self.audio_history_budget_mb,
+                self.local_api_enabled,
+                self.local_api_port
             ),
         )
         .map_err(|error| error.to_string())
