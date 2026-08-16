@@ -734,7 +734,7 @@ impl Default for FluidVoiceControllerRust {
             meeting_segments: QStringList::default(),
             meeting_results: Vec::new(),
             meeting_cancel: None,
-            compute_backends: ["Automatic (Vulkan)", "GPU preferred (Vulkan)", "CPU"]
+            compute_backends: ["Automatic (Vulkan → CPU)", "Vulkan only", "CPU only"]
                 .into_iter()
                 .map(QString::from)
                 .collect(),
@@ -822,9 +822,7 @@ impl Default for FluidVoiceControllerRust {
             parakeet_status: QString::from(
                 "Run setup to install the native Parakeet runtime and model.",
             ),
-            parakeet_runtime_installed: parakeet::runtime_installed(parakeet_backend(
-                preferences.compute_backend,
-            )),
+            parakeet_runtime_installed: parakeet_runtime_available(preferences.compute_backend),
             parakeet_model_installed: parakeet::model_installed(),
             parakeet_busy: false,
             parakeet_download_progress: 0.0,
@@ -1548,11 +1546,13 @@ impl ffi::FluidVoiceController {
             return;
         }
         self.as_mut().set_selected_compute_backend(index);
+        self.as_mut()
+            .set_parakeet_runtime_installed(parakeet_runtime_available(index));
         self.as_ref().rust().save_preferences();
         self.as_mut().set_status_text(QString::from(match index {
             2 => "CPU inference selected",
-            1 => "Vulkan GPU preferred; CPU fallback remains available",
-            _ => "Automatic Vulkan acceleration selected",
+            1 => "Vulkan-only inference selected; its development packages are required",
+            _ => "Automatic inference selected; Vulkan is preferred with managed CPU fallback",
         }));
     }
 
@@ -2368,24 +2368,47 @@ impl ffi::FluidVoiceController {
         if *self.as_ref().parakeet_busy() {
             return;
         }
-        let backend = parakeet_backend(*self.as_ref().selected_compute_backend());
+        let compute_backend = *self.as_ref().selected_compute_backend();
+        let backend = parakeet_backend(compute_backend);
+        let automatic = compute_backend == 0;
         self.as_mut().set_parakeet_busy(true);
-        self.as_mut()
-            .set_parakeet_status(QString::from("Building pinned NeMo-Speech.cpp runtime…"));
+        self.as_mut().set_parakeet_status(QString::from(
+            "Building the pinned native runtime… This can take several minutes.",
+        ));
         let qt_thread = self.qt_thread();
         std::thread::spawn(move || {
-            let result = parakeet::install_runtime(backend);
+            let result = parakeet::install_runtime(backend)
+                .map(|()| (backend, false))
+                .or_else(|vulkan_error| {
+                    if automatic && backend == ParakeetBackend::Vulkan {
+                        parakeet::install_runtime(ParakeetBackend::Cpu)
+                            .map(|()| (ParakeetBackend::Cpu, true))
+                            .map_err(|cpu_error| {
+                                format!(
+                                    "Vulkan setup failed: {} CPU fallback also failed: {}",
+                                    friendly_runtime_error(&vulkan_error),
+                                    friendly_runtime_error(&cpu_error)
+                                )
+                            })
+                    } else {
+                        Err(friendly_runtime_error(&vulkan_error))
+                    }
+                });
             qt_thread
                 .queue(move |mut controller| {
                     controller.as_mut().set_parakeet_busy(false);
                     controller.as_mut().set_parakeet_download_progress(0.0);
                     controller
                         .as_mut()
-                        .set_parakeet_runtime_installed(parakeet::runtime_installed(backend));
+                        .set_parakeet_runtime_installed(parakeet_runtime_available(compute_backend));
                     controller
                         .as_mut()
                         .set_parakeet_status(QString::from(match result {
-                            Ok(()) => "Native Parakeet runtime installed and pinned.".to_owned(),
+                            Ok((installed_backend, fell_back)) => if fell_back {
+                                "Vulkan development files were unavailable, so the pinned CPU runtime was installed automatically. Parakeet is ready to use.".to_owned()
+                            } else {
+                                format!("Pinned {} Parakeet runtime installed.", installed_backend.id().to_uppercase())
+                            },
                             Err(error) => format!("Runtime installation failed: {error}"),
                         }));
                 })
@@ -2459,8 +2482,8 @@ impl ffi::FluidVoiceController {
     }
 
     pub fn diagnose_parakeet(mut self: Pin<&mut Self>) {
-        let backend = parakeet_backend(*self.as_ref().selected_compute_backend());
-        let runtime = parakeet::runtime_installed(backend);
+        let compute_backend = *self.as_ref().selected_compute_backend();
+        let runtime = parakeet_runtime_available(compute_backend);
         let model = parakeet::model_installed();
         self.as_mut().set_parakeet_runtime_installed(runtime);
         self.as_mut().set_parakeet_model_installed(model);
@@ -2968,7 +2991,8 @@ impl ffi::FluidVoiceController {
         let speech_engine = *self.as_ref().selected_speech_engine();
         let local_speech_url = self.as_ref().local_speech_url().to_string();
         let parakeet_supervisor = Arc::clone(&self.as_ref().rust().parakeet_supervisor);
-        let parakeet_backend = parakeet_backend(*self.as_ref().selected_compute_backend());
+        let parakeet_backend =
+            effective_parakeet_backend(*self.as_ref().selected_compute_backend());
         let ai_config = self.as_ref().rust().ai_config();
         let retain_audio = *self.as_ref().audio_history_enabled();
         let audio_budget_bytes =
@@ -5018,6 +5042,31 @@ fn parakeet_backend(compute_backend: i32) -> ParakeetBackend {
         ParakeetBackend::Cpu
     } else {
         ParakeetBackend::Vulkan
+    }
+}
+
+fn effective_parakeet_backend(compute_backend: i32) -> ParakeetBackend {
+    if compute_backend == 0
+        && !parakeet::runtime_installed(ParakeetBackend::Vulkan)
+        && parakeet::runtime_installed(ParakeetBackend::Cpu)
+    {
+        ParakeetBackend::Cpu
+    } else {
+        parakeet_backend(compute_backend)
+    }
+}
+
+fn parakeet_runtime_available(compute_backend: i32) -> bool {
+    parakeet::runtime_installed(effective_parakeet_backend(compute_backend))
+}
+
+fn friendly_runtime_error(error: &str) -> String {
+    if error.contains("SPIRV-Headers") || error.contains("spirv-headers") {
+        "Vulkan development package SPIRV-Headers is missing".to_owned()
+    } else if error.contains("glslc") {
+        "the Vulkan shader compiler (glslc) is missing".to_owned()
+    } else {
+        error.lines().next().unwrap_or(error).trim().to_owned()
     }
 }
 

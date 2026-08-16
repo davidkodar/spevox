@@ -969,30 +969,31 @@ ApplicationWindow {
                             }
                         }
 
-                        Item {
+                        RowLayout {
                             visible: controller.selectedSpeechEngine !== 2
                             Layout.fillWidth: true
-                            height: visible ? 56 : 0
-                            Column {
-                                anchors.left: parent.left
-                                anchors.right: computeBackendSelector.left
-                                anchors.rightMargin: 24
-                                anchors.verticalCenter: parent.verticalCenter
+                            Layout.preferredHeight: visible ? 62 : 0
+                            spacing: 24
+                            ColumnLayout {
+                                Layout.fillWidth: true
                                 spacing: 3
                                 Text { text: qsTr("Compute backend"); color: root.primaryText; font.pixelSize: 14; font.weight: Font.Medium }
                                 Text {
+                                    Layout.fillWidth: true
                                     text: controller.selectedComputeBackend === 2
                                           ? qsTr("Force CPU inference")
-                                          : qsTr("Vulkan acceleration with safe CPU fallback")
+                                          : controller.selectedComputeBackend === 0
+                                            ? qsTr("Try Vulkan first, then install and use CPU automatically")
+                                            : qsTr("Require Vulkan acceleration")
                                     color: root.secondaryText
                                     font.pixelSize: 12
+                                    wrapMode: Text.Wrap
                                 }
                             }
                             ComboBox {
                                 id: computeBackendSelector
-                                anchors.right: parent.right
-                                anchors.verticalCenter: parent.verticalCenter
-                                width: 260
+                                Layout.preferredWidth: 320
+                                Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
                                 model: controller.computeBackends
                                 currentIndex: controller.selectedComputeBackend
                                 enabled: !controller.recording && !controller.transcribing
@@ -1015,22 +1016,29 @@ ApplicationWindow {
                                 Text { text: qsTr("Parakeet TDT v3 · beta"); color: root.primaryText; font.pixelSize: 15; font.weight: Font.DemiBold }
                                 Text { Layout.fillWidth: true; text: controller.parakeetStatus; color: root.secondaryText; font.pixelSize: 12; wrapMode: Text.Wrap }
                                 RowLayout {
+                                    visible: controller.parakeetBusy
+                                    Layout.fillWidth: true
+                                    BusyIndicator { running: controller.parakeetBusy; implicitWidth: 24; implicitHeight: 24 }
+                                    Text { Layout.fillWidth: true; text: controller.parakeetDownloadProgress > 0 ? qsTr("Downloading and verifying the model…") : qsTr("Compiling the native runtime in the background; please keep FluidVoice open."); color: root.accent; font.pixelSize: 12; wrapMode: Text.Wrap }
+                                }
+                                RowLayout {
                                     Layout.fillWidth: true
                                     Text { Layout.fillWidth: true; text: controller.parakeetRuntimeInstalled ? qsTr("Native runtime installed") : qsTr("Native runtime required"); color: controller.parakeetRuntimeInstalled ? root.accent : root.secondaryText }
-                                    Button { text: controller.parakeetRuntimeInstalled ? qsTr("Rebuild") : qsTr("Install runtime"); enabled: !controller.parakeetBusy; onClicked: controller.installParakeetRuntime() }
+                                    Button { Layout.preferredWidth: 160; text: controller.parakeetRuntimeInstalled ? qsTr("Rebuild") : qsTr("Install runtime"); enabled: !controller.parakeetBusy; onClicked: controller.installParakeetRuntime() }
                                 }
                                 RowLayout {
                                     Layout.fillWidth: true
                                     Text { Layout.fillWidth: true; text: controller.parakeetModelInstalled ? qsTr("Verified multilingual model installed · 681 MiB") : qsTr("Multilingual model required · 681 MiB"); color: controller.parakeetModelInstalled ? root.accent : root.secondaryText }
-                                    Button { visible: !controller.parakeetModelInstalled; enabled: !controller.parakeetBusy || controller.parakeetDownloadProgress > 0; text: controller.parakeetDownloadProgress > 0 ? qsTr("Cancel") : qsTr("Download"); onClicked: controller.parakeetDownloadProgress > 0 ? controller.cancelParakeetDownload() : controller.downloadParakeetModel() }
-                                    Button { visible: controller.parakeetModelInstalled; text: qsTr("Delete"); enabled: !controller.parakeetBusy; onClicked: controller.deleteParakeetModel() }
+                                    Button { visible: !controller.parakeetModelInstalled; Layout.preferredWidth: 160; enabled: !controller.parakeetBusy || controller.parakeetDownloadProgress > 0; text: controller.parakeetDownloadProgress > 0 ? qsTr("Cancel") : qsTr("Download model"); onClicked: controller.parakeetDownloadProgress > 0 ? controller.cancelParakeetDownload() : controller.downloadParakeetModel() }
+                                    Button { visible: controller.parakeetModelInstalled; Layout.preferredWidth: 160; text: qsTr("Delete model"); enabled: !controller.parakeetBusy; onClicked: controller.deleteParakeetModel() }
                                 }
                                 ProgressBar { visible: controller.parakeetBusy && controller.parakeetDownloadProgress > 0; Layout.fillWidth: true; value: controller.parakeetDownloadProgress }
                                 RowLayout {
                                     Layout.fillWidth: true
                                     Text { Layout.fillWidth: true; text: qsTr("Runs locally through pinned NVIDIA NeMo-Speech.cpp. CPU and Vulkan are supported; Whisper is the automatic fallback."); color: root.tertiaryText; font.pixelSize: 11; wrapMode: Text.Wrap }
-                                    Button { text: qsTr("Check setup"); enabled: !controller.parakeetBusy; onClicked: controller.diagnoseParakeet() }
+                                    Button { Layout.preferredWidth: 160; text: qsTr("Check setup"); enabled: !controller.parakeetBusy; onClicked: controller.diagnoseParakeet() }
                                 }
+                                Text { Layout.fillWidth: true; text: qsTr("Install the runtime and model in either order. Both are required before Parakeet can transcribe."); color: root.tertiaryText; font.pixelSize: 11; wrapMode: Text.Wrap }
                             }
                         }
 

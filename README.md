@@ -169,6 +169,9 @@ The helper listens only on `127.0.0.1`, starts on first use, and is supervised
 by FluidVoice. If setup, startup, or transcription fails, the captured audio is
 sent through the selected local Whisper model instead of being lost. Installing
 the runtime from source requires Git, CMake 3.26+, Ninja, and a C++17 compiler.
+Its pinned private SentencePiece dependency is built automatically. Automatic
+compute tries Vulkan first and installs CPU instead when the Vulkan development
+packages are incomplete; “Vulkan only” remains available for strict GPU use.
 
 User data follows XDG conventions:
 

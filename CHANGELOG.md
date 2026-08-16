@@ -5,6 +5,10 @@ All notable changes to FluidVoice Linux are documented here. The project uses
 
 ## 0.4.0 - 2026-08-16
 
+- Fixed Parakeet setup on current Arch toolchains by managing its pinned
+  SentencePiece dependency, making Automatic genuinely fall back from missing
+  Vulkan development files to CPU, showing build progress, shortening setup
+  errors, and correcting the speech-engine card layout.
 - Added a managed Parakeet TDT v3 beta engine using pinned NeMo-Speech.cpp,
   verified GGUF downloads, CPU/Vulkan runtimes, supervised loopback-only
   startup, and automatic Whisper fallback.

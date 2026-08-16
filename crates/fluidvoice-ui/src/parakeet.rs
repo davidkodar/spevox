@@ -133,6 +133,20 @@ pub fn install_runtime(backend: Backend) -> Result<(), String> {
             .args(["ggml", "third_party/cpp-httplib"]),
         "prepare NeMo-Speech.cpp dependencies",
     )?;
+    let sentencepiece_build = checkout.join(".deps/sentencepiece-build/build");
+    let sentencepiece_library = checkout.join(".deps/sentencepiece/lib/libsentencepiece.a");
+    if !sentencepiece_library.is_file() && sentencepiece_build.is_dir() {
+        fs::remove_dir_all(&sentencepiece_build).map_err(|error| error.to_string())?;
+    }
+    run(
+        Command::new(checkout.join("scripts/build_sentencepiece_static.sh"))
+            .current_dir(&checkout)
+            // Current Arch toolchains use CMake 4 and GCC 16. The pinned
+            // dependency predates both defaults but is source-compatible.
+            .env("CMAKE_POLICY_VERSION_MINIMUM", "3.5")
+            .env("CXXFLAGS", "-include cstdint"),
+        "build the pinned SentencePiece dependency",
+    )?;
     let preset = format!("{}-server", backend.id());
     run(
         Command::new(checkout.join("scripts/configure.sh"))

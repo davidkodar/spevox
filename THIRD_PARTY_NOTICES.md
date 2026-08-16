@@ -38,3 +38,13 @@ user's request and is never redistributed in the FluidVoice source tree.
 - File: `parakeet-tdt-0.6b-v3.q8_0.gguf`
 - Copyright: NVIDIA Corporation
 - License: Creative Commons Attribution 4.0 International (CC BY 4.0)
+
+## SentencePiece
+
+The optional managed Parakeet runtime builds a pinned private SentencePiece
+archive using the NeMo-Speech.cpp dependency script.
+
+- Source: https://github.com/google/sentencepiece
+- Pinned revision: `17d7580d6407802f85855d2cc9190634e2c95624`
+- Copyright: Google Inc. and contributors
+- License: Apache License 2.0
