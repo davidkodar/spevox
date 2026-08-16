@@ -3,6 +3,8 @@
 #include <QApplication>
 #include <QLockFile>
 #include <QLocalServer>
+#include <QMenu>
+#include <QSystemTrayIcon>
 #include <memory>
 
 namespace fluidvoice {
@@ -13,8 +15,12 @@ public:
     bool isPrimaryInstance() const;
 
 private:
+    void showSettingsWindow();
+
     std::unique_ptr<QLockFile> instanceLock;
     std::unique_ptr<QLocalServer> activationServer;
+    std::unique_ptr<QMenu> trayMenu;
+    std::unique_ptr<QSystemTrayIcon> trayIcon;
     bool primaryInstance = false;
 };
 

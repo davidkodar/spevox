@@ -35,16 +35,27 @@ FluidVoiceApplication::FluidVoiceApplication(int &argc, char **argv)
                 connect(socket, &QLocalSocket::disconnected, socket, &QObject::deleteLater);
                 socket->disconnectFromServer();
             }
-            for (QWindow *window : topLevelWindows()) {
-                if (window->title() != "FluidVoice") {
-                    continue;
-                }
-                window->show();
-                window->raise();
-                window->requestActivate();
-            }
+            showSettingsWindow();
         });
         activationServer->listen(activationName);
+
+        trayMenu = std::make_unique<QMenu>();
+        QAction *openAction = trayMenu->addAction("Open FluidVoice");
+        connect(openAction, &QAction::triggered, this, &FluidVoiceApplication::showSettingsWindow);
+        trayMenu->addSeparator();
+        QAction *quitAction = trayMenu->addAction("Quit");
+        connect(quitAction, &QAction::triggered, this, &QApplication::quit);
+
+        trayIcon = std::make_unique<QSystemTrayIcon>(windowIcon());
+        trayIcon->setToolTip("FluidVoice");
+        trayIcon->setContextMenu(trayMenu.get());
+        connect(trayIcon.get(), &QSystemTrayIcon::activated, this,
+                [this](QSystemTrayIcon::ActivationReason reason) {
+                    if (reason == QSystemTrayIcon::Trigger || reason == QSystemTrayIcon::DoubleClick) {
+                        showSettingsWindow();
+                    }
+                });
+        trayIcon->show();
     } else {
         QLocalSocket socket;
         socket.connectToServer(activationName, QIODevice::WriteOnly);
@@ -54,6 +65,17 @@ FluidVoiceApplication::FluidVoiceApplication(int &argc, char **argv)
             socket.waitForBytesWritten(500);
             socket.disconnectFromServer();
         }
+    }
+}
+
+void FluidVoiceApplication::showSettingsWindow() {
+    for (QWindow *window : topLevelWindows()) {
+        if (window->title() != "FluidVoice") {
+            continue;
+        }
+        window->show();
+        window->raise();
+        window->requestActivate();
     }
 }
 

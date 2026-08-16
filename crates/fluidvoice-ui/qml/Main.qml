@@ -2,7 +2,6 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Window
-import Qt.labs.platform as Platform
 import io.github.davidkodar.FluidVoiceLinux
 
 ApplicationWindow {
@@ -14,7 +13,6 @@ ApplicationWindow {
     visible: true
     title: qsTr("FluidVoice")
     color: "#121212"
-    property bool quitting: false
     property int settingsSection: 0
 
     function showSettingsSection(index) {
@@ -33,10 +31,6 @@ ApplicationWindow {
             settingsFlick.contentHeight - settingsFlick.height))
     }
     onClosing: function(close) {
-        if (quitting) {
-            close.accepted = true
-            return
-        }
         close.accepted = false
         root.hide()
     }
@@ -59,47 +53,6 @@ ApplicationWindow {
     Component.onCompleted: {
         controller.initializeAudio()
         controller.initializeDesktopRuntime()
-        if (!trayIcon.available)
-            root.show()
-    }
-
-    Platform.SystemTrayIcon {
-        id: trayIcon
-        visible: true
-        icon.source: "qrc:/qt/qml/io/github/davidkodar/FluidVoiceLinux/assets/fluidvoice-tray.png"
-        icon.mask: true
-        tooltip: qsTr("FluidVoice — %1").arg(controller.statusText)
-        menu: Platform.Menu {
-            Platform.MenuItem {
-                text: qsTr("Open FluidVoice")
-                onTriggered: {
-                    root.show()
-                    root.raise()
-                    root.requestActivate()
-                }
-            }
-            Platform.MenuItem {
-                text: controller.recording ? qsTr("Stop recording") : qsTr("Start recording")
-                onTriggered: controller.toggleRecording()
-            }
-            Platform.MenuSeparator {}
-            Platform.MenuItem {
-                text: qsTr("Quit")
-                onTriggered: {
-                    root.quitting = true
-                    Qt.quit()
-                }
-            }
-        }
-        onActivated: function(reason) {
-            if (reason === Platform.SystemTrayIcon.Trigger) {
-                root.visible = !root.visible
-                if (root.visible) {
-                    root.raise()
-                    root.requestActivate()
-                }
-            }
-        }
     }
 
     background: Rectangle {
