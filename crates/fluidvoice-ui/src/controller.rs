@@ -435,12 +435,15 @@ impl ffi::FluidVoiceController {
                     return;
                 };
                 while let Ok(audio) = preview_receiver.recv() {
+                    let preview_duration = audio.duration();
                     let mono = audio.to_asr_mono();
                     let preview_audio = mono.amplified(asr_gain(mono.peak(), gain));
                     let Ok(transcript) = transcriber.transcribe(&preview_audio) else {
                         continue;
                     };
-                    if transcript.text.is_empty() {
+                    if transcript.text.is_empty()
+                        || suspicious_single_word(&transcript.text, preview_duration)
+                    {
                         continue;
                     }
                     preview_thread
@@ -520,6 +523,7 @@ impl ffi::FluidVoiceController {
             let asr_peak = asr_audio.peak();
             let diagnostic_dump = dump_asr_audio(&asr_audio);
             let transcription = model
+                .as_deref()
                 .ok_or_else(|| "No Whisper model is installed".to_owned())
                 .and_then(|model| {
                     // The current preview UI is English-first. Automatic language
@@ -527,10 +531,29 @@ impl ffi::FluidVoiceController {
                     // no segments; the fixed language path is reliable for the same
                     // captured buffer and avoids wasting audio on detection.
                     let config = TranscriptionConfig::default().with_language(Some(language));
-                    WhisperTranscriber::load(&model, config)
+                    let first = WhisperTranscriber::load(model, config.clone())
                         .map_err(|error| error.to_string())?
                         .transcribe(&asr_audio)
-                        .map_err(|error| error.to_string())
+                        .map_err(|error| error.to_string())?;
+
+                    // A tiny Whisper model can occasionally return a one-word
+                    // hallucination after the live-preview context has been busy.
+                    // The captured buffer is still valid, so retry suspicious
+                    // multi-second results with a completely fresh context and use
+                    // the richer deterministic decode. This happens before either
+                    // the UI or clipboard observes the result.
+                    if suspicious_single_word(&first.text, duration) {
+                        let retry = WhisperTranscriber::load(model, config)
+                            .map_err(|error| error.to_string())?
+                            .transcribe(&asr_audio)
+                            .map_err(|error| error.to_string())?;
+                        if retry.text.split_whitespace().count()
+                            > first.text.split_whitespace().count()
+                        {
+                            return Ok(retry);
+                        }
+                    }
+                    Ok(first)
                 });
             qt_thread
                 .queue(move |mut controller| {
@@ -829,9 +852,22 @@ fn asr_gain(peak: f32, user_gain: f32) -> f32 {
     requested.clamp(1.0, headroom_limit.min(64.0))
 }
 
+fn suspicious_single_word(text: &str, duration: Duration) -> bool {
+    if duration < Duration::from_secs(2) {
+        return false;
+    }
+    let normalized = text
+        .trim()
+        .trim_matches(|character: char| !character.is_alphanumeric())
+        .to_ascii_lowercase();
+    matches!(normalized.as_str(), "you" | "thanks" | "thank you")
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{asr_gain, meter_level, peak_db};
+    use std::time::Duration;
+
+    use super::{asr_gain, meter_level, peak_db, suspicious_single_word};
 
     #[test]
     fn maps_audio_peak_to_logarithmic_meter() {
@@ -855,5 +891,16 @@ mod tests {
         assert_eq!(asr_gain(0.01, 16.0), 64.0);
         assert!((asr_gain(0.1, 1.0) - 3.5).abs() < f32::EPSILON);
         assert_eq!(asr_gain(0.8, 1.0), 1.0);
+    }
+
+    #[test]
+    fn detects_long_single_word_whisper_hallucinations() {
+        assert!(suspicious_single_word(" you ", Duration::from_secs(6)));
+        assert!(suspicious_single_word("Thank you.", Duration::from_secs(3)));
+        assert!(!suspicious_single_word("you", Duration::from_millis(900)));
+        assert!(!suspicious_single_word(
+            "you are welcome",
+            Duration::from_secs(6)
+        ));
     }
 }
