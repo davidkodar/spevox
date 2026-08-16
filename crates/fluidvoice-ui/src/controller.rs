@@ -18,6 +18,7 @@ pub mod ffi {
         #[qproperty(QString, model_name, cxx_name = "modelName")]
         #[qproperty(bool, recording)]
         #[qproperty(bool, overlay_visible, cxx_name = "overlayVisible")]
+        #[qproperty(bool, overlay_enabled, cxx_name = "overlayEnabled")]
         #[qproperty(f32, audio_level, cxx_name = "audioLevel")]
         #[qproperty(f32, input_db, cxx_name = "inputDb")]
         #[qproperty(i32, audio_updates, cxx_name = "audioUpdates")]
@@ -80,6 +81,14 @@ pub mod ffi {
         fn select_shortcut(self: Pin<&mut Self>, index: i32);
 
         #[qinvokable]
+        #[cxx_name = "updateGainDb"]
+        fn update_gain_db(self: Pin<&mut Self>, gain: f32);
+
+        #[qinvokable]
+        #[cxx_name = "updateOverlayEnabled"]
+        fn update_overlay_enabled(self: Pin<&mut Self>, enabled: bool);
+
+        #[qinvokable]
         #[cxx_name = "setOverlayPreview"]
         fn set_overlay_preview(self: Pin<&mut Self>, visible: bool);
     }
@@ -115,6 +124,7 @@ pub struct FluidVoiceControllerRust {
     model_name: QString,
     recording: bool,
     overlay_visible: bool,
+    overlay_enabled: bool,
     audio_level: f32,
     input_db: f32,
     audio_updates: i32,
@@ -128,7 +138,7 @@ pub struct FluidVoiceControllerRust {
     capture_target: Option<String>,
     devices: Vec<AudioDevice>,
     clipboard: Option<ClipboardDelivery>,
-    paste_sender: Option<mpsc::UnboundedSender<()>>,
+    desktop_sender: Option<mpsc::UnboundedSender<DesktopCommand>>,
     languages: QStringList,
     selected_language: i32,
     language_codes: Vec<String>,
@@ -205,12 +215,13 @@ impl Default for FluidVoiceControllerRust {
             model_name,
             recording: false,
             overlay_visible: false,
+            overlay_enabled: preferences.overlay_enabled,
             audio_level: 0.0,
             input_db: -60.0,
             audio_updates: 0,
             input_sources: QStringList::default(),
             selected_input: -1,
-            gain_db: 0.0,
+            gain_db: preferences.gain_db,
             transcribing: false,
             transcript_text: QString::default(),
             live_transcript: QString::default(),
@@ -218,7 +229,7 @@ impl Default for FluidVoiceControllerRust {
             capture_target: None,
             devices: Vec::new(),
             clipboard: None,
-            paste_sender: None,
+            desktop_sender: None,
             languages,
             selected_language,
             language_codes,
@@ -241,11 +252,11 @@ impl Default for FluidVoiceControllerRust {
 
 impl ffi::FluidVoiceController {
     pub fn initialize_desktop_runtime(mut self: Pin<&mut Self>) {
-        if self.as_ref().rust().paste_sender.is_some() {
+        if self.as_ref().rust().desktop_sender.is_some() {
             return;
         }
-        let (paste_sender, mut paste_receiver) = mpsc::unbounded_channel();
-        self.as_mut().rust_mut().get_mut().paste_sender = Some(paste_sender);
+        let (desktop_sender, mut desktop_receiver) = mpsc::unbounded_channel();
+        self.as_mut().rust_mut().get_mut().desktop_sender = Some(desktop_sender);
         let qt_thread = self.qt_thread();
         let shortcut = selected_shortcut_trigger(self.as_ref().rust());
         std::thread::spawn(move || {
@@ -260,74 +271,94 @@ impl ffi::FluidVoiceController {
                 }
             };
             runtime.block_on(async move {
-                let config = match GlobalShortcutConfig::new(
-                    "dictate_hold",
-                    "Hold to dictate with FluidVoice Linux",
-                    Some(shortcut),
-                ) {
-                    Ok(config) => config,
-                    Err(error) => {
-                        eprintln!("Shortcut configuration failed: {error}");
-                        return;
-                    }
-                };
-                let binding = match GlobalShortcutBinding::bind(&config).await {
-                    Ok(binding) => binding,
-                    Err(error) => {
-                        eprintln!("Global shortcut unavailable: {error}");
-                        return;
-                    }
-                };
-                let (event_sender, mut events) = mpsc::channel(16);
-                tokio::spawn(async move {
-                    if let Err(error) = binding.forward_events(event_sender).await {
-                        eprintln!("Global shortcut stopped: {error}");
-                    }
-                });
                 let text_input = TextInputSession::request().await.ok();
                 let automatic_paste = text_input.is_some();
-                qt_thread
-                    .queue(move |controller| {
-                        controller.set_status_text(QString::from(if automatic_paste {
-                            "Ready · hold Ctrl+Alt+D to dictate"
-                        } else {
-                            "Ready · shortcut active · clipboard fallback"
-                        }));
-                    })
-                    .ok();
-
+                let mut requested_shortcut = shortcut;
                 loop {
-                    tokio::select! {
-                        event = events.recv() => match event {
-                            Some(GlobalShortcutEvent::Activated { .. }) => {
-                                qt_thread.queue(|mut controller| {
-                                    if !*controller.as_ref().recording()
-                                        && !*controller.as_ref().transcribing()
-                                    {
-                                        controller.as_mut().toggle_recording();
-                                    }
-                                }).ok();
-                            }
-                            Some(GlobalShortcutEvent::Deactivated { .. }) => {
-                                qt_thread.queue(|mut controller| {
-                                    if *controller.as_ref().recording() {
-                                        controller.as_mut().toggle_recording();
-                                    }
-                                }).ok();
-                            }
-                            None => break,
-                        },
-                        request = paste_receiver.recv() => match request {
-                            Some(()) => {
-                                if let Some(session) = text_input.as_ref() {
-                                    if let Err(error) = session.paste_clipboard().await {
-                                        eprintln!("Automatic paste failed: {error}");
+                    let config = match GlobalShortcutConfig::new(
+                        "dictate_hold",
+                        "Hold to dictate with FluidVoice Linux",
+                        Some(requested_shortcut.clone()),
+                    ) {
+                        Ok(config) => config,
+                        Err(error) => {
+                            eprintln!("Shortcut configuration failed: {error}");
+                            break;
+                        }
+                    };
+                    let binding = match GlobalShortcutBinding::bind(&config).await {
+                        Ok(binding) => binding,
+                        Err(error) => {
+                            eprintln!("Global shortcut unavailable: {error}");
+                            qt_thread
+                                .queue(move |controller| {
+                                    controller.set_status_text(QString::from(&format!(
+                                        "Global shortcut unavailable: {error}"
+                                    )))
+                                })
+                                .ok();
+                            break;
+                        }
+                    };
+                    let (event_sender, mut events) = mpsc::channel(16);
+                    let event_task = tokio::spawn(async move {
+                        if let Err(error) = binding.forward_events(event_sender).await {
+                            eprintln!("Global shortcut stopped: {error}");
+                        }
+                    });
+                    let shortcut_label = requested_shortcut.replace('+', "+");
+                    let ready_status = if automatic_paste {
+                        format!("Ready · hold {shortcut_label} to dictate")
+                    } else {
+                        "Ready · shortcut active · clipboard fallback".to_owned()
+                    };
+                    qt_thread
+                        .queue(move |controller| {
+                            controller.set_status_text(QString::from(&ready_status))
+                        })
+                        .ok();
+
+                    let mut rebind = None;
+                    loop {
+                        tokio::select! {
+                            event = events.recv() => match event {
+                                Some(GlobalShortcutEvent::Activated { .. }) => {
+                                    qt_thread.queue(|mut controller| {
+                                        if !*controller.as_ref().recording()
+                                            && !*controller.as_ref().transcribing()
+                                        {
+                                            controller.as_mut().toggle_recording();
+                                        }
+                                    }).ok();
+                                }
+                                Some(GlobalShortcutEvent::Deactivated { .. }) => {
+                                    qt_thread.queue(|mut controller| {
+                                        if *controller.as_ref().recording() {
+                                            controller.as_mut().toggle_recording();
+                                        }
+                                    }).ok();
+                                }
+                                None => break,
+                            },
+                            request = desktop_receiver.recv() => match request {
+                                Some(DesktopCommand::Paste) => {
+                                    if let Some(session) = text_input.as_ref() {
+                                        if let Err(error) = session.paste_clipboard().await {
+                                            eprintln!("Automatic paste failed: {error}");
+                                        }
                                     }
                                 }
+                                Some(DesktopCommand::Rebind(shortcut)) => {
+                                    rebind = Some(shortcut);
+                                    break;
+                                }
+                                None => break,
                             }
-                            None => break,
                         }
                     }
+                    event_task.abort();
+                    let Some(shortcut) = rebind else { break };
+                    requested_shortcut = shortcut;
                 }
             });
         });
@@ -340,10 +371,16 @@ impl ffi::FluidVoiceController {
             qt_thread
                 .queue(move |mut controller| match result {
                     Ok(devices) => {
-                        let preferred = devices.iter().find(|device| {
-                            device.description.contains("Input 1")
-                                || device.description.contains("Mic 1")
-                        });
+                        let saved_input = Preferences::load().input;
+                        let preferred = devices
+                            .iter()
+                            .find(|device| device.node_name == saved_input)
+                            .or_else(|| {
+                                devices.iter().find(|device| {
+                                    device.description.contains("Input 1")
+                                        || device.description.contains("Mic 1")
+                                })
+                            });
                         let selected = preferred.or_else(|| devices.first()).cloned();
                         if let Some(device) = selected {
                             let selected_index = devices
@@ -398,6 +435,7 @@ impl ffi::FluidVoiceController {
         self.as_mut().set_selected_input(index);
         self.as_mut()
             .set_microphone_name(QString::from(&device.description));
+        self.as_ref().rust().save_preferences();
         self.set_status_text(QString::from("Input selected · ready to test"));
     }
 
@@ -521,9 +559,24 @@ impl ffi::FluidVoiceController {
         }
         self.as_mut().set_selected_shortcut(index);
         self.as_ref().rust().save_preferences();
-        self.set_status_text(QString::from(
-            "Shortcut saved · restart FluidVoice to rebind",
-        ));
+        if let Some(sender) = self.as_ref().rust().desktop_sender.as_ref() {
+            sender
+                .send(DesktopCommand::Rebind(selected_shortcut_trigger(
+                    self.as_ref().rust(),
+                )))
+                .ok();
+        }
+        self.set_status_text(QString::from("Rebinding global shortcut…"));
+    }
+
+    pub fn update_gain_db(mut self: Pin<&mut Self>, gain: f32) {
+        self.as_mut().set_gain_db(gain.clamp(-24.0, 24.0));
+        self.as_ref().rust().save_preferences();
+    }
+
+    pub fn update_overlay_enabled(mut self: Pin<&mut Self>, enabled: bool) {
+        self.as_mut().set_overlay_enabled(enabled);
+        self.as_ref().rust().save_preferences();
     }
 
     #[allow(clippy::too_many_lines)]
@@ -553,7 +606,8 @@ impl ffi::FluidVoiceController {
         self.as_mut().set_live_transcript(QString::default());
         self.as_mut().set_recording(true);
         self.as_mut().set_status_text(QString::from("Listening…"));
-        self.as_mut().set_overlay_visible(true);
+        let overlay_enabled = *self.as_ref().overlay_enabled();
+        self.as_mut().set_overlay_visible(overlay_enabled);
 
         let qt_thread = self.qt_thread();
         std::thread::spawn(move || {
@@ -653,7 +707,7 @@ impl ffi::FluidVoiceController {
                 .ok();
             preview_worker.join().ok();
 
-            let mono = audio.to_asr_mono();
+            let mono = audio.to_asr_mono().trim_silence();
             let combined_gain = asr_gain(mono.peak(), gain);
             let asr_audio = mono.amplified(combined_gain);
             let asr_peak = asr_audio.peak();
@@ -715,8 +769,8 @@ impl ffi::FluidVoiceController {
                                     delivery.copy_transcript(&transcript.text).map_err(|_| ())
                                 });
                             if delivery_result.is_ok() {
-                                if let Some(sender) = controller.as_ref().rust().paste_sender.as_ref() {
-                                    sender.send(()).ok();
+                                if let Some(sender) = controller.as_ref().rust().desktop_sender.as_ref() {
+                                    sender.send(DesktopCommand::Paste).ok();
                                 }
                             }
                             controller
@@ -780,6 +834,9 @@ impl FluidVoiceControllerRust {
             language: selected_language_code(self),
             model: selected_model_path(self).unwrap_or_default(),
             shortcut: selected_shortcut_trigger(self),
+            input: self.capture_target.clone().unwrap_or_default(),
+            gain_db: self.gain_db,
+            overlay_enabled: self.overlay_enabled,
         };
         if let Err(error) = preferences.save() {
             eprintln!("Failed to save preferences: {error}");
@@ -791,6 +848,9 @@ struct Preferences {
     language: String,
     model: PathBuf,
     shortcut: String,
+    input: String,
+    gain_db: f32,
+    overlay_enabled: bool,
 }
 
 impl Default for Preferences {
@@ -799,6 +859,9 @@ impl Default for Preferences {
             language: "en".to_owned(),
             model: PathBuf::new(),
             shortcut: "CTRL+ALT+D".to_owned(),
+            input: String::new(),
+            gain_db: 0.0,
+            overlay_enabled: true,
         }
     }
 }
@@ -816,6 +879,12 @@ impl Preferences {
                 preferences.model = PathBuf::from(value);
             } else if let Some(value) = line.strip_prefix("shortcut=") {
                 preferences.shortcut = value.to_owned();
+            } else if let Some(value) = line.strip_prefix("input=") {
+                preferences.input = value.to_owned();
+            } else if let Some(value) = line.strip_prefix("gain_db=") {
+                preferences.gain_db = value.parse().unwrap_or(0.0);
+            } else if let Some(value) = line.strip_prefix("overlay_enabled=") {
+                preferences.overlay_enabled = value == "true";
             }
         }
         preferences
@@ -830,14 +899,22 @@ impl Preferences {
         fs::write(
             path,
             format!(
-                "language={}\nmodel={}\nshortcut={}\n",
+                "language={}\nmodel={}\nshortcut={}\ninput={}\ngain_db={}\noverlay_enabled={}\n",
                 self.language,
                 self.model.display(),
-                self.shortcut
+                self.shortcut,
+                self.input,
+                self.gain_db,
+                self.overlay_enabled
             ),
         )
         .map_err(|error| error.to_string())
     }
+}
+
+enum DesktopCommand {
+    Paste,
+    Rebind(String),
 }
 
 fn preferences_path() -> PathBuf {

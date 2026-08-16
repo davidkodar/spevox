@@ -98,6 +98,16 @@ This diagnostic records while the shortcut is held and stops PipeWire capture on
 
 The application ID is `io.github.davidkodar.FluidVoiceLinux`. The development diagnostic registers this host identity with the portal before requesting a shortcut; release packaging will install the matching desktop entry from `data/`.
 
+## Install a KDE development build
+
+Build and install the current release binary, desktop entry, icon, AppStream metadata, and license with:
+
+```sh
+sudo ./packaging/install-dev.sh
+```
+
+Set `PREFIX` or `DESTDIR` to stage a package without touching the live system. The application enforces one running instance so a second launcher invocation cannot create a competing tray or portal session.
+
 ## Status
 
 The current workspace establishes the platform-independent dictation state machine, KDE global-shortcut integration, PipeWire microphone capture, the mono 16 kHz ASR boundary, local `whisper.cpp` transcription, verified KDE Wayland clipboard recovery, and a launchable Qt Quick/CXX-Qt desktop shell. Connecting the GUI to the runtime pipeline and automatic text insertion remain to be implemented.

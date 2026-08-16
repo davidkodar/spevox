@@ -6,6 +6,13 @@ use cxx_qt_lib::{QQmlApplicationEngine, QQmlEngine, QUrl};
 
 fn main() {
     let mut application = application::new_application();
+    if application
+        .as_ref()
+        .is_none_or(|application| !application::is_primary_instance(application))
+    {
+        eprintln!("FluidVoice is already running in the system tray.");
+        return;
+    }
     let mut engine = QQmlApplicationEngine::new();
 
     if let Some(mut engine) = engine.as_mut() {

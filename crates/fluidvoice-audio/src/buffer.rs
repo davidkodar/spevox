@@ -180,6 +180,37 @@ impl MonoAudioBuffer {
                 .collect(),
         }
     }
+
+    /// Removes quiet leading and trailing windows while retaining a short
+    /// cushion around speech. Interior pauses are intentionally preserved.
+    #[must_use]
+    pub fn trim_silence(&self) -> Self {
+        const WINDOW: usize = 320; // 20 ms at 16 kHz
+        const PADDING_WINDOWS: usize = 10; // 200 ms
+        if self.samples.len() < WINDOW * 2 {
+            return self.clone();
+        }
+
+        let peak = self.peak();
+        let threshold = (peak * 0.035).clamp(0.000_5, 0.025);
+        let active = |window: &[f32]| {
+            let energy =
+                window.iter().map(|sample| sample * sample).sum::<f32>() / window.len() as f32;
+            energy.sqrt() >= threshold
+        };
+        let first = self.samples.chunks(WINDOW).position(active);
+        let last = self.samples.chunks(WINDOW).rposition(active);
+        let (Some(first), Some(last)) = (first, last) else {
+            return Self {
+                samples: Vec::new(),
+            };
+        };
+        let start = first.saturating_sub(PADDING_WINDOWS) * WINDOW;
+        let end = ((last + PADDING_WINDOWS + 1) * WINDOW).min(self.samples.len());
+        Self {
+            samples: self.samples[start..end].to_vec(),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -270,5 +301,27 @@ mod tests {
             .unwrap()
             .to_asr_mono();
         assert_eq!(audio.amplified(2.0).samples(), &[0.2, -1.0]);
+    }
+
+    #[test]
+    fn trims_only_outer_silence_and_keeps_padding() {
+        let mut samples = vec![0.0; ASR_SAMPLE_RATE as usize];
+        samples.extend(vec![0.2; ASR_SAMPLE_RATE as usize / 2]);
+        samples.extend(vec![0.0; ASR_SAMPLE_RATE as usize]);
+        let audio = AudioBuffer::new(samples, ASR_SAMPLE_RATE, 1, false)
+            .unwrap()
+            .to_asr_mono()
+            .trim_silence();
+        assert!(audio.duration() >= std::time::Duration::from_millis(850));
+        assert!(audio.duration() <= std::time::Duration::from_millis(950));
+    }
+
+    #[test]
+    fn silence_trims_to_empty() {
+        let audio = AudioBuffer::new(vec![0.0; 16_000], ASR_SAMPLE_RATE, 1, false)
+            .unwrap()
+            .to_asr_mono()
+            .trim_silence();
+        assert!(audio.samples().is_empty());
     }
 }

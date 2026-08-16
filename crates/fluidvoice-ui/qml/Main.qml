@@ -343,7 +343,7 @@ ApplicationWindow {
                                     stepSize: 1
                                     value: controller.gainDb
                                     enabled: !controller.recording
-                                    onMoved: controller.gainDb = value
+                                    onMoved: controller.updateGainDb(value)
                                 }
                                 Text {
                                     text: (controller.gainDb >= 0 ? "+" : "") + Math.round(controller.gainDb) + " dB"
@@ -529,8 +529,8 @@ ApplicationWindow {
                                 Text { text: qsTr("Show the compact listening indicator above other windows."); color: root.secondaryText; font.pixelSize: 12 }
                             }
                             Switch {
-                                checked: controller.overlayVisible
-                                onToggled: controller.setOverlayPreview(checked)
+                                checked: controller.overlayEnabled
+                                onToggled: controller.updateOverlayEnabled(checked)
                             }
                         }
                     }
