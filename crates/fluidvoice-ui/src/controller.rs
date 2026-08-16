@@ -103,6 +103,15 @@ pub mod ffi {
         #[qproperty(QStringList, speech_engines, cxx_name = "speechEngines")]
         #[qproperty(i32, selected_speech_engine, cxx_name = "selectedSpeechEngine")]
         #[qproperty(QString, local_speech_url, cxx_name = "localSpeechUrl")]
+        #[qproperty(QString, parakeet_status, cxx_name = "parakeetStatus")]
+        #[qproperty(
+            bool,
+            parakeet_runtime_installed,
+            cxx_name = "parakeetRuntimeInstalled"
+        )]
+        #[qproperty(bool, parakeet_model_installed, cxx_name = "parakeetModelInstalled")]
+        #[qproperty(bool, parakeet_busy, cxx_name = "parakeetBusy")]
+        #[qproperty(f32, parakeet_download_progress, cxx_name = "parakeetDownloadProgress")]
         type FluidVoiceController = super::FluidVoiceControllerRust;
 
         #[qinvokable]
@@ -383,6 +392,26 @@ pub mod ffi {
         #[qinvokable]
         #[cxx_name = "updateLocalSpeechUrl"]
         fn update_local_speech_url(self: Pin<&mut Self>, url: &QString);
+
+        #[qinvokable]
+        #[cxx_name = "installParakeetRuntime"]
+        fn install_parakeet_runtime(self: Pin<&mut Self>);
+
+        #[qinvokable]
+        #[cxx_name = "downloadParakeetModel"]
+        fn download_parakeet_model(self: Pin<&mut Self>);
+
+        #[qinvokable]
+        #[cxx_name = "cancelParakeetDownload"]
+        fn cancel_parakeet_download(self: Pin<&mut Self>);
+
+        #[qinvokable]
+        #[cxx_name = "deleteParakeetModel"]
+        fn delete_parakeet_model(self: Pin<&mut Self>);
+
+        #[qinvokable]
+        #[cxx_name = "diagnoseParakeet"]
+        fn diagnose_parakeet(self: Pin<&mut Self>);
     }
 
     impl cxx_qt::Threading for FluidVoiceController {}
@@ -395,7 +424,7 @@ use std::{
     pin::Pin,
     process::{Command, Stdio},
     sync::{
-        Arc,
+        Arc, Mutex,
         atomic::{AtomicBool, Ordering},
     },
     time::{Duration, Instant},
@@ -414,6 +443,7 @@ use tokio::sync::mpsc;
 
 use crate::ai::{self, AiConfig};
 use crate::local_api::{self, LocalApiAction};
+use crate::parakeet::{self, Backend as ParakeetBackend};
 
 pub struct FluidVoiceControllerRust {
     status_text: QString,
@@ -515,6 +545,13 @@ pub struct FluidVoiceControllerRust {
     speech_engines: QStringList,
     selected_speech_engine: i32,
     local_speech_url: QString,
+    parakeet_status: QString,
+    parakeet_runtime_installed: bool,
+    parakeet_model_installed: bool,
+    parakeet_busy: bool,
+    parakeet_download_progress: f32,
+    parakeet_download_cancel: Option<Arc<AtomicBool>>,
+    parakeet_supervisor: Arc<Mutex<parakeet::Supervisor>>,
 }
 
 impl Default for FluidVoiceControllerRust {
@@ -772,12 +809,27 @@ impl Default for FluidVoiceControllerRust {
             } else {
                 "Off · no local port is open".to_owned()
             }),
-            speech_engines: ["Built-in Whisper", "Local speech server (experimental)"]
-                .into_iter()
-                .map(QString::from)
-                .collect(),
-            selected_speech_engine: preferences.speech_engine.clamp(0, 1),
+            speech_engines: [
+                "Built-in Whisper",
+                "Parakeet TDT v3 (beta)",
+                "Custom local speech server",
+            ]
+            .into_iter()
+            .map(QString::from)
+            .collect(),
+            selected_speech_engine: preferences.speech_engine.clamp(0, 2),
             local_speech_url: QString::from(&preferences.local_speech_url),
+            parakeet_status: QString::from(
+                "Run setup to install the native Parakeet runtime and model.",
+            ),
+            parakeet_runtime_installed: parakeet::runtime_installed(parakeet_backend(
+                preferences.compute_backend,
+            )),
+            parakeet_model_installed: parakeet::model_installed(),
+            parakeet_busy: false,
+            parakeet_download_progress: 0.0,
+            parakeet_download_cancel: None,
+            parakeet_supervisor: Arc::new(Mutex::new(parakeet::Supervisor::new())),
         }
     }
 }
@@ -2301,13 +2353,126 @@ impl ffi::FluidVoiceController {
     }
 
     pub fn select_speech_engine(mut self: Pin<&mut Self>, index: i32) {
-        self.as_mut().set_selected_speech_engine(index.clamp(0, 1));
+        let index = index.clamp(0, 2);
+        self.as_mut().set_selected_speech_engine(index);
         self.as_ref().rust().save_preferences();
-        self.as_mut().set_status_text(QString::from(if index == 1 {
-            "Experimental local speech server selected · audio stays on loopback"
-        } else {
-            "Built-in Whisper selected"
-        }));
+        let status = match index {
+            1 => "Parakeet TDT v3 beta selected · native local inference with Whisper fallback",
+            2 => "Custom local speech server selected · audio stays on loopback",
+            _ => "Built-in Whisper selected",
+        };
+        self.as_mut().set_status_text(QString::from(status));
+    }
+
+    pub fn install_parakeet_runtime(mut self: Pin<&mut Self>) {
+        if *self.as_ref().parakeet_busy() {
+            return;
+        }
+        let backend = parakeet_backend(*self.as_ref().selected_compute_backend());
+        self.as_mut().set_parakeet_busy(true);
+        self.as_mut()
+            .set_parakeet_status(QString::from("Building pinned NeMo-Speech.cpp runtime…"));
+        let qt_thread = self.qt_thread();
+        std::thread::spawn(move || {
+            let result = parakeet::install_runtime(backend);
+            qt_thread
+                .queue(move |mut controller| {
+                    controller.as_mut().set_parakeet_busy(false);
+                    controller.as_mut().set_parakeet_download_progress(0.0);
+                    controller
+                        .as_mut()
+                        .set_parakeet_runtime_installed(parakeet::runtime_installed(backend));
+                    controller
+                        .as_mut()
+                        .set_parakeet_status(QString::from(match result {
+                            Ok(()) => "Native Parakeet runtime installed and pinned.".to_owned(),
+                            Err(error) => format!("Runtime installation failed: {error}"),
+                        }));
+                })
+                .ok();
+        });
+    }
+
+    pub fn download_parakeet_model(mut self: Pin<&mut Self>) {
+        if *self.as_ref().parakeet_busy() {
+            return;
+        }
+        let cancel = Arc::new(AtomicBool::new(false));
+        self.as_mut().rust_mut().get_mut().parakeet_download_cancel = Some(cancel.clone());
+        self.as_mut().set_parakeet_busy(true);
+        self.as_mut().set_parakeet_download_progress(0.0);
+        self.as_mut()
+            .set_parakeet_status(QString::from("Downloading verified Parakeet TDT v3 model…"));
+        let qt_thread = self.qt_thread();
+        std::thread::spawn(move || {
+            let progress_thread = qt_thread.clone();
+            let result = parakeet::download_model(&cancel, move |progress| {
+                progress_thread
+                    .queue(move |mut controller| {
+                        controller.as_mut().set_parakeet_download_progress(progress)
+                    })
+                    .ok();
+            });
+            qt_thread
+                .queue(move |mut controller| {
+                    controller
+                        .as_mut()
+                        .rust_mut()
+                        .get_mut()
+                        .parakeet_download_cancel = None;
+                    controller.as_mut().set_parakeet_busy(false);
+                    controller.as_mut().set_parakeet_download_progress(0.0);
+                    controller
+                        .as_mut()
+                        .set_parakeet_model_installed(parakeet::model_installed());
+                    controller
+                        .as_mut()
+                        .set_parakeet_status(QString::from(match result {
+                            Ok(()) => {
+                                "Parakeet TDT v3 model downloaded and SHA-256 verified.".to_owned()
+                            }
+                            Err(error) => format!("Model download failed: {error}"),
+                        }));
+                })
+                .ok();
+        });
+    }
+
+    pub fn cancel_parakeet_download(self: Pin<&mut Self>) {
+        if let Some(cancel) = self.as_ref().rust().parakeet_download_cancel.as_ref() {
+            cancel.store(true, Ordering::Relaxed);
+        }
+    }
+
+    pub fn delete_parakeet_model(mut self: Pin<&mut Self>) {
+        if let Ok(mut supervisor) = self.as_ref().rust().parakeet_supervisor.lock() {
+            supervisor.stop();
+        }
+        let result = parakeet::delete_model();
+        self.as_mut()
+            .set_parakeet_model_installed(parakeet::model_installed());
+        self.as_mut()
+            .set_parakeet_status(QString::from(match result {
+                Ok(()) => "Parakeet model removed; Whisper remains available.".to_owned(),
+                Err(error) => format!("Could not remove model: {error}"),
+            }));
+    }
+
+    pub fn diagnose_parakeet(mut self: Pin<&mut Self>) {
+        let backend = parakeet_backend(*self.as_ref().selected_compute_backend());
+        let runtime = parakeet::runtime_installed(backend);
+        let model = parakeet::model_installed();
+        self.as_mut().set_parakeet_runtime_installed(runtime);
+        self.as_mut().set_parakeet_model_installed(model);
+        self.as_mut()
+            .set_parakeet_status(QString::from(match (runtime, model) {
+                (true, true) => {
+                    "Runtime and verified model are ready; the server starts on first dictation."
+                }
+                (false, true) => "Model is ready; install the native runtime.",
+                (true, false) => "Runtime is ready; download the verified model.",
+                (false, false) => "Install the native runtime and download the model.",
+            }));
     }
 
     pub fn update_local_speech_url(mut self: Pin<&mut Self>, url: &QString) {
@@ -2802,6 +2967,8 @@ impl ffi::FluidVoiceController {
         let model = selected_model_path(self.as_ref().rust());
         let speech_engine = *self.as_ref().selected_speech_engine();
         let local_speech_url = self.as_ref().local_speech_url().to_string();
+        let parakeet_supervisor = Arc::clone(&self.as_ref().rust().parakeet_supervisor);
+        let parakeet_backend = parakeet_backend(*self.as_ref().selected_compute_backend());
         let ai_config = self.as_ref().rust().ai_config();
         let retain_audio = *self.as_ref().audio_history_enabled();
         let audio_budget_bytes =
@@ -2830,7 +2997,7 @@ impl ffi::FluidVoiceController {
             let preview_model = model.clone();
             let preview_language = language.clone();
             let preview_worker = std::thread::spawn(move || {
-                if speech_engine == 1 {
+                if speech_engine != 0 {
                     return;
                 }
                 let Some(model) = preview_model else { return };
@@ -2936,38 +3103,18 @@ impl ffi::FluidVoiceController {
             let asr_audio = mono.amplified(combined_gain);
             let asr_peak = asr_audio.peak();
             let diagnostic_dump = dump_asr_audio(&asr_audio);
-            let transcription = if speech_engine == 1 {
-                LocalSpeechServer::new(&local_speech_url)
-                    .and_then(|server| {
-                        server.transcribe(
-                            &asr_audio,
-                            (!language.is_empty()).then_some(language.as_str()),
-                        )
-                    })
-                    .map_err(|error| error.to_string())
-            } else {
+            let whisper_transcription = || {
                 model
                     .as_deref()
                     .ok_or_else(|| "No Whisper model is installed".to_owned())
                     .and_then(|model| {
-                        // The current preview UI is English-first. Automatic language
-                        // detection can classify short utterances correctly yet return
-                        // no segments; the fixed language path is reliable for the same
-                        // captured buffer and avoids wasting audio on detection.
                         let config = TranscriptionConfig::default()
-                            .with_language(Some(language))
+                            .with_language(Some(language.clone()))
                             .with_gpu(use_gpu);
                         let first = WhisperTranscriber::load(model, config.clone())
                             .map_err(|error| error.to_string())?
                             .transcribe(&asr_audio)
                             .map_err(|error| error.to_string())?;
-
-                        // A tiny Whisper model can occasionally return a one-word
-                        // hallucination after the live-preview context has been busy.
-                        // The captured buffer is still valid, so retry suspicious
-                        // multi-second results with a completely fresh context and use
-                        // the richer deterministic decode. This happens before either
-                        // the UI or clipboard observes the result.
                         if suspicious_single_word(&first.text, duration) {
                             let retry = WhisperTranscriber::load(model, config)
                                 .map_err(|error| error.to_string())?
@@ -2981,6 +3128,43 @@ impl ffi::FluidVoiceController {
                         }
                         Ok(first)
                     })
+            };
+            let (transcription, parakeet_fallback) = if speech_engine == 2 {
+                (
+                    LocalSpeechServer::new(&local_speech_url)
+                        .and_then(|server| {
+                            server.transcribe(
+                                &asr_audio,
+                                (!language.is_empty()).then_some(language.as_str()),
+                            )
+                        })
+                        .map_err(|error| error.to_string()),
+                    None,
+                )
+            } else if speech_engine == 1 {
+                let primary = parakeet_supervisor
+                    .lock()
+                    .map_err(|_| "Parakeet supervisor lock was poisoned".to_owned())
+                    .and_then(|mut supervisor| supervisor.ensure_ready(parakeet_backend))
+                    .and_then(|()| {
+                        LocalSpeechServer::new(parakeet::ENDPOINT)
+                            .map_err(|error| error.to_string())
+                    })
+                    .and_then(|server| {
+                        server
+                            .transcribe(
+                                &asr_audio,
+                                (!language.is_empty()).then_some(language.as_str()),
+                            )
+                            .map_err(|error| error.to_string())
+                    })
+                    .map_err(|error| error.to_string());
+                match primary {
+                    Ok(transcript) => (Ok(transcript), None),
+                    Err(error) => (whisper_transcription(), Some(error)),
+                }
+            } else {
+                (whisper_transcription(), None)
             };
             let enhancement_started = Instant::now();
             let enhancement = transcription.as_ref().ok().and_then(|transcript| {
@@ -3054,6 +3238,11 @@ impl ffi::FluidVoiceController {
                             controller
                                 .as_mut()
                                 .set_last_raw_text(QString::from(&transcript.text));
+                            if let Some(error) = parakeet_fallback.as_deref() {
+                                controller.as_mut().set_parakeet_status(QString::from(&format!(
+                                    "Parakeet unavailable; Whisper fallback succeeded: {error}"
+                                )));
+                            }
                             let rust = controller.as_mut().rust_mut().get_mut();
                             if rust.clipboard.is_none() {
                                 rust.clipboard = ClipboardDelivery::connect().ok();
@@ -4822,6 +5011,14 @@ fn selected_language_code(controller: &FluidVoiceControllerRust) -> String {
         .and_then(|index| controller.language_codes.get(index))
         .cloned()
         .unwrap_or_else(|| "en".to_owned())
+}
+
+fn parakeet_backend(compute_backend: i32) -> ParakeetBackend {
+    if compute_backend == 2 {
+        ParakeetBackend::Cpu
+    } else {
+        ParakeetBackend::Vulkan
+    }
 }
 
 fn language_display_name(code: &str) -> Option<&'static str> {

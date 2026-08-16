@@ -943,14 +943,14 @@ ApplicationWindow {
                             onActivated: function(index) { controller.selectSpeechEngine(index) }
                         }
                         TextField {
-                            visible: controller.selectedSpeechEngine === 1
+                            visible: controller.selectedSpeechEngine === 2
                             Layout.fillWidth: true
                             text: controller.localSpeechUrl
                             placeholderText: qsTr("http://127.0.0.1:8080")
                             onEditingFinished: controller.updateLocalSpeechUrl(text)
                         }
                         Text {
-                            visible: controller.selectedSpeechEngine === 1
+                            visible: controller.selectedSpeechEngine === 2
                             Layout.fillWidth: true
                             text: qsTr("Experimental OpenAI-compatible /v1/audio/transcriptions endpoint. Only HTTP loopback is accepted; live preview is unavailable with an external process.")
                             color: root.accent; font.pixelSize: 11; wrapMode: Text.Wrap
@@ -970,7 +970,7 @@ ApplicationWindow {
                         }
 
                         Item {
-                            visible: controller.selectedSpeechEngine === 0
+                            visible: controller.selectedSpeechEngine !== 2
                             Layout.fillWidth: true
                             height: visible ? 56 : 0
                             Column {
@@ -997,6 +997,40 @@ ApplicationWindow {
                                 currentIndex: controller.selectedComputeBackend
                                 enabled: !controller.recording && !controller.transcribing
                                 onActivated: function(index) { controller.selectComputeBackend(index) }
+                            }
+                        }
+
+                        Rectangle {
+                            visible: controller.selectedSpeechEngine === 1
+                            Layout.fillWidth: true
+                            implicitHeight: parakeetSetup.implicitHeight + 28
+                            radius: 12
+                            color: root.panelRaised
+                            border.color: root.hairline
+                            ColumnLayout {
+                                id: parakeetSetup
+                                anchors.fill: parent
+                                anchors.margins: 14
+                                spacing: 10
+                                Text { text: qsTr("Parakeet TDT v3 · beta"); color: root.primaryText; font.pixelSize: 15; font.weight: Font.DemiBold }
+                                Text { Layout.fillWidth: true; text: controller.parakeetStatus; color: root.secondaryText; font.pixelSize: 12; wrapMode: Text.Wrap }
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    Text { Layout.fillWidth: true; text: controller.parakeetRuntimeInstalled ? qsTr("Native runtime installed") : qsTr("Native runtime required"); color: controller.parakeetRuntimeInstalled ? root.accent : root.secondaryText }
+                                    Button { text: controller.parakeetRuntimeInstalled ? qsTr("Rebuild") : qsTr("Install runtime"); enabled: !controller.parakeetBusy; onClicked: controller.installParakeetRuntime() }
+                                }
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    Text { Layout.fillWidth: true; text: controller.parakeetModelInstalled ? qsTr("Verified multilingual model installed · 681 MiB") : qsTr("Multilingual model required · 681 MiB"); color: controller.parakeetModelInstalled ? root.accent : root.secondaryText }
+                                    Button { visible: !controller.parakeetModelInstalled; enabled: !controller.parakeetBusy || controller.parakeetDownloadProgress > 0; text: controller.parakeetDownloadProgress > 0 ? qsTr("Cancel") : qsTr("Download"); onClicked: controller.parakeetDownloadProgress > 0 ? controller.cancelParakeetDownload() : controller.downloadParakeetModel() }
+                                    Button { visible: controller.parakeetModelInstalled; text: qsTr("Delete"); enabled: !controller.parakeetBusy; onClicked: controller.deleteParakeetModel() }
+                                }
+                                ProgressBar { visible: controller.parakeetBusy && controller.parakeetDownloadProgress > 0; Layout.fillWidth: true; value: controller.parakeetDownloadProgress }
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    Text { Layout.fillWidth: true; text: qsTr("Runs locally through pinned NVIDIA NeMo-Speech.cpp. CPU and Vulkan are supported; Whisper is the automatic fallback."); color: root.tertiaryText; font.pixelSize: 11; wrapMode: Text.Wrap }
+                                    Button { text: qsTr("Check setup"); enabled: !controller.parakeetBusy; onClicked: controller.diagnoseParakeet() }
+                                }
                             }
                         }
 

@@ -5,6 +5,9 @@ All notable changes to FluidVoice Linux are documented here. The project uses
 
 ## 0.4.0 - 2026-08-16
 
+- Added a managed Parakeet TDT v3 beta engine using pinned NeMo-Speech.cpp,
+  verified GGUF downloads, CPU/Vulkan runtimes, supervised loopback-only
+  startup, and automatic Whisper fallback.
 - Documented a post-0.4 multilingual intelligent-cleanup milestone with
   constrained upstream-inspired prompts, deterministic formatting, and
   language-spanning regression fixtures, while explicitly excluding claims of

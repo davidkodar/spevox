@@ -120,7 +120,7 @@ usable but does not yet match the depth of the current macOS implementation.
 | Direct typing into applications | Partial | Available | Linux uses Wayland portal/clipboard delivery; application support can vary. |
 | Live transcript overlay | Available | Available | Linux provides compact/standard/expanded layouts, placement, opacity, text visibility, streamed AI retry, copy, raw recovery, and undo; previews use periodic local Whisper rather than the newest Parakeet streaming path. |
 | Whisper models | Available | Available | Linux supports all six listed multilingual GGML sizes. |
-| Parakeet, Nemotron, Cohere, Apple Speech | Partial | Available | Linux ships built-in Whisper plus an experimental loopback-only OpenAI-compatible ASR bridge. Native upstream models use Apple CoreML/FluidAudio and cannot run directly; user-managed Linux services such as sherpa-onnx can integrate through the bridge when they expose the standard transcription route. |
+| Parakeet, Nemotron, Cohere, Apple Speech | Partial | Available | Linux includes a managed Parakeet TDT v3 beta through native NeMo-Speech.cpp, plus a custom loopback ASR bridge. Nemotron, Cohere, and Apple Speech remain unavailable as embedded Linux engines. |
 | Vulkan GPU acceleration | Available | Not applicable | Linux supports cross-vendor Vulkan with CPU fallback. |
 | Automatic/fixed language | Available | Available | All 99 Whisper languages are exposed. |
 | Model download and deletion | Available | Available | Downloads are size-validated and remain `.part` until complete. |
@@ -159,6 +159,16 @@ ASR runtimes independently updateable; [sherpa-onnx](https://github.com/k2-fsa/s
 is a promising Linux/Rust route with offline, streaming, Parakeet/NeMo-class,
 and diarization support, but 0.4.0 does not bundle its rapidly evolving native
 runtime or model catalog.
+
+**Parakeet TDT v3 (beta)** is managed by the application without Python,
+PyTorch, or a CUDA-only dependency chain. FluidVoice builds a pinned revision
+of NVIDIA NeMo-Speech.cpp into its XDG data directory, offers CPU or Vulkan,
+downloads the multilingual quantized model from NVIDIA's Hugging Face
+repository, and verifies its exact size and SHA-256 digest before activation.
+The helper listens only on `127.0.0.1`, starts on first use, and is supervised
+by FluidVoice. If setup, startup, or transcription fails, the captured audio is
+sent through the selected local Whisper model instead of being lost. Installing
+the runtime from source requires Git, CMake 3.26+, Ninja, and a C++17 compiler.
 
 User data follows XDG conventions:
 
