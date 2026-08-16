@@ -10,6 +10,8 @@ All notable changes to FluidVoice Linux are documented here. The project uses
   OpenAI-compatible endpoints.
 - Added secure API-key storage through the desktop Secret Service, editable
   cleanup prompts, provider verification, and raw-transcript fallback.
+- Added Ollama and LM Studio model discovery, installed-model selection, a
+  fully-local privacy indicator, and loopback-only enforcement for local presets.
 - Broader file-format support beyond 16-bit PCM WAV.
 - Added searchable history cards with relative and full local timestamps and word counts.
 - Expanded local statistics with today's activity, estimated time saved, streaks,

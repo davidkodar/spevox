@@ -29,7 +29,8 @@ configures.
 - Local 16-bit PCM WAV transcription, transcript history, and basic usage statistics.
 - KDE system theme/accent defaults plus explicit FluidVoice dark, light, and accent options.
 - Optional post-transcription cleanup through standard cloud providers, Ollama,
-  LM Studio, or a custom OpenAI-compatible endpoint, with raw-text fallback.
+  LM Studio, or a custom OpenAI-compatible endpoint, with local model discovery
+  and raw-text fallback.
 - Upstream-inspired settings navigation, onboarding, changelog, and feedback pages.
 
 See [CHANGELOG.md](CHANGELOG.md) for release-by-release details.
@@ -139,7 +140,9 @@ History and dictionary data can be cleared from the interface or removed from
 the paths above.
 
 AI enhancement is disabled by default. Ollama and LM Studio can keep the
-cleanup step local. When a cloud provider is enabled, the cleanup prompt and
+cleanup step local, and FluidVoice can query either server for installed models.
+Their built-in presets reject non-loopback endpoints to prevent an accidental
+privacy downgrade. When a cloud provider is enabled, the cleanup prompt and
 raw transcript—not microphone audio—are sent to that provider. API keys are
 stored through the desktop Secret Service using `secret-tool`; they are never
 written to `settings.conf`. If enhancement is unavailable or fails, FluidVoice

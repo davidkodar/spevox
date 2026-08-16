@@ -62,6 +62,8 @@ pub mod ffi {
         #[qproperty(QString, ai_prompt, cxx_name = "aiPrompt")]
         #[qproperty(QString, ai_status, cxx_name = "aiStatus")]
         #[qproperty(bool, ai_key_configured, cxx_name = "aiKeyConfigured")]
+        #[qproperty(QStringList, ai_local_models, cxx_name = "aiLocalModels")]
+        #[qproperty(bool, ai_local_endpoint, cxx_name = "aiLocalEndpoint")]
         #[qproperty(QString, app_version, cxx_name = "appVersion")]
         type FluidVoiceController = super::FluidVoiceControllerRust;
 
@@ -176,6 +178,14 @@ pub mod ffi {
         #[qinvokable]
         #[cxx_name = "testAiProvider"]
         fn test_ai_provider(self: Pin<&mut Self>);
+
+        #[qinvokable]
+        #[cxx_name = "discoverLocalAiModels"]
+        fn discover_local_ai_models(self: Pin<&mut Self>);
+
+        #[qinvokable]
+        #[cxx_name = "selectLocalAiModel"]
+        fn select_local_ai_model(self: Pin<&mut Self>, index: i32);
     }
 
     impl cxx_qt::Threading for FluidVoiceController {}
@@ -259,6 +269,8 @@ pub struct FluidVoiceControllerRust {
     ai_prompt: QString,
     ai_status: QString,
     ai_key_configured: bool,
+    ai_local_models: QStringList,
+    ai_local_endpoint: bool,
     app_version: QString,
 }
 
@@ -326,11 +338,24 @@ impl Default for FluidVoiceControllerRust {
         } else {
             preferences.ai_model.clone()
         };
-        let ai_base_url = if preferences.ai_base_url.is_empty() {
+        let mut ai_base_url = if preferences.ai_base_url.is_empty() {
             provider.default_url.to_owned()
         } else {
             preferences.ai_base_url.clone()
         };
+        if provider.local
+            && !(AiConfig {
+                enabled: false,
+                provider: provider.id.to_owned(),
+                model: String::new(),
+                base_url: ai_base_url.clone(),
+                prompt: String::new(),
+                api_key: String::new(),
+            })
+            .is_local()
+        {
+            ai_base_url = provider.default_url.to_owned();
+        }
         let provider_key = provider.id;
         let ai_key_configured = provider.local || !ai::load_api_key(provider_key).is_empty();
         let dictated_word_count = history
@@ -419,6 +444,16 @@ impl Default for FluidVoiceControllerRust {
                 "Off · raw transcription stays fully local"
             }),
             ai_key_configured,
+            ai_local_models: QStringList::default(),
+            ai_local_endpoint: AiConfig {
+                enabled: false,
+                provider: provider.id.to_owned(),
+                model: ai_model.clone(),
+                base_url: ai_base_url.clone(),
+                prompt: String::new(),
+                api_key: String::new(),
+            }
+            .is_local(),
             app_version: QString::from(env!("CARGO_PKG_VERSION")),
         }
     }
@@ -811,6 +846,8 @@ impl ffi::FluidVoiceController {
             .set_ai_base_url(QString::from(provider.default_url));
         self.as_mut()
             .set_ai_key_configured(provider.local || !ai::load_api_key(provider.id).is_empty());
+        self.as_mut().set_ai_local_models(QStringList::default());
+        self.as_mut().set_ai_local_endpoint(provider.local);
         self.as_mut()
             .set_ai_status(QString::from(if provider.local {
                 "Local endpoint · transcript stays on this computer"
@@ -827,8 +864,26 @@ impl ffi::FluidVoiceController {
     }
 
     pub fn update_ai_base_url(mut self: Pin<&mut Self>, value: &QString) {
-        self.as_mut()
-            .set_ai_base_url(QString::from(value.to_string().trim()));
+        let value = value.to_string().trim().to_owned();
+        let provider = ai_provider(*self.as_ref().selected_ai_provider());
+        let is_local = AiConfig {
+            enabled: false,
+            provider: provider.id.to_owned(),
+            model: String::new(),
+            base_url: value.clone(),
+            prompt: String::new(),
+            api_key: String::new(),
+        }
+        .is_local();
+        if provider.local && !is_local {
+            self.as_mut().set_ai_status(QString::from(
+                "Ollama and LM Studio endpoints must resolve to this computer",
+            ));
+            return;
+        }
+        self.as_mut().set_ai_base_url(QString::from(&value));
+        self.as_mut().set_ai_local_endpoint(is_local);
+        self.as_mut().set_ai_local_models(QStringList::default());
         self.as_ref().rust().save_preferences();
     }
 
@@ -855,7 +910,8 @@ impl ffi::FluidVoiceController {
         if *self.as_ref().transcribing() {
             return;
         }
-        let config = self.as_ref().rust().ai_config();
+        let mut config = self.as_ref().rust().ai_config();
+        config.enabled = true;
         let qt_thread = self.qt_thread();
         self.as_mut().set_transcribing(true);
         self.as_mut()
@@ -874,6 +930,62 @@ impl ffi::FluidVoiceController {
                 })
                 .ok();
         });
+    }
+
+    pub fn discover_local_ai_models(mut self: Pin<&mut Self>) {
+        if *self.as_ref().transcribing() {
+            return;
+        }
+        let config = self.as_ref().rust().ai_config();
+        if !config.is_local() {
+            self.as_mut().set_ai_status(QString::from(
+                "Local model discovery is available only for this computer",
+            ));
+            return;
+        }
+        let qt_thread = self.qt_thread();
+        self.as_mut().set_transcribing(true);
+        self.as_mut()
+            .set_ai_status(QString::from("Finding installed local models…"));
+        std::thread::spawn(move || {
+            let result = ai::discover_local_models(&config);
+            qt_thread
+                .queue(move |mut controller| {
+                    controller.as_mut().set_transcribing(false);
+                    match result {
+                        Ok(models) => {
+                            let count = models.len();
+                            controller
+                                .as_mut()
+                                .set_ai_local_models(models.iter().map(QString::from).collect());
+                            controller.as_mut().set_ai_status(QString::from(&format!(
+                                "Fully local · found {count} installed model(s)"
+                            )));
+                        }
+                        Err(error) => controller.as_mut().set_ai_status(QString::from(&format!(
+                            "Local server unavailable · {error}"
+                        ))),
+                    }
+                })
+                .ok();
+        });
+    }
+
+    pub fn select_local_ai_model(mut self: Pin<&mut Self>, index: i32) {
+        let Ok(index) = isize::try_from(index) else {
+            return;
+        };
+        let model = {
+            let controller = self.as_ref();
+            controller.ai_local_models().get(index).cloned()
+        };
+        let Some(model) = model else {
+            return;
+        };
+        self.as_mut().set_ai_model(model);
+        self.as_mut()
+            .set_ai_status(QString::from("Fully local · installed model selected"));
+        self.as_ref().rust().save_preferences();
     }
 
     pub fn add_dictionary_term(mut self: Pin<&mut Self>, term: &QString) {

@@ -52,6 +52,9 @@ pub fn enhance(config: &AiConfig, transcript: &str) -> Result<String, String> {
     if config.base_url.trim().is_empty() {
         return Err("No AI provider URL is configured".to_owned());
     }
+    if matches!(config.provider.as_str(), "ollama" | "lmstudio") && !config.is_local() {
+        return Err("Local providers are restricted to this computer".to_owned());
+    }
     if !config.is_local() && config.api_key.trim().is_empty() {
         return Err("No API key is stored for the selected provider".to_owned());
     }
@@ -107,6 +110,27 @@ pub fn enhance(config: &AiConfig, transcript: &str) -> Result<String, String> {
     Ok(output.to_owned())
 }
 
+pub fn discover_local_models(config: &AiConfig) -> Result<Vec<String>, String> {
+    if !config.is_local() {
+        return Err("Model discovery is restricted to local endpoints".to_owned());
+    }
+    let endpoint = models_url(&config.base_url);
+    let agent = ureq::Agent::config_builder()
+        .timeout_global(Some(Duration::from_secs(8)))
+        .build()
+        .new_agent();
+    let mut response = agent.get(&endpoint).call().map_err(request_error)?;
+    let value = parse_response(&mut response)?;
+    let mut models = extract_models(&value);
+    models.sort_unstable();
+    models.dedup();
+    if models.is_empty() {
+        Err("The local server reported no installed models".to_owned())
+    } else {
+        Ok(models)
+    }
+}
+
 pub fn store_api_key(provider: &str, api_key: &str) -> Result<(), String> {
     if api_key.trim().is_empty() {
         return Err("API key cannot be empty".to_owned());
@@ -160,6 +184,27 @@ fn chat_completions_url(base_url: &str) -> String {
     }
 }
 
+fn models_url(base_url: &str) -> String {
+    let base = base_url.trim_end_matches('/');
+    if base.ends_with("/models") {
+        base.to_owned()
+    } else {
+        format!("{base}/models")
+    }
+}
+
+fn extract_models(value: &Value) -> Vec<String> {
+    value
+        .get("data")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|model| model.get("id").and_then(Value::as_str))
+        .filter(|model| !model.trim().is_empty())
+        .map(str::to_owned)
+        .collect()
+}
+
 fn extract_text(value: &Value) -> Option<&str> {
     value
         .pointer("/choices/0/message/content")
@@ -190,6 +235,11 @@ fn parse_response(response: &mut ureq::http::Response<ureq::Body>) -> Result<Val
 
 #[cfg(test)]
 mod tests {
+    use std::{
+        io::{Read, Write},
+        net::TcpListener,
+    };
+
     use super::*;
 
     #[test]
@@ -217,6 +267,15 @@ mod tests {
     }
 
     #[test]
+    fn extracts_openai_compatible_model_catalog() {
+        assert_eq!(
+            extract_models(&json!({"data":[{"id":"qwen2.5:7b"},{"id":"llama3.2"}]})),
+            ["qwen2.5:7b", "llama3.2"]
+        );
+        assert!(extract_models(&json!({"data":[]})).is_empty());
+    }
+
+    #[test]
     fn recognizes_only_loopback_as_local() {
         let config = |url: &str| AiConfig {
             enabled: true,
@@ -232,5 +291,37 @@ mod tests {
         assert!(!config("https://api.openai.com/v1").is_local());
         assert!(!config("https://example.test/localhost/v1").is_local());
         assert!(!config("https://localhost.example.test/v1").is_local());
+    }
+
+    #[test]
+    fn discovers_models_from_a_local_openai_endpoint() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind local test server");
+        let address = listener.local_addr().expect("read local server address");
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept local request");
+            let mut request = [0_u8; 1024];
+            let size = stream.read(&mut request).expect("read request");
+            assert!(String::from_utf8_lossy(&request[..size]).starts_with("GET /v1/models "));
+            let body = r#"{"data":[{"id":"qwen2.5:7b"},{"id":"llama3.2"}]}"#;
+            write!(
+                stream,
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            )
+            .expect("write response");
+        });
+        let config = AiConfig {
+            enabled: true,
+            provider: "ollama".into(),
+            model: "qwen2.5:7b".into(),
+            base_url: format!("http://{address}/v1"),
+            prompt: String::new(),
+            api_key: String::new(),
+        };
+        assert_eq!(
+            discover_local_models(&config).expect("discover local models"),
+            ["llama3.2", "qwen2.5:7b"]
+        );
+        server.join().expect("join local test server");
     }
 }

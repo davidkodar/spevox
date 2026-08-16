@@ -1015,17 +1015,45 @@ ApplicationWindow {
                         GridLayout {
                             Layout.fillWidth: true; columns: 2; columnSpacing: 14; rowSpacing: 10
                             Text { text: qsTr("Model"); color: root.secondaryText; font.pixelSize: 12 }
-                            TextField { Layout.fillWidth: true; text: controller.aiModel; onEditingFinished: controller.updateAiModel(text) }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                TextField {
+                                    visible: !controller.aiLocalEndpoint || controller.aiLocalModels.length === 0
+                                    Layout.fillWidth: true; text: controller.aiModel
+                                    onEditingFinished: controller.updateAiModel(text)
+                                }
+                                ComboBox {
+                                    visible: controller.aiLocalEndpoint && controller.aiLocalModels.length > 0
+                                    Layout.fillWidth: true; model: controller.aiLocalModels
+                                    currentIndex: Math.max(0, controller.aiLocalModels.indexOf(controller.aiModel))
+                                    onActivated: function(index) { controller.selectLocalAiModel(index) }
+                                }
+                                Button {
+                                    visible: controller.aiLocalEndpoint
+                                    text: controller.transcribing ? qsTr("Searching…") : qsTr("Find models")
+                                    enabled: !controller.recording && !controller.transcribing
+                                    onClicked: controller.discoverLocalAiModels()
+                                }
+                            }
                             Text { text: qsTr("Base URL"); color: root.secondaryText; font.pixelSize: 12 }
                             TextField { Layout.fillWidth: true; text: controller.aiBaseUrl; onEditingFinished: controller.updateAiBaseUrl(text) }
-                            Text { visible: controller.selectedAiProvider !== 7 && controller.selectedAiProvider !== 8; text: qsTr("API key"); color: root.secondaryText; font.pixelSize: 12 }
+                            Text { visible: !controller.aiLocalEndpoint; text: qsTr("API key"); color: root.secondaryText; font.pixelSize: 12 }
                             RowLayout {
-                                visible: controller.selectedAiProvider !== 7 && controller.selectedAiProvider !== 8; Layout.fillWidth: true
+                                visible: !controller.aiLocalEndpoint; Layout.fillWidth: true
                                 TextField { id: aiApiKey; Layout.fillWidth: true; echoMode: TextInput.Password; placeholderText: controller.aiKeyConfigured ? qsTr("Stored securely · enter to replace") : qsTr("Required for this provider") }
                                 Button { text: qsTr("Save key"); enabled: aiApiKey.text.length > 0; onClicked: { controller.saveAiApiKey(aiApiKey.text); aiApiKey.clear() } }
                             }
                         }
-                        Text { Layout.fillWidth: true; text: controller.selectedAiProvider === 7 || controller.selectedAiProvider === 8 ? qsTr("Local endpoint: transcription and enhancement remain on this computer.") : qsTr("Cloud endpoint: the cleanup prompt and raw transcript are sent to the selected provider only when enhancement is enabled."); color: controller.selectedAiProvider === 7 || controller.selectedAiProvider === 8 ? root.accent : "#d9a441"; font.pixelSize: 11; wrapMode: Text.Wrap }
+                        Rectangle {
+                            Layout.fillWidth: true; implicitHeight: privacyText.implicitHeight + 24; radius: 10
+                            color: controller.aiLocalEndpoint ? Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.12) : Qt.rgba(0.85, 0.64, 0.25, 0.10)
+                            border.color: controller.aiLocalEndpoint ? root.accent : "#d9a441"
+                            Text {
+                                id: privacyText; anchors.fill: parent; anchors.margins: 12
+                                text: controller.aiLocalEndpoint ? qsTr("Fully local · Whisper audio transcription, the raw transcript, cleanup prompt, and enhanced text all remain on this computer.") : qsTr("Cloud processing · when enhancement is enabled, the cleanup prompt and raw transcript are sent to the selected provider. Microphone audio is never sent.")
+                                color: controller.aiLocalEndpoint ? root.accent : "#d9a441"; font.pixelSize: 11; wrapMode: Text.Wrap
+                            }
+                        }
                         Text { text: qsTr("CLEANUP PROMPT"); color: root.tertiaryText; font.pixelSize: 11; font.weight: Font.Medium }
                         TextArea {
                             Layout.fillWidth: true; implicitHeight: 150; text: controller.aiPrompt; wrapMode: TextEdit.Wrap
