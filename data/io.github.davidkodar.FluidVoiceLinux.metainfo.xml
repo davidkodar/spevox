@@ -9,13 +9,16 @@
   <url type="homepage">https://github.com/davidkodar/fluidvoice-linux</url>
   <url type="bugtracker">https://github.com/davidkodar/fluidvoice-linux/issues</url>
   <description>
-    <p>FluidVoice Linux provides local Whisper speech recognition, a global hold-to-dictate shortcut, and Wayland-aware text delivery for KDE Plasma.</p>
+    <p>FluidVoice Linux provides private local speech recognition, optional local or user-configured AI cleanup, a global hold-to-dictate shortcut, and Wayland-aware text delivery for KDE Plasma.</p>
   </description>
   <launchable type="desktop-id">io.github.davidkodar.FluidVoiceLinux.desktop</launchable>
   <provides><binary>fluidvoice-ui</binary></provides>
   <categories><category>Utility</category><category>Accessibility</category></categories>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="0.4.0" date="2026-08-16">
+      <description><p>Adds privacy-safe audio history, configurable overlays, complete Write Mode, stronger Wayland delivery, automatic application profiles, advanced dictionary workflows, richer statistics, segmented meeting transcription, a secure loopback API, signed Arch and Flatpak release infrastructure, and an experimental local speech-server bridge.</p></description>
+    </release>
     <release version="0.3.0" date="2026-08-16">
       <description><p>Adds optional local and cloud AI enhancement, guided Ollama setup and model downloads, local-only privacy controls, streaming cleanup, application profiles, selected-text rewriting, safe Command Mode actions, richer history exports, and broad local audio decoding.</p></description>
     </release>

@@ -6,7 +6,7 @@ Native, local-first voice dictation for KDE Plasma on Wayland.
 > This is an unofficial Linux port inspired by
 > [FluidVoice for macOS](https://github.com/altic-dev/FluidVoice). It is not
 > sponsored or endorsed by Altic or the upstream maintainers. Development is
-> now targeting 0.4.0; the project remains a private preview and is not yet
+> version 0.4.0 remains a private preview and is not yet
 > packaged for general distribution.
 
 FluidVoice Linux combines a Rust 2024 core, Qt Quick/CXX-Qt interface,
@@ -114,7 +114,7 @@ the settings window leaves FluidVoice running in the system tray.
 This table is intentionally conservative. “Partial” means the Linux feature is
 usable but does not yet match the depth of the current macOS implementation.
 
-| Capability | Linux 0.4.0 development | Current macOS FluidVoice | Notes |
+| Capability | Linux 0.4.0 | Current macOS FluidVoice | Notes |
 | --- | --- | --- | --- |
 | Global hold-to-dictate | Available | Available | Linux uses the XDG Global Shortcuts portal. |
 | Direct typing into applications | Partial | Available | Linux uses Wayland portal/clipboard delivery; application support can vary. |

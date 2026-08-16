@@ -102,6 +102,10 @@ impl GlobalShortcutBinding {
     }
 
     /// Creates one portal session containing every application shortcut.
+    ///
+    /// # Errors
+    /// Returns [`GlobalShortcutError`] for invalid configurations, unavailable
+    /// portal support, rejected consent, or a failed binding.
     pub async fn bind_many(configs: &[GlobalShortcutConfig]) -> Result<Self, GlobalShortcutError> {
         if configs.is_empty() {
             return Err(GlobalShortcutError::InvalidConfiguration(

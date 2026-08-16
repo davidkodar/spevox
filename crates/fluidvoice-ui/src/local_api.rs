@@ -1,3 +1,4 @@
+use std::fmt::Write as _;
 use std::fs::{self, OpenOptions};
 use std::io::{Read, Write};
 use std::net::{Ipv4Addr, SocketAddrV4, TcpListener, TcpStream};
@@ -44,8 +45,10 @@ pub fn rotate_token(path: &Path) -> Result<String, String> {
         .map_err(|error| format!("secure random source unavailable: {error}"))?;
     let token = bytes
         .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect::<String>();
+        .fold(String::with_capacity(64), |mut token, byte| {
+            write!(token, "{byte:02x}").expect("writing to a String cannot fail");
+            token
+        });
     let mut file = OpenOptions::new()
         .create(true)
         .truncate(true)
@@ -83,14 +86,13 @@ fn handle_connection(mut stream: TcpStream, token_path: &Path, actions: &Sender<
     let mut buffer = [0_u8; 2048];
     while request.len() <= MAX_REQUEST_BYTES {
         match stream.read(&mut buffer) {
-            Ok(0) => break,
+            Ok(0) | Err(_) => break,
             Ok(count) => {
                 request.extend_from_slice(&buffer[..count]);
                 if request.windows(4).any(|part| part == b"\r\n\r\n") {
                     break;
                 }
             }
-            Err(_) => break,
         }
     }
     if request.len() > MAX_REQUEST_BYTES {

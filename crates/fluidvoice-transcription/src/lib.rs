@@ -137,7 +137,7 @@ impl LocalSpeechServer {
         body.extend_from_slice(&wav);
         body.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());
         let agent = ureq::Agent::config_builder()
-            .timeout_global(Some(Duration::from_secs(120)))
+            .timeout_global(Some(Duration::from_mins(2)))
             .build()
             .new_agent();
         let mut response = agent
@@ -193,6 +193,7 @@ fn append_form_field(body: &mut Vec<u8>, boundary: &str, name: &str, value: &str
     );
 }
 
+#[allow(clippy::cast_possible_truncation)] // Clamping makes the PCM16 conversion intentional.
 fn pcm16_wav(samples: &[f32], sample_rate: u32) -> Vec<u8> {
     let data_size = u32::try_from(samples.len().saturating_mul(2)).unwrap_or(u32::MAX);
     let mut wav = Vec::with_capacity(44 + samples.len() * 2);

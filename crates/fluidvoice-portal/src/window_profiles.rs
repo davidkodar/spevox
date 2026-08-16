@@ -25,10 +25,13 @@ impl ProfileBridge {
     }
 }
 
-/// Owns the local session-bus endpoint used by the opt-in KWin script.
+/// Owns the local session-bus endpoint used by the opt-in `KWin` script.
 ///
 /// The script reports only the active window's application class and title;
 /// no content, keyboard events, or process environment crosses this boundary.
+///
+/// # Errors
+/// Returns a D-Bus error if the session bus name or object path cannot be owned.
 pub async fn run_profile_bridge(sender: mpsc::Sender<ActiveApplication>) -> zbus::Result<()> {
     let _connection = zbus::connection::Builder::session()?
         .name(PROFILE_BUS_NAME)?

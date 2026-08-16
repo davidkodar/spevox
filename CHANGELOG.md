@@ -3,7 +3,7 @@
 All notable changes to FluidVoice Linux are documented here. The project uses
 [Semantic Versioning](https://semver.org/) while it remains in private preview.
 
-## Unreleased
+## 0.4.0 - 2026-08-16
 
 - Began the 0.4.0 development cycle with optional local audio retention,
   configurable storage budgets, oldest-first pruning, playback, individual

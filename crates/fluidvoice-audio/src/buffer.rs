@@ -184,6 +184,7 @@ impl MonoAudioBuffer {
     /// Removes quiet leading and trailing windows while retaining a short
     /// cushion around speech. Interior pauses are intentionally preserved.
     #[must_use]
+    #[allow(clippy::cast_precision_loss)] // 20 ms windows are always exactly 320 samples.
     pub fn trim_silence(&self) -> Self {
         const WINDOW: usize = 320; // 20 ms at 16 kHz
         const PADDING_WINDOWS: usize = 10; // 200 ms

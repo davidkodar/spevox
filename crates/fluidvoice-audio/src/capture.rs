@@ -146,15 +146,9 @@ impl PipeWireCapture {
         maximum_duration: Duration,
         target: Option<&str>,
         stop_token: &CaptureStopToken,
-        mut report_level: impl FnMut(f32) + 'static,
+        report_level: impl FnMut(f32) + 'static,
     ) -> Result<AudioBuffer, AudioCaptureError> {
-        Self::capture_with_preview(
-            maximum_duration,
-            target,
-            stop_token,
-            move |level| report_level(level),
-            |_| {},
-        )
+        Self::capture_with_preview(maximum_duration, target, stop_token, report_level, |_| {})
     }
 
     /// Captures until stopped, reporting levels and periodic accumulated-audio
