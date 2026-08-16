@@ -18,6 +18,8 @@ All notable changes to FluidVoice Linux are documented here. The project uses
   cleanup prompts, provider verification, and raw-transcript fallback.
 - Added Ollama and LM Studio model discovery, installed-model selection, a
   fully-local privacy indicator, and loopback-only enforcement for local presets.
+- Added guided Ollama diagnostics, local server startup, official installation
+  guidance, and in-app model downloads with visible busy and result states.
 - Added a persistent local-provider privacy lock, enabled by default, plus
   bounded provider responses and retries for transient failures.
 - Enriched history with raw and final text, source, AI provider/model/status,

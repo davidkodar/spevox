@@ -147,6 +147,12 @@ the paths above.
 
 AI enhancement is disabled by default. Ollama and LM Studio can keep the
 cleanup step local, and FluidVoice can query either server for installed models.
+When Ollama is selected, the AI Enhancement page distinguishes a missing
+installation from a stopped server or an empty model library. It links to the
+official Linux installer, can start `ollama serve`, and runs validated
+`ollama pull` model downloads with an in-app busy/result state. Operating-system
+installation still requires the user's explicit action and is never performed
+silently with administrator privileges.
 Their built-in presets reject non-loopback endpoints to prevent an accidental
 privacy downgrade. The local-provider privacy lock is enabled by default and
 must be explicitly switched off before a cloud provider can be selected. When

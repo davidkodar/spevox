@@ -68,6 +68,9 @@ pub mod ffi {
         #[qproperty(QStringList, ai_local_models, cxx_name = "aiLocalModels")]
         #[qproperty(bool, ai_local_endpoint, cxx_name = "aiLocalEndpoint")]
         #[qproperty(bool, ai_local_only, cxx_name = "aiLocalOnly")]
+        #[qproperty(QString, ollama_status, cxx_name = "ollamaStatus")]
+        #[qproperty(bool, ollama_installed, cxx_name = "ollamaInstalled")]
+        #[qproperty(bool, ollama_busy, cxx_name = "ollamaBusy")]
         #[qproperty(QStringList, ai_profile_names, cxx_name = "aiProfileNames")]
         #[qproperty(i32, selected_ai_profile, cxx_name = "selectedAiProfile")]
         #[qproperty(QString, ai_profile_prompt, cxx_name = "aiProfilePrompt")]
@@ -213,6 +216,18 @@ pub mod ffi {
         fn select_local_ai_model(self: Pin<&mut Self>, index: i32);
 
         #[qinvokable]
+        #[cxx_name = "diagnoseOllama"]
+        fn diagnose_ollama(self: Pin<&mut Self>);
+
+        #[qinvokable]
+        #[cxx_name = "startOllama"]
+        fn start_ollama(self: Pin<&mut Self>);
+
+        #[qinvokable]
+        #[cxx_name = "pullOllamaModel"]
+        fn pull_ollama_model(self: Pin<&mut Self>, model: &QString);
+
+        #[qinvokable]
         #[cxx_name = "updateAiLocalOnly"]
         fn update_ai_local_only(self: Pin<&mut Self>, enabled: bool);
 
@@ -245,7 +260,7 @@ use std::{
     io::{Read, Write},
     path::PathBuf,
     pin::Pin,
-    process::Command,
+    process::{Command, Stdio},
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
@@ -326,6 +341,9 @@ pub struct FluidVoiceControllerRust {
     ai_local_models: QStringList,
     ai_local_endpoint: bool,
     ai_local_only: bool,
+    ollama_status: QString,
+    ollama_installed: bool,
+    ollama_busy: bool,
     ai_profile_names: QStringList,
     selected_ai_profile: i32,
     ai_profile_prompt: QString,
@@ -532,6 +550,9 @@ impl Default for FluidVoiceControllerRust {
             }
             .is_local(),
             ai_local_only: preferences.ai_local_only,
+            ollama_status: QString::from("Run the setup check to inspect Ollama."),
+            ollama_installed: false,
+            ollama_busy: false,
             ai_profile_names: std::iter::once(QString::from("Default"))
                 .chain(
                     ai_profiles
@@ -1169,6 +1190,172 @@ impl ffi::FluidVoiceController {
         self.as_mut()
             .set_ai_status(QString::from("Fully local · installed model selected"));
         self.as_ref().rust().save_preferences();
+    }
+
+    pub fn diagnose_ollama(mut self: Pin<&mut Self>) {
+        if *self.as_ref().ollama_busy() {
+            return;
+        }
+        let config = ollama_config();
+        let qt_thread = self.qt_thread();
+        self.as_mut().set_ollama_busy(true);
+        self.as_mut().set_ollama_status(QString::from(
+            "Checking Ollama installation and local server…",
+        ));
+        std::thread::spawn(move || {
+            let installed = Command::new("ollama").arg("--version").output().is_ok();
+            let (status, models) = if !installed {
+                (
+                    "Ollama is not installed. Open the official Linux guide below, then run this check again.".to_owned(),
+                    None,
+                )
+            } else {
+                match ai::discover_local_models(&config) {
+                    Ok(models) => (
+                        format!("Ollama is ready · {} installed model(s).", models.len()),
+                        Some(models),
+                    ),
+                    Err(error) if error.contains("reported no installed models") => (
+                        "Ollama is running but has no models. Choose a model below and download it.".to_owned(),
+                        Some(Vec::new()),
+                    ),
+                    Err(_) => (
+                        "Ollama is installed but its local server is not responding. Start it below.".to_owned(),
+                        None,
+                    ),
+                }
+            };
+            qt_thread
+                .queue(move |mut controller| {
+                    controller.as_mut().set_ollama_busy(false);
+                    controller.as_mut().set_ollama_installed(installed);
+                    controller
+                        .as_mut()
+                        .set_ollama_status(QString::from(&status));
+                    if let Some(models) = models {
+                        controller
+                            .as_mut()
+                            .set_ai_local_models(models.iter().map(QString::from).collect());
+                    }
+                })
+                .ok();
+        });
+    }
+
+    pub fn start_ollama(mut self: Pin<&mut Self>) {
+        if *self.as_ref().ollama_busy() {
+            return;
+        }
+        let qt_thread = self.qt_thread();
+        self.as_mut().set_ollama_busy(true);
+        self.as_mut()
+            .set_ollama_status(QString::from("Starting the local Ollama server…"));
+        std::thread::spawn(move || {
+            let started = Command::new("ollama")
+                .arg("serve")
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn();
+            let status = match started {
+                Ok(_) => {
+                    let mut ready = false;
+                    for _ in 0..10 {
+                        std::thread::sleep(Duration::from_millis(300));
+                        if ollama_server_responds() {
+                            ready = true;
+                            break;
+                        }
+                    }
+                    if ready {
+                        "Ollama is running. Download or select a local model below.".to_owned()
+                    } else {
+                        "Ollama was launched but did not become ready. Check `ollama serve` in a terminal for details.".to_owned()
+                    }
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                    "Ollama is not installed. Open the official Linux guide below first.".to_owned()
+                }
+                Err(error) => format!("Ollama could not be started: {error}"),
+            };
+            qt_thread
+                .queue(move |mut controller| {
+                    controller.as_mut().set_ollama_busy(false);
+                    controller
+                        .as_mut()
+                        .set_ollama_status(QString::from(&status));
+                })
+                .ok();
+        });
+    }
+
+    pub fn pull_ollama_model(mut self: Pin<&mut Self>, model: &QString) {
+        if *self.as_ref().ollama_busy() {
+            return;
+        }
+        let model = model.to_string().trim().to_owned();
+        if !valid_ollama_model_name(&model) {
+            self.as_mut().set_ollama_status(QString::from(
+                "Enter a valid Ollama model name using letters, numbers, `.`, `_`, `-`, `/`, or `:`.",
+            ));
+            return;
+        }
+        let qt_thread = self.qt_thread();
+        self.as_mut().set_ollama_busy(true);
+        self.as_mut().set_ollama_status(QString::from(&format!(
+            "Downloading {model} locally… this can take several minutes."
+        )));
+        std::thread::spawn(move || {
+            let result = Command::new("ollama")
+                .args(["pull", &model])
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status();
+            let (status, models, pulled) = match result {
+                Ok(exit_status) if exit_status.success() => {
+                    let models = ai::discover_local_models(&ollama_config()).unwrap_or_default();
+                    (
+                        format!("Downloaded {model} · ready for local enhancement."),
+                        models,
+                        true,
+                    )
+                }
+                Ok(exit_status) => (
+                    format!(
+                        "Model download failed with {exit_status}. Run `ollama pull {model}` in a terminal for detailed diagnostics."
+                    ),
+                    Vec::new(),
+                    false,
+                ),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => (
+                    "Ollama is not installed. Open the official Linux guide below first."
+                        .to_owned(),
+                    Vec::new(),
+                    false,
+                ),
+                Err(error) => (
+                    format!("Model download could not start: {error}"),
+                    Vec::new(),
+                    false,
+                ),
+            };
+            qt_thread
+                .queue(move |mut controller| {
+                    controller.as_mut().set_ollama_busy(false);
+                    controller
+                        .as_mut()
+                        .set_ollama_status(QString::from(&status));
+                    if pulled {
+                        controller
+                            .as_mut()
+                            .set_ai_local_models(models.iter().map(QString::from).collect());
+                        controller.as_mut().set_ai_model(QString::from(&model));
+                        controller.as_ref().rust().save_preferences();
+                    }
+                })
+                .ok();
+        });
     }
 
     pub fn update_ai_local_only(mut self: Pin<&mut Self>, enabled: bool) {
@@ -2260,6 +2447,38 @@ fn ai_provider(index: i32) -> AiProviderPreset {
         .unwrap_or(ai_provider_catalog()[7])
 }
 
+fn ollama_config() -> AiConfig {
+    AiConfig {
+        enabled: true,
+        provider: "ollama".to_owned(),
+        model: "qwen2.5:7b".to_owned(),
+        base_url: "http://localhost:11434/v1".to_owned(),
+        prompt: ai::DEFAULT_PROMPT.to_owned(),
+        api_key: String::new(),
+        local_only: true,
+        timeout_seconds: 8,
+    }
+}
+
+fn ollama_server_responds() -> bool {
+    let agent = ureq::Agent::config_builder()
+        .timeout_global(Some(Duration::from_secs(2)))
+        .build()
+        .new_agent();
+    agent
+        .get("http://localhost:11434/api/version")
+        .call()
+        .is_ok()
+}
+
+fn valid_ollama_model_name(model: &str) -> bool {
+    !model.is_empty()
+        && model.len() <= 128
+        && model
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || "._-/:".contains(character))
+}
+
 fn escape_setting(value: &str) -> String {
     value
         .replace('\\', "\\\\")
@@ -2997,7 +3216,8 @@ mod tests {
     use super::{
         DesktopAction, asr_gain, decode_audio_file, decode_file_url, meter_level,
         parse_desktop_action, peak_db, process_transcript, supported_languages,
-        suspicious_single_word, version_tuple, whisper_model_catalog, write_history_export,
+        suspicious_single_word, valid_ollama_model_name, version_tuple, whisper_model_catalog,
+        write_history_export,
     };
 
     #[test]
@@ -3027,6 +3247,16 @@ mod tests {
         assert_eq!(version_tuple("0.3.0"), Some((0, 3, 0)));
         assert_eq!(version_tuple("1.2.3-beta.1"), Some((1, 2, 3)));
         assert_eq!(version_tuple("invalid"), None);
+    }
+
+    #[test]
+    fn validates_ollama_model_names_before_spawning_the_cli() {
+        assert!(valid_ollama_model_name("qwen2.5:7b"));
+        assert!(valid_ollama_model_name(
+            "registry.example/team/model:latest"
+        ));
+        assert!(!valid_ollama_model_name(""));
+        assert!(!valid_ollama_model_name("model; touch /tmp/nope"));
     }
 
     #[test]

@@ -1065,6 +1065,41 @@ ApplicationWindow {
                             enabled: !controller.recording && !controller.transcribing
                             onActivated: function(index) { controller.selectAiProvider(index) }
                         }
+                        Rectangle {
+                            visible: controller.selectedAiProvider === 7
+                            Layout.fillWidth: true
+                            implicitHeight: ollamaSetup.implicitHeight + 32
+                            radius: 12
+                            color: root.panelRaised
+                            border.color: root.hairline
+                            ColumnLayout {
+                                id: ollamaSetup; anchors.fill: parent; anchors.margins: 16; spacing: 10
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    ColumnLayout { Layout.fillWidth: true; spacing: 2
+                                        Text { text: qsTr("OLLAMA SETUP"); color: root.tertiaryText; font.pixelSize: 11; font.weight: Font.Medium }
+                                        Text { Layout.fillWidth: true; text: qsTr("Install Ollama once, start its local server, then download a model without leaving FluidVoice."); color: root.secondaryText; font.pixelSize: 12; wrapMode: Text.Wrap }
+                                    }
+                                    BusyIndicator { running: controller.ollamaBusy; visible: running; implicitWidth: 30; implicitHeight: 30 }
+                                }
+                                Text { Layout.fillWidth: true; text: controller.ollamaStatus; color: root.primaryText; font.pixelSize: 12; wrapMode: Text.Wrap }
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    Button { text: qsTr("Check setup"); enabled: !controller.ollamaBusy; onClicked: controller.diagnoseOllama() }
+                                    Button { text: qsTr("Start server"); enabled: controller.ollamaInstalled && !controller.ollamaBusy; onClicked: controller.startOllama() }
+                                    Button { text: qsTr("Official install guide"); enabled: !controller.ollamaBusy; onClicked: Qt.openUrlExternally("https://ollama.com/download/linux") }
+                                    Item { Layout.fillWidth: true }
+                                }
+                                Rectangle { Layout.fillWidth: true; height: 1; color: root.hairline }
+                                Text { text: qsTr("LOCAL CLEANUP MODEL"); color: root.tertiaryText; font.pixelSize: 11; font.weight: Font.Medium }
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    TextField { id: ollamaModelToPull; Layout.fillWidth: true; text: "qwen2.5:7b"; placeholderText: qsTr("Ollama model name") }
+                                    Button { text: controller.ollamaBusy ? qsTr("Working…") : qsTr("Download model"); enabled: controller.ollamaInstalled && !controller.ollamaBusy && ollamaModelToPull.text.trim().length > 0; onClicked: controller.pullOllamaModel(ollamaModelToPull.text) }
+                                }
+                                Text { Layout.fillWidth: true; text: qsTr("Models are downloaded by Ollama to this computer and may use several gigabytes. qwen2.5:7b is a balanced default; choose a smaller model if memory is limited."); color: root.tertiaryText; font.pixelSize: 11; wrapMode: Text.Wrap }
+                            }
+                        }
                         GridLayout {
                             Layout.fillWidth: true; columns: 2; columnSpacing: 14; rowSpacing: 10
                             Text { text: qsTr("Model"); color: root.secondaryText; font.pixelSize: 12 }
