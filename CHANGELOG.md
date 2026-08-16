@@ -26,6 +26,10 @@ All notable changes to FluidVoice Linux are documented here. The project uses
   spoken-to-preferred phrase replacements, while retaining legacy entries.
   Added quoted CSV/TSV import, CSV export, add-or-update behavior, and explicit
   keep-existing, overwrite-matches, and replace-all conflict policies.
+- Completed the upstream-style statistics surface with configurable typing WPM,
+  optional weekend-neutral streaks, 7/30-day activity views, milestones,
+  peak-time insights, personal records, 30-day source/activity summaries,
+  measured AI edit deltas, and confirmation-gated statistics reset.
 - Added AI enhancement analytics for usage, success/fallback rate, average
   latency, and provider/model activity.
 - Added per-entry raw/final visual diffs, word and character deltas, and copy

@@ -54,6 +54,8 @@ pub mod ffi {
         #[qproperty(QString, audio_history_status, cxx_name = "audioHistoryStatus")]
         #[qproperty(i32, transcript_count, cxx_name = "transcriptCount")]
         #[qproperty(i32, dictated_word_count, cxx_name = "dictatedWordCount")]
+        #[qproperty(i32, typing_wpm, cxx_name = "typingWpm")]
+        #[qproperty(bool, skip_weekends, cxx_name = "skipWeekends")]
         #[qproperty(bool, command_mode_enabled, cxx_name = "commandModeEnabled")]
         #[qproperty(QString, command_output, cxx_name = "commandOutput")]
         #[qproperty(QString, pending_command, cxx_name = "pendingCommand")]
@@ -200,6 +202,10 @@ pub mod ffi {
         #[qinvokable]
         #[cxx_name = "clearHistory"]
         fn clear_history(self: Pin<&mut Self>);
+
+        #[qinvokable]
+        #[cxx_name = "updateStatsPreferences"]
+        fn update_stats_preferences(self: Pin<&mut Self>, typing_wpm: i32, skip_weekends: bool);
 
         #[qinvokable]
         #[cxx_name = "updateAudioHistory"]
@@ -422,6 +428,8 @@ pub struct FluidVoiceControllerRust {
     audio_history_status: QString,
     transcript_count: i32,
     dictated_word_count: i32,
+    typing_wpm: i32,
+    skip_weekends: bool,
     command_mode_enabled: bool,
     command_output: QString,
     pending_command: QString,
@@ -624,6 +632,8 @@ impl Default for FluidVoiceControllerRust {
             audio_history_status: QString::from(audio_history_summary()),
             transcript_count: i32::try_from(history.len()).unwrap_or(i32::MAX),
             dictated_word_count: i32::try_from(dictated_word_count).unwrap_or(i32::MAX),
+            typing_wpm: preferences.typing_wpm,
+            skip_weekends: preferences.skip_weekends,
             command_mode_enabled: preferences.command_mode_enabled,
             command_output: QString::from(
                 "Ask a question or request an allowlisted desktop action.",
@@ -2306,6 +2316,18 @@ impl ffi::FluidVoiceController {
         );
     }
 
+    pub fn update_stats_preferences(
+        mut self: Pin<&mut Self>,
+        typing_wpm: i32,
+        skip_weekends: bool,
+    ) {
+        self.as_mut().set_typing_wpm(typing_wpm.clamp(10, 250));
+        self.as_mut().set_skip_weekends(skip_weekends);
+        self.as_ref().rust().save_preferences();
+        self.as_mut()
+            .set_status_text(QString::from("Statistics preferences updated"));
+    }
+
     pub fn update_audio_history(mut self: Pin<&mut Self>, enabled: bool, budget_mb: i32) {
         let budget_mb = budget_mb.clamp(100, 10_000);
         self.as_mut().set_audio_history_enabled(enabled);
@@ -2897,6 +2919,8 @@ impl FluidVoiceControllerRust {
             ai_prompt: self.ai_prompt.to_string(),
             ai_local_only: self.ai_local_only,
             auto_profiles_enabled: self.auto_profiles_enabled,
+            typing_wpm: self.typing_wpm,
+            skip_weekends: self.skip_weekends,
             audio_history_enabled: self.audio_history_enabled,
             audio_history_budget_mb: self.audio_history_budget_mb,
         };
@@ -2949,6 +2973,8 @@ struct Preferences {
     ai_prompt: String,
     ai_local_only: bool,
     auto_profiles_enabled: bool,
+    typing_wpm: i32,
+    skip_weekends: bool,
     audio_history_enabled: bool,
     audio_history_budget_mb: i32,
 }
@@ -3041,6 +3067,8 @@ impl Default for Preferences {
             ai_prompt: String::new(),
             ai_local_only: true,
             auto_profiles_enabled: false,
+            typing_wpm: 40,
+            skip_weekends: true,
             audio_history_enabled: false,
             audio_history_budget_mb: 500,
         }
@@ -3096,6 +3124,10 @@ impl Preferences {
                 preferences.ai_local_only = value == "true";
             } else if let Some(value) = line.strip_prefix("auto_profiles_enabled=") {
                 preferences.auto_profiles_enabled = value == "true";
+            } else if let Some(value) = line.strip_prefix("typing_wpm=") {
+                preferences.typing_wpm = value.parse().unwrap_or(40).clamp(10, 250);
+            } else if let Some(value) = line.strip_prefix("skip_weekends=") {
+                preferences.skip_weekends = value == "true";
             } else if let Some(value) = line.strip_prefix("audio_history_enabled=") {
                 preferences.audio_history_enabled = value == "true";
             } else if let Some(value) = line.strip_prefix("audio_history_budget_mb=") {
@@ -3115,7 +3147,7 @@ impl Preferences {
         fs::write(
             path,
             format!(
-                "language={}\nmodel={}\nshortcut={}\ninput={}\ngain_db={}\noverlay_enabled={}\noverlay_size={}\noverlay_position={}\noverlay_show_text={}\noverlay_opacity={}\ncommand_mode_enabled={}\ncompute_backend={}\ntheme={}\naccent={}\nai_enabled={}\nai_provider={}\nai_model={}\nai_base_url={}\nai_prompt={}\nai_local_only={}\nauto_profiles_enabled={}\naudio_history_enabled={}\naudio_history_budget_mb={}\n",
+                "language={}\nmodel={}\nshortcut={}\ninput={}\ngain_db={}\noverlay_enabled={}\noverlay_size={}\noverlay_position={}\noverlay_show_text={}\noverlay_opacity={}\ncommand_mode_enabled={}\ncompute_backend={}\ntheme={}\naccent={}\nai_enabled={}\nai_provider={}\nai_model={}\nai_base_url={}\nai_prompt={}\nai_local_only={}\nauto_profiles_enabled={}\ntyping_wpm={}\nskip_weekends={}\naudio_history_enabled={}\naudio_history_budget_mb={}\n",
                 self.language,
                 self.model.display(),
                 self.shortcut,
@@ -3137,6 +3169,8 @@ impl Preferences {
                 escape_setting(&self.ai_prompt),
                 self.ai_local_only,
                 self.auto_profiles_enabled,
+                self.typing_wpm,
+                self.skip_weekends,
                 self.audio_history_enabled,
                 self.audio_history_budget_mb
             ),

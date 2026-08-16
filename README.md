@@ -35,6 +35,8 @@ configures.
   LM Studio, or a custom OpenAI-compatible endpoint, with local model discovery
   and raw-text fallback.
 - Persistent application/workflow profiles with profile-specific cleanup prompts.
+- Upstream-style local statistics with configurable typing speed, weekend-aware
+  streaks, 7/30-day activity, milestones, insights, records, and AI edit impact.
 - Optional local microphone-audio history with a storage budget, automatic
   pruning, playback, individual deletion, and ZIP export.
 - Upstream-inspired settings navigation, onboarding, changelog, and feedback pages.
