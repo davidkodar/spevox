@@ -13,7 +13,6 @@ ApplicationWindow {
     minimumHeight: 500
     visible: false
     title: qsTr("FluidVoice")
-    icon: "qrc:/qt/qml/io/github/davidkodar/FluidVoiceLinux/assets/fluidvoice-app.png"
     color: "#121212"
     property bool quitting: false
     property int settingsSection: 0
