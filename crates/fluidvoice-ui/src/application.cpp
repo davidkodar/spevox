@@ -19,8 +19,11 @@ FluidVoiceApplication::FluidVoiceApplication(int &argc, char **argv)
         runtimeDirectory = QDir::tempPath();
     }
     instanceLock = std::make_unique<QLockFile>(runtimeDirectory + "/fluidvoice-linux.lock");
-    instanceLock->setStaleLockTime(5000);
+    instanceLock->setStaleLockTime(1000);
     primaryInstance = instanceLock->tryLock(0);
+    if (!primaryInstance && instanceLock->removeStaleLockFile()) {
+        primaryInstance = instanceLock->tryLock(0);
+    }
 }
 
 bool FluidVoiceApplication::isPrimaryInstance() const { return primaryInstance; }

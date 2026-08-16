@@ -59,9 +59,12 @@ ApplicationWindow {
     Component.onCompleted: {
         controller.initializeAudio()
         controller.initializeDesktopRuntime()
+        if (!trayIcon.available)
+            root.show()
     }
 
     Platform.SystemTrayIcon {
+        id: trayIcon
         visible: true
         icon.source: "qrc:/qt/qml/io/github/davidkodar/FluidVoiceLinux/assets/fluidvoice-tray.png"
         icon.mask: true
