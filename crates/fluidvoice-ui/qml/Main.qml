@@ -7,13 +7,13 @@ import io.github.davidkodar.FluidVoiceLinux
 
 ApplicationWindow {
     id: root
-    width: 880
-    height: 620
-    minimumWidth: 760
-    minimumHeight: 540
+    width: 960
+    height: 680
+    minimumWidth: 800
+    minimumHeight: 500
     visible: false
     title: qsTr("FluidVoice")
-    color: "#111216"
+    color: "#121212"
     property bool quitting: false
     property int settingsSection: 0
     onClosing: function(close) {
@@ -25,11 +25,16 @@ ApplicationWindow {
         root.hide()
     }
 
-    readonly property color accent: "#8b7cff"
-    readonly property color panel: "#1a1b21"
-    readonly property color panelRaised: "#22232b"
-    readonly property color primaryText: "#f6f4ff"
-    readonly property color secondaryText: "#aaa8b4"
+    // Mirrors the current FluidVoice dark theme tokens. Qt cannot use SwiftUI's
+    // NSVisualEffect materials, so these are deliberately restrained opaque
+    // equivalents that remain predictable under Plasma compositing.
+    readonly property color accent: "#3ac8c6"
+    readonly property color panel: "#151515"
+    readonly property color panelRaised: "#1c1c1c"
+    readonly property color primaryText: "#f2f2f2"
+    readonly property color secondaryText: "#a8a8ad"
+    readonly property color tertiaryText: "#737379"
+    readonly property color hairline: "#2b2b2e"
 
     FluidVoiceController {
         id: controller
@@ -80,61 +85,54 @@ ApplicationWindow {
     background: Rectangle {
         color: root.color
         gradient: Gradient {
-            GradientStop { position: 0.0; color: "#171822" }
-            GradientStop { position: 1.0; color: "#0e0f13" }
+            GradientStop { position: 0.0; color: "#171717" }
+            GradientStop { position: 1.0; color: "#121212" }
         }
     }
 
     header: Rectangle {
-        height: 76
-        color: "#15161b"
-        border.color: "#292a32"
+        height: 52
+        color: "#0f0f0f"
+        border.color: root.hairline
         border.width: 1
 
         RowLayout {
             anchors.fill: parent
-            anchors.leftMargin: 28
-            anchors.rightMargin: 24
-            spacing: 14
+            anchors.leftMargin: 20
+            anchors.rightMargin: 16
+            spacing: 10
 
             Rectangle {
-                width: 42
-                height: 42
-                radius: 13
-                color: root.accent
+                width: 28
+                height: 28
+                radius: 8
+                color: "#193536"
+                border.color: "#3f7475"
 
                 Text {
                     anchors.centerIn: parent
-                    text: "◉"
-                    color: "white"
-                    font.pixelSize: 23
+                    text: "●"
+                    color: root.accent
+                    font.pixelSize: 13
                     font.weight: Font.DemiBold
                 }
             }
 
-            ColumnLayout {
-                spacing: 1
-                Text {
-                    text: "FluidVoice"
-                    color: root.primaryText
-                    font.pixelSize: 20
-                    font.weight: Font.DemiBold
-                }
-                Text {
-                    text: qsTr("Native dictation for KDE Plasma")
-                    color: root.secondaryText
-                    font.pixelSize: 12
-                }
+            Text {
+                text: "FluidVoice"
+                color: root.primaryText
+                font.pixelSize: 15
+                font.weight: Font.DemiBold
             }
 
             Item { Layout.fillWidth: true }
 
             Rectangle {
                 implicitWidth: statusRow.implicitWidth + 24
-                implicitHeight: 34
-                radius: 17
-                color: controller.recording ? "#352f5d" : "#202129"
-                border.color: controller.recording ? root.accent : "#343640"
+                implicitHeight: 28
+                radius: 14
+                color: controller.recording ? "#173334" : "#1b1b1d"
+                border.color: controller.recording ? "#3f7475" : root.hairline
 
                 Row {
                     id: statusRow
@@ -145,7 +143,7 @@ ApplicationWindow {
                         width: 8
                         height: 8
                         radius: 4
-                        color: controller.recording ? "#ad9fff" : "#65d49a"
+                        color: root.accent
                     }
                     Text {
                         text: controller.statusText
@@ -160,20 +158,31 @@ ApplicationWindow {
 
     RowLayout {
         anchors.fill: parent
-        anchors.margins: 24
-        spacing: 20
+        anchors.margins: 0
+        spacing: 0
 
         Rectangle {
-            Layout.preferredWidth: 210
+            Layout.preferredWidth: 220
             Layout.fillHeight: true
-            radius: 20
-            color: "#17181e"
-            border.color: "#292a33"
+            color: "#0f0f0f"
+            border.color: root.hairline
 
             ColumnLayout {
                 anchors.fill: parent
-                anchors.margins: 14
-                spacing: 7
+                anchors.leftMargin: 12
+                anchors.rightMargin: 12
+                anchors.topMargin: 18
+                anchors.bottomMargin: 14
+                spacing: 4
+
+                Text {
+                    text: qsTr("CONFIGURE")
+                    color: root.tertiaryText
+                    font.pixelSize: 11
+                    font.weight: Font.Medium
+                    Layout.leftMargin: 8
+                    Layout.bottomMargin: 4
+                }
 
                 Repeater {
                     model: ["General", "Audio", "Transcription", "Shortcuts", "Appearance"]
@@ -181,18 +190,18 @@ ApplicationWindow {
                         required property string modelData
                         required property int index
                         Layout.fillWidth: true
-                        height: 44
-                        radius: 12
-                        color: index === root.settingsSection ? "#2b2940" : "transparent"
+                        height: 32
+                        radius: 6
+                        color: index === root.settingsSection ? "#213738" : "transparent"
 
                         Text {
                             anchors.left: parent.left
-                            anchors.leftMargin: 15
+                            anchors.leftMargin: 10
                             anchors.verticalCenter: parent.verticalCenter
                             text: modelData
-                            color: index === root.settingsSection ? "#f4f0ff" : root.secondaryText
-                            font.pixelSize: 13
-                            font.weight: index === root.settingsSection ? Font.DemiBold : Font.Normal
+                            color: index === root.settingsSection ? root.primaryText : root.secondaryText
+                            font.pixelSize: 14
+                            font.weight: Font.Normal
                         }
                         MouseArea {
                             anchors.fill: parent
@@ -210,8 +219,8 @@ ApplicationWindow {
                 Text {
                     Layout.alignment: Qt.AlignHCenter
                     text: "Private preview · 0.1.0"
-                    color: "#74727c"
-                    font.pixelSize: 10
+                    color: root.tertiaryText
+                    font.pixelSize: 11
                 }
             }
         }
@@ -220,12 +229,14 @@ ApplicationWindow {
             id: settingsFlick
             Layout.fillWidth: true
             Layout.fillHeight: true
-            contentHeight: contentColumn.implicitHeight
+            contentHeight: contentColumn.implicitHeight + 52
             clip: true
 
             ColumnLayout {
                 id: contentColumn
-                width: parent.width
+                x: 28
+                y: 24
+                width: parent.width - 56
                 spacing: 16
 
                 ColumnLayout {
@@ -233,28 +244,28 @@ ApplicationWindow {
                     Text {
                         text: qsTr("General")
                         color: root.primaryText
-                        font.pixelSize: 26
-                        font.weight: Font.DemiBold
+                        font.pixelSize: 22
+                        font.weight: Font.Bold
                     }
                     Text {
                         text: qsTr("Choose how FluidVoice listens and responds.")
                         color: root.secondaryText
-                        font.pixelSize: 13
+                        font.pixelSize: 14
                     }
                 }
 
                 Rectangle {
                     Layout.fillWidth: true
                     height: 196
-                    radius: 18
+                    radius: 16
                     color: root.panel
-                    border.color: "#2d2e37"
+                    border.color: root.hairline
 
                     ColumnLayout {
                         anchors.fill: parent
-                        anchors.margins: 20
-                        spacing: 14
-                        Text { text: qsTr("INPUT & MODEL"); color: "#777581"; font.pixelSize: 10; font.letterSpacing: 1.2 }
+                        anchors.margins: 16
+                        spacing: 12
+                        Text { text: qsTr("INPUT & MODEL"); color: root.tertiaryText; font.pixelSize: 11; font.weight: Font.Medium }
 
                         ColumnLayout {
                             Layout.fillWidth: true
@@ -295,28 +306,28 @@ ApplicationWindow {
                     Text {
                         text: qsTr("Transcription")
                         color: root.primaryText
-                        font.pixelSize: 22
+                        font.pixelSize: 15
                         font.weight: Font.DemiBold
                     }
                     Text {
                         text: qsTr("Choose the local speech model and spoken language.")
                         color: root.secondaryText
-                        font.pixelSize: 12
+                        font.pixelSize: 13
                     }
                 }
 
                 Rectangle {
                     Layout.fillWidth: true
                     height: 176
-                    radius: 18
+                    radius: 16
                     color: root.panel
-                    border.color: "#2d2e37"
+                    border.color: root.hairline
 
                     ColumnLayout {
                         anchors.fill: parent
-                        anchors.margins: 20
+                        anchors.margins: 16
                         spacing: 12
-                        Text { text: qsTr("SPEECH ENGINE"); color: "#777581"; font.pixelSize: 10; font.letterSpacing: 1.2 }
+                        Text { text: qsTr("SPEECH ENGINE"); color: root.tertiaryText; font.pixelSize: 11; font.weight: Font.Medium }
                         RowLayout {
                             Layout.fillWidth: true
                             spacing: 14
@@ -355,15 +366,15 @@ ApplicationWindow {
                 Rectangle {
                     Layout.fillWidth: true
                     height: 180
-                    radius: 18
+                    radius: 16
                     color: root.panel
-                    border.color: "#2d2e37"
+                    border.color: root.hairline
 
                     ColumnLayout {
                         anchors.fill: parent
-                        anchors.margins: 20
+                        anchors.margins: 16
                         spacing: 14
-                        Text { text: qsTr("DICTATION"); color: "#777581"; font.pixelSize: 10; font.letterSpacing: 1.2 }
+                        Text { text: qsTr("DICTATION"); color: root.tertiaryText; font.pixelSize: 11; font.weight: Font.Medium }
 
                         RowLayout {
                             Layout.fillWidth: true
@@ -382,7 +393,7 @@ ApplicationWindow {
                             }
                         }
 
-                        Rectangle { Layout.fillWidth: true; height: 1; color: "#2d2e36" }
+                        Rectangle { Layout.fillWidth: true; height: 1; color: root.hairline }
 
                         RowLayout {
                             Layout.fillWidth: true
@@ -403,9 +414,9 @@ ApplicationWindow {
                 Rectangle {
                     Layout.fillWidth: true
                     height: 102
-                    radius: 18
-                    color: "#191922"
-                    border.color: "#393451"
+                    radius: 16
+                    color: root.panelRaised
+                    border.color: "#315152"
 
                     RowLayout {
                         anchors.fill: parent
@@ -414,9 +425,9 @@ ApplicationWindow {
                         Rectangle {
                             width: 48
                             height: 48
-                            radius: 15
-                            color: "#302b50"
-                            Text { anchors.centerIn: parent; text: "⌁"; color: "#b9aeff"; font.pixelSize: 27 }
+                            radius: 12
+                            color: "#193536"
+                            Text { anchors.centerIn: parent; text: "⌁"; color: root.accent; font.pixelSize: 27 }
                         }
                         ColumnLayout {
                             Layout.fillWidth: true
@@ -457,9 +468,9 @@ ApplicationWindow {
                 Rectangle {
                     Layout.fillWidth: true
                     implicitHeight: transcriptColumn.implicitHeight + 36
-                    radius: 18
+                    radius: 16
                     color: root.panel
-                    border.color: "#2d2e37"
+                    border.color: root.hairline
 
                     ColumnLayout {
                         id: transcriptColumn
@@ -469,7 +480,7 @@ ApplicationWindow {
                         anchors.margins: 18
                         spacing: 8
 
-                        Text { text: qsTr("LATEST TRANSCRIPT"); color: "#777581"; font.pixelSize: 10; font.letterSpacing: 1.2 }
+                        Text { text: qsTr("LATEST TRANSCRIPT"); color: root.tertiaryText; font.pixelSize: 11; font.weight: Font.Medium }
                         Text {
                             Layout.fillWidth: true
                             text: controller.transcriptText.length > 0
@@ -487,8 +498,8 @@ ApplicationWindow {
 
     Window {
         id: overlay
-        width: 520
-        height: 82
+        width: 380
+        height: 156
         visible: controller.overlayVisible
         color: "transparent"
         transientParent: null
@@ -544,67 +555,81 @@ ApplicationWindow {
 
         Rectangle {
             anchors.fill: parent
-            anchors.margins: 5
-            radius: 25
-            color: "#eb1e2028"
-            border.color: controller.recording ? "#7769d8" : "#3c3d48"
+            anchors.margins: 8
+            radius: 18
+            color: "#fa000000"
+            border.color: controller.recording ? "#8063d391" : "#32ffffff"
             border.width: 1
 
-            RowLayout {
+            ColumnLayout {
                 anchors.fill: parent
-                anchors.leftMargin: 19
-                anchors.rightMargin: 17
-                spacing: 14
+                anchors.margins: 16
+                spacing: 10
 
-                Rectangle {
-                    width: 42
-                    height: 42
-                    radius: 15
-                    color: controller.recording ? root.accent : "#32333c"
-                    Text { anchors.centerIn: parent; text: "●"; color: "white"; font.pixelSize: 15 }
-                }
-
-                ColumnLayout {
+                RowLayout {
                     Layout.fillWidth: true
-                    spacing: 3
-                    Text { text: controller.recording ? qsTr("Listening…") : controller.transcribing ? qsTr("Transcribing…") : qsTr("Ready to dictate"); color: "#faf8ff"; font.pixelSize: 14; font.weight: Font.DemiBold }
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 10
-                        Row {
-                            spacing: 3
-                            Repeater {
-                                model: 9
-                                Rectangle {
-                                    required property int index
-                                    readonly property var barShape: [0.35, 0.55, 0.78, 1.0, 0.72, 1.0, 0.78, 0.55, 0.35]
-                                    width: 3
-                                    height: controller.recording ? 3 + controller.audioLevel * 18 * barShape[index] : 3
-                                    radius: 2
-                                    color: controller.recording && controller.audioLevel > 0.02 ? "#b5aaff" : "#777681"
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    Behavior on height { NumberAnimation { duration: 55; easing.type: Easing.OutQuad } }
-                                    Behavior on color { ColorAnimation { duration: 100 } }
-                                }
-                            }
-                        }
-                        Text {
-                            Layout.fillWidth: true
-                            text: overlay.animatedTranscript.length > 0
-                                  ? overlay.animatedTranscript
-                                  : qsTr("Speak naturally — text will appear here")
-                            color: overlay.animatedTranscript.length > 0 ? "#d9d5e7" : "#85838e"
-                            font.pixelSize: 10
-                            elide: Text.ElideLeft
-                            maximumLineCount: 1
-                        }
+                    Text {
+                        text: controller.recording ? qsTr("Dictate") : controller.transcribing ? qsTr("Processing") : qsTr("FluidVoice")
+                        color: controller.recording ? root.accent : "#f2f2f2"
+                        font.pixelSize: 13
+                        font.weight: Font.DemiBold
+                    }
+                    Item { Layout.fillWidth: true }
+                    Text {
+                        text: controller.recording ? qsTr("Release to finish") : controller.transcribing ? qsTr("On-device") : "Ctrl Alt D"
+                        color: "#8d8d92"
+                        font.pixelSize: 11
                     }
                 }
 
                 Text {
-                    text: controller.recording ? qsTr("Release to finish") : controller.transcribing ? qsTr("On-device") : "Ctrl Alt D"
-                    color: "#aaa8b5"
-                    font.pixelSize: 10
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    text: overlay.animatedTranscript.length > 0
+                          ? overlay.animatedTranscript
+                          : qsTr("Speak naturally — text will appear here")
+                    color: overlay.animatedTranscript.length > 0 ? "#eeeeef" : "#77777c"
+                    font.pixelSize: 13
+                    lineHeight: 1.15
+                    wrapMode: Text.Wrap
+                    elide: Text.ElideLeft
+                    maximumLineCount: 3
+                    verticalAlignment: Text.AlignVCenter
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 10
+                    Rectangle {
+                        width: 22
+                        height: 22
+                        radius: 6
+                        color: controller.recording ? "#193536" : "#242426"
+                        Text { anchors.centerIn: parent; text: "●"; color: controller.recording ? root.accent : "#77777c"; font.pixelSize: 9 }
+                    }
+                    Item { Layout.fillWidth: true }
+                    Row {
+                        spacing: 4
+                        Repeater {
+                            model: 9
+                            Rectangle {
+                                required property int index
+                                readonly property var barShape: [0.35, 0.55, 0.78, 1.0, 0.72, 1.0, 0.78, 0.55, 0.35]
+                                width: 3
+                                height: controller.recording ? 3 + controller.audioLevel * 18 * barShape[index] : 3
+                                radius: 2
+                                color: controller.recording && controller.audioLevel > 0.02 ? root.accent : "#5f5f64"
+                                anchors.verticalCenter: parent.verticalCenter
+                                Behavior on height { NumberAnimation { duration: 55; easing.type: Easing.OutQuad } }
+                            }
+                        }
+                    }
+                    Item { Layout.fillWidth: true }
+                    Text {
+                        text: controller.recording ? qsTr("Listening") : controller.transcribing ? qsTr("Transcribing") : qsTr("Ready")
+                        color: "#8d8d92"
+                        font.pixelSize: 11
+                    }
                 }
             }
         }
