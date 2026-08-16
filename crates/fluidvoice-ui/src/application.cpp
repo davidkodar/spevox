@@ -1,6 +1,7 @@
 #include "fluidvoice-ui/src/application.h"
 
 #include <QDir>
+#include <QIcon>
 #include <QStandardPaths>
 
 namespace fluidvoice {
@@ -8,7 +9,10 @@ namespace fluidvoice {
 FluidVoiceApplication::FluidVoiceApplication(int &argc, char **argv)
     : QApplication(argc, argv) {
     setApplicationName("FluidVoice");
+    setApplicationDisplayName("FluidVoice");
     setOrganizationName("FluidVoice Linux");
+    setDesktopFileName("io.github.davidkodar.FluidVoiceLinux");
+    setWindowIcon(QIcon(":/qt/qml/io/github/davidkodar/FluidVoiceLinux/assets/fluidvoice-app.png"));
     setQuitOnLastWindowClosed(false);
     QString runtimeDirectory = QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation);
     if (runtimeDirectory.isEmpty()) {
