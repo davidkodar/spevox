@@ -162,13 +162,14 @@ ApplicationWindow {
                         required property var modelData
                         required property int index
                         Layout.fillWidth: true
-                        Layout.topMargin: modelData.header && index > 0 ? 9 : 0
-                        height: modelData.header ? 22 : 34
+                        readonly property bool isHeader: modelData.header === true
+                        Layout.topMargin: isHeader && index > 0 ? 9 : 0
+                        height: isHeader ? 22 : 34
                         radius: 6
-                        color: !modelData.header && modelData.page === root.settingsSection ? "#272729" : "transparent"
+                        color: !isHeader && modelData.page === root.settingsSection ? "#272729" : "transparent"
 
                         Text {
-                            visible: modelData.header
+                            visible: parent.isHeader
                             anchors.left: parent.left
                             anchors.leftMargin: 8
                             anchors.verticalCenter: parent.verticalCenter
@@ -178,7 +179,7 @@ ApplicationWindow {
                             font.weight: Font.Medium
                         }
                         Row {
-                            visible: !modelData.header
+                            visible: !parent.isHeader
                             anchors.left: parent.left
                             anchors.leftMargin: 10
                             anchors.verticalCenter: parent.verticalCenter
@@ -198,7 +199,7 @@ ApplicationWindow {
                         }
                         MouseArea {
                             anchors.fill: parent
-                            enabled: !modelData.header
+                            enabled: !parent.isHeader
                             cursorShape: Qt.PointingHandCursor
                             onClicked: root.showSettingsSection(modelData.page)
                         }
