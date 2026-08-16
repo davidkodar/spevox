@@ -5,7 +5,10 @@ All notable changes to FluidVoice Linux are documented here. The project uses
 
 ## Unreleased
 
-- No changes yet.
+- Added AI enhancement analytics for usage, success/fallback rate, average
+  latency, and provider/model activity.
+- Added per-entry raw/final visual diffs, word and character deltas, and copy
+  raw, copy final, copy both, and undo-to-clipboard actions.
 
 ## 0.3.0 - 2026-08-16
 

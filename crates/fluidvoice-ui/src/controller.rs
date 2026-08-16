@@ -148,6 +148,10 @@ pub mod ffi {
         fn export_history(self: Pin<&mut Self>, path: &QString, format: &QString);
 
         #[qinvokable]
+        #[cxx_name = "copyHistoryText"]
+        fn copy_history_text(self: Pin<&mut Self>, entry: &QString, mode: i32);
+
+        #[qinvokable]
         #[cxx_name = "updateCommandModeEnabled"]
         fn update_command_mode_enabled(self: Pin<&mut Self>, enabled: bool);
 
@@ -1629,6 +1633,27 @@ impl ffi::FluidVoiceController {
         }
     }
 
+    pub fn copy_history_text(mut self: Pin<&mut Self>, entry: &QString, mode: i32) {
+        let entry = entry.to_string();
+        let (text, label) = history_clipboard_text(&entry, mode);
+        let result = self
+            .as_mut()
+            .rust_mut()
+            .get_mut()
+            .clipboard
+            .as_mut()
+            .ok_or_else(|| "Clipboard integration is not ready".to_owned())
+            .and_then(|clipboard| {
+                clipboard
+                    .copy_transcript(&text)
+                    .map_err(|error| error.to_string())
+            });
+        self.as_mut().set_status_text(QString::from(match result {
+            Ok(()) => label.to_owned(),
+            Err(error) => format!("History copy failed · {error}"),
+        }));
+    }
+
     pub fn transcribe_file(mut self: Pin<&mut Self>, path: &QString) {
         if *self.as_ref().transcribing() || *self.as_ref().recording() {
             return;
@@ -2695,6 +2720,29 @@ fn history_field(entry: &str, index: usize) -> Option<&str> {
     entry.split('\t').nth(index)
 }
 
+fn history_clipboard_text(entry: &str, mode: i32) -> (String, &'static str) {
+    let final_text = history_field(entry, 1).unwrap_or(entry);
+    let raw_text = history_field(entry, 2).unwrap_or(final_text);
+    match mode {
+        0 => (
+            raw_text.to_owned(),
+            "Raw transcript copied · ready to paste",
+        ),
+        2 => (
+            format!("Raw transcript:\n{raw_text}\n\nFinal text:\n{final_text}"),
+            "Raw and final text copied · ready to paste",
+        ),
+        3 => (
+            raw_text.to_owned(),
+            "AI result undone on clipboard · raw text ready to paste",
+        ),
+        _ => (
+            final_text.to_owned(),
+            "Final transcript copied · ready to paste",
+        ),
+    }
+}
+
 fn ai_provider_name(config: &AiConfig) -> &str {
     if config.enabled { &config.provider } else { "" }
 }
@@ -3214,8 +3262,8 @@ mod tests {
     use std::{fs, time::Duration};
 
     use super::{
-        DesktopAction, asr_gain, decode_audio_file, decode_file_url, meter_level,
-        parse_desktop_action, peak_db, process_transcript, supported_languages,
+        DesktopAction, asr_gain, decode_audio_file, decode_file_url, history_clipboard_text,
+        meter_level, parse_desktop_action, peak_db, process_transcript, supported_languages,
         suspicious_single_word, valid_ollama_model_name, version_tuple, whisper_model_catalog,
         write_history_export,
     };
@@ -3257,6 +3305,18 @@ mod tests {
         ));
         assert!(!valid_ollama_model_name(""));
         assert!(!valid_ollama_model_name("model; touch /tmp/nope"));
+    }
+
+    #[test]
+    fn prepares_raw_final_and_combined_history_clipboard_text() {
+        let entry = "100\tFinal sentence.\traw sentence\tollama\tqwen\tenhanced\t42\tdictation";
+        assert_eq!(history_clipboard_text(entry, 0).0, "raw sentence");
+        assert_eq!(history_clipboard_text(entry, 1).0, "Final sentence.");
+        assert_eq!(
+            history_clipboard_text(entry, 2).0,
+            "Raw transcript:\nraw sentence\n\nFinal text:\nFinal sentence."
+        );
+        assert_eq!(history_clipboard_text(entry, 3).0, "raw sentence");
     }
 
     #[test]

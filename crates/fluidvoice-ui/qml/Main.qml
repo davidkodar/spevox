@@ -59,6 +59,93 @@ ApplicationWindow {
         var fields = entry.split("\t")
         return fields.length > 2 ? fields[2] : historyText(entry)
     }
+    function historyAiStatus(entry) {
+        var fields = entry.split("\t")
+        return fields.length > 5 ? fields[5] : "not_recorded"
+    }
+    function historyAiLatency(entry) {
+        var fields = entry.split("\t")
+        return fields.length > 6 && isFinite(Number(fields[6])) ? Number(fields[6]) : 0
+    }
+    function aiHistoryStats() {
+        var result = { "total": controller.historyEntries.length, "enhanced": 0, "fallback": 0, "attempts": 0, "latencyTotal": 0, "latencyCount": 0, "providers": {} }
+        for (var i = 0; i < controller.historyEntries.length; ++i) {
+            var fields = controller.historyEntries[i].split("\t")
+            var status = fields.length > 5 ? fields[5] : "not_recorded"
+            if (status !== "enhanced" && status !== "fallback")
+                continue
+            result.attempts += 1
+            if (status === "enhanced")
+                result.enhanced += 1
+            else
+                result.fallback += 1
+            var latency = fields.length > 6 ? Number(fields[6]) : 0
+            if (isFinite(latency) && latency > 0) {
+                result.latencyTotal += latency
+                result.latencyCount += 1
+            }
+            var provider = fields[3] || qsTr("Unknown provider")
+            var model = fields[4] || qsTr("default model")
+            var key = provider + " · " + model
+            result.providers[key] = (result.providers[key] || 0) + 1
+        }
+        return result
+    }
+    function aiProviderSummary() {
+        var providers = aiHistoryStats().providers
+        var rows = []
+        for (var key in providers)
+            rows.push({ "key": key, "count": providers[key] })
+        rows.sort(function(a, b) { return b.count - a.count })
+        if (rows.length === 0)
+            return qsTr("No AI-enhanced dictations yet")
+        var labels = []
+        for (var i = 0; i < Math.min(4, rows.length); ++i)
+            labels.push(rows[i].key + " (" + rows[i].count + ")")
+        return labels.join("\n")
+    }
+    function wordCountForText(text) {
+        text = text.trim()
+        return text.length === 0 ? 0 : text.split(/\s+/).length
+    }
+    function historyChangeSummary(entry) {
+        var raw = historyRawText(entry)
+        var finalText = historyText(entry)
+        var wordDelta = wordCountForText(finalText) - wordCountForText(raw)
+        var characterDelta = finalText.length - raw.length
+        function signed(value) { return value > 0 ? "+" + value : String(value) }
+        return qsTr("Words %1 · characters %2").arg(signed(wordDelta)).arg(signed(characterDelta))
+    }
+    function htmlEscape(text) {
+        return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\"/g, "&quot;")
+    }
+    function historyDiffHtml(entry) {
+        var before = historyRawText(entry).trim().split(/\s+/)
+        var after = historyText(entry).trim().split(/\s+/)
+        if (before.length === 1 && before[0] === "") before = []
+        if (after.length === 1 && after[0] === "") after = []
+        if (before.length > 120 || after.length > 120)
+            return "<span style='color:#d98a8a'>" + htmlEscape(historyRawText(entry)) + "</span><br/><span style='color:#70d59b'>" + htmlEscape(historyText(entry)) + "</span>"
+        var table = []
+        for (var i = 0; i <= before.length; ++i) {
+            table[i] = []
+            for (var j = 0; j <= after.length; ++j) table[i][j] = 0
+        }
+        for (i = before.length - 1; i >= 0; --i)
+            for (j = after.length - 1; j >= 0; --j)
+                table[i][j] = before[i] === after[j] ? table[i + 1][j + 1] + 1 : Math.max(table[i + 1][j], table[i][j + 1])
+        var output = []; i = 0; j = 0
+        while (i < before.length || j < after.length) {
+            if (i < before.length && j < after.length && before[i] === after[j]) {
+                output.push(htmlEscape(before[i])); ++i; ++j
+            } else if (j < after.length && (i === before.length || table[i][j + 1] >= table[i + 1][j])) {
+                output.push("<span style='color:#70d59b;background-color:#173c2b'>+" + htmlEscape(after[j]) + "</span>"); ++j
+            } else {
+                output.push("<span style='color:#e58b94;text-decoration:line-through'>−" + htmlEscape(before[i]) + "</span>"); ++i
+            }
+        }
+        return output.join(" ")
+    }
     function historyAiSummary(entry) {
         var fields = entry.split("\t")
         if (fields.length < 6 || fields[5] === "disabled" || fields[5] === "not_recorded")
@@ -1316,7 +1403,29 @@ ApplicationWindow {
                                     Text { text: root.historyRelativeTime(modelData); color: root.tertiaryText; font.pixelSize: 10 }
                                 }
                                 Text { Layout.fillWidth: true; text: root.historyText(modelData); color: root.primaryText; font.pixelSize: 13; wrapMode: Text.Wrap }
-                                Text { visible: root.historyRawText(modelData) !== root.historyText(modelData); Layout.fillWidth: true; text: qsTr("Raw: %1").arg(root.historyRawText(modelData)); color: root.secondaryText; font.pixelSize: 11; wrapMode: Text.Wrap }
+                                Rectangle {
+                                    visible: root.historyAiStatus(modelData) === "enhanced" || root.historyAiStatus(modelData) === "fallback"
+                                    Layout.fillWidth: true; implicitHeight: comparisonContent.implicitHeight + 24; radius: 8
+                                    color: root.panelRaised; border.color: root.hairline
+                                    ColumnLayout {
+                                        id: comparisonContent; anchors.fill: parent; anchors.margins: 12; spacing: 7
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            Text { text: qsTr("AI CHANGES"); color: root.accent; font.pixelSize: 10; font.weight: Font.DemiBold }
+                                            Item { Layout.fillWidth: true }
+                                            Text { text: root.historyChangeSummary(modelData); color: root.tertiaryText; font.pixelSize: 10 }
+                                        }
+                                        Text { Layout.fillWidth: true; text: root.historyRawText(modelData) === root.historyText(modelData) ? qsTr("No textual differences—the raw transcript was retained.") : root.historyDiffHtml(modelData); textFormat: Text.RichText; color: root.secondaryText; font.pixelSize: 11; wrapMode: Text.Wrap }
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            Button { text: qsTr("Copy raw"); onClicked: controller.copyHistoryText(modelData, 0) }
+                                            Button { text: qsTr("Copy final"); onClicked: controller.copyHistoryText(modelData, 1) }
+                                            Button { text: qsTr("Copy both"); onClicked: controller.copyHistoryText(modelData, 2) }
+                                            Item { Layout.fillWidth: true }
+                                            Button { text: qsTr("Undo AI to clipboard"); onClicked: controller.copyHistoryText(modelData, 3) }
+                                        }
+                                    }
+                                }
                                 Text { Layout.fillWidth: true; text: root.historySource(modelData) + " · " + root.historyAiSummary(modelData); color: root.tertiaryText; font.pixelSize: 10; elide: Text.ElideRight }
                                 RowLayout {
                                     Layout.fillWidth: true
@@ -1374,6 +1483,39 @@ ApplicationWindow {
                         }
                         Rectangle { Layout.fillWidth: true; height: 110; radius: 16; color: root.panel; border.color: root.hairline
                             Column { anchors.centerIn: parent; spacing: 6; Text { anchors.horizontalCenter: parent.horizontalCenter; text: controller.transcriptCount; color: root.primaryText; font.pixelSize: 28; font.weight: Font.Bold } Text { anchors.horizontalCenter: parent.horizontalCenter; text: qsTr("Transcriptions"); color: root.secondaryText; font.pixelSize: 12 } Text { anchors.horizontalCenter: parent.horizontalCenter; text: qsTr("Avg: %1 words each").arg(controller.transcriptCount > 0 ? Math.floor(controller.dictatedWordCount / controller.transcriptCount) : 0); color: root.tertiaryText; font.pixelSize: 10 } }
+                        }
+                    }
+                    Text { text: qsTr("AI enhancement"); color: root.primaryText; font.pixelSize: 17; font.weight: Font.DemiBold; Layout.topMargin: 4 }
+                    Text { Layout.fillWidth: true; text: qsTr("Measured from saved raw and final transcripts. Enhancement rate reports usage, not objective writing accuracy."); color: root.secondaryText; font.pixelSize: 11; wrapMode: Text.Wrap }
+                    RowLayout {
+                        Layout.fillWidth: true; spacing: 12
+                        Rectangle { Layout.fillWidth: true; height: 116; radius: 16; color: root.panel; border.color: root.hairline
+                            Column { anchors.centerIn: parent; spacing: 5
+                                Text { anchors.horizontalCenter: parent.horizontalCenter; text: root.aiHistoryStats().total > 0 ? Math.round(root.aiHistoryStats().enhanced * 100 / root.aiHistoryStats().total) + "%" : "0%"; color: root.accent; font.pixelSize: 28; font.weight: Font.Bold }
+                                Text { anchors.horizontalCenter: parent.horizontalCenter; text: qsTr("AI enhanced"); color: root.secondaryText; font.pixelSize: 12 }
+                                Text { anchors.horizontalCenter: parent.horizontalCenter; text: qsTr("%1 of %2 dictations").arg(root.aiHistoryStats().enhanced).arg(root.aiHistoryStats().total); color: root.tertiaryText; font.pixelSize: 10 }
+                            }
+                        }
+                        Rectangle { Layout.fillWidth: true; height: 116; radius: 16; color: root.panel; border.color: root.hairline
+                            Column { anchors.centerIn: parent; spacing: 5
+                                Text { anchors.horizontalCenter: parent.horizontalCenter; text: root.aiHistoryStats().attempts > 0 ? Math.round(root.aiHistoryStats().enhanced * 100 / root.aiHistoryStats().attempts) + "%" : "—"; color: root.primaryText; font.pixelSize: 28; font.weight: Font.Bold }
+                                Text { anchors.horizontalCenter: parent.horizontalCenter; text: qsTr("AI success rate"); color: root.secondaryText; font.pixelSize: 12 }
+                                Text { anchors.horizontalCenter: parent.horizontalCenter; text: qsTr("%1 successful · %2 fallback").arg(root.aiHistoryStats().enhanced).arg(root.aiHistoryStats().fallback); color: root.tertiaryText; font.pixelSize: 10 }
+                            }
+                        }
+                        Rectangle { Layout.fillWidth: true; height: 116; radius: 16; color: root.panel; border.color: root.hairline
+                            Column { anchors.centerIn: parent; spacing: 5
+                                Text { anchors.horizontalCenter: parent.horizontalCenter; text: root.aiHistoryStats().latencyCount > 0 ? Math.round(root.aiHistoryStats().latencyTotal / root.aiHistoryStats().latencyCount) + " ms" : "—"; color: root.primaryText; font.pixelSize: 28; font.weight: Font.Bold }
+                                Text { anchors.horizontalCenter: parent.horizontalCenter; text: qsTr("Average AI latency"); color: root.secondaryText; font.pixelSize: 12 }
+                                Text { anchors.horizontalCenter: parent.horizontalCenter; text: qsTr("Successful and fallback attempts"); color: root.tertiaryText; font.pixelSize: 10 }
+                            }
+                        }
+                    }
+                    Rectangle {
+                        Layout.fillWidth: true; implicitHeight: providerStats.implicitHeight + 32; radius: 16; color: root.panel; border.color: root.hairline
+                        ColumnLayout { id: providerStats; anchors.fill: parent; anchors.margins: 16; spacing: 8
+                            Text { text: qsTr("AI PROVIDERS & MODELS"); color: root.secondaryText; font.pixelSize: 11; font.weight: Font.DemiBold }
+                            Text { Layout.fillWidth: true; text: root.aiProviderSummary(); color: root.primaryText; font.pixelSize: 12; lineHeight: 1.25; wrapMode: Text.Wrap }
                         }
                     }
                     Rectangle {
