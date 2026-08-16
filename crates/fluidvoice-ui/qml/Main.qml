@@ -390,6 +390,22 @@ ApplicationWindow {
         onAccepted: controller.exportAudioHistory(selectedFile.toString())
     }
 
+    FileDialog {
+        id: dictionaryImportDialog
+        title: qsTr("Import dictionary")
+        nameFilters: [qsTr("Dictionary files (*.csv *.tsv *.txt)")]
+        onAccepted: controller.importDictionary(selectedFile.toString(), dictionaryConflictMode.currentIndex)
+    }
+
+    FileDialog {
+        id: dictionaryExportDialog
+        title: qsTr("Export dictionary")
+        fileMode: FileDialog.SaveFile
+        defaultSuffix: "csv"
+        nameFilters: [qsTr("CSV files (*.csv)")]
+        onAccepted: controller.exportDictionary(selectedFile.toString())
+    }
+
     Component.onCompleted: {
         controller.initializeAudio()
         controller.initializeDesktopRuntime()
@@ -1372,11 +1388,20 @@ ApplicationWindow {
                         color: root.panel; border.color: root.hairline
                         ColumnLayout {
                             id: dictionaryContent; anchors.fill: parent; anchors.margins: 16; spacing: 12
-                            Text { text: qsTr("PREFERRED TERMS"); color: root.tertiaryText; font.pixelSize: 11; font.weight: Font.Medium }
                             RowLayout {
                                 Layout.fillWidth: true
-                                TextField { id: dictionaryInput; Layout.fillWidth: true; placeholderText: qsTr("Add a name, acronym, or preferred spelling"); onAccepted: addDictionaryButton.clicked() }
-                                Button { id: addDictionaryButton; text: qsTr("Add"); enabled: dictionaryInput.text.trim().length > 0; onClicked: { controller.addDictionaryTerm(dictionaryInput.text); dictionaryInput.clear() } }
+                                Text { text: qsTr("SPOKEN → PREFERRED"); color: root.tertiaryText; font.pixelSize: 11; font.weight: Font.Medium }
+                                Item { Layout.fillWidth: true }
+                                ComboBox { id: dictionaryConflictMode; model: [qsTr("Merge · keep existing"), qsTr("Merge · overwrite matches"), qsTr("Replace all")]; currentIndex: 0 }
+                                Button { text: qsTr("Import"); onClicked: dictionaryImportDialog.open() }
+                                Button { text: qsTr("Export"); enabled: controller.dictionaryTerms.length > 0; onClicked: dictionaryExportDialog.open() }
+                            }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                TextField { id: dictionarySpoken; Layout.fillWidth: true; placeholderText: qsTr("What Whisper usually hears") }
+                                Text { text: "→"; color: root.secondaryText; font.pixelSize: 15 }
+                                TextField { id: dictionaryPreferred; Layout.fillWidth: true; placeholderText: qsTr("Preferred word or phrase"); onAccepted: addDictionaryButton.clicked() }
+                                Button { id: addDictionaryButton; text: qsTr("Add or update"); enabled: dictionarySpoken.text.trim().length > 0 && dictionaryPreferred.text.trim().length > 0; onClicked: { controller.addDictionaryReplacement(dictionarySpoken.text, dictionaryPreferred.text); dictionarySpoken.clear(); dictionaryPreferred.clear() } }
                             }
                             Text { visible: controller.dictionaryTerms.length === 0; text: qsTr("No custom terms yet."); color: root.secondaryText; font.pixelSize: 13 }
                             Repeater {
@@ -1387,7 +1412,7 @@ ApplicationWindow {
                                     ToolButton { text: "×"; ToolTip.visible: hovered; ToolTip.text: qsTr("Remove"); onClicked: controller.removeDictionaryTerm(index) }
                                 }
                             }
-                            Text { Layout.fillWidth: true; text: qsTr("Matching words in new transcripts are rewritten with this exact capitalization."); color: root.secondaryText; font.pixelSize: 12; wrapMode: Text.Wrap }
+                            Text { Layout.fillWidth: true; text: qsTr("Replacements use case-insensitive whole-word or whole-phrase matching. Legacy one-column entries remain valid capitalization rules. CSV/TSV imports accept spoken and preferred columns; choose the conflict policy before importing."); color: root.secondaryText; font.pixelSize: 12; wrapMode: Text.Wrap }
                         }
                     }
                 }

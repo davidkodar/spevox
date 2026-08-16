@@ -110,7 +110,7 @@ usable but does not yet match the depth of the current macOS implementation.
 | Vulkan GPU acceleration | Available | Not applicable | Linux supports cross-vendor Vulkan with CPU fallback. |
 | Automatic/fixed language | Available | Available | All 99 Whisper languages are exposed. |
 | Model download and deletion | Available | Available | Downloads are size-validated and remain `.part` until complete. |
-| Custom dictionary | Partial | Available | Linux applies persistent preferred capitalization after transcription; deeper model prompting is planned. |
+| Custom dictionary | Available | Available | Linux supports persistent spoken-to-preferred words and phrases, legacy capitalization entries, CSV/TSV import, CSV export, and explicit merge/overwrite/replace conflict policies. Dictionary replacements run deterministically after transcription. |
 | Spoken formatting | Available | Available | Linux handles newline, paragraph, comma, period, question mark, and exclamation mark. |
 | Command Mode system actions | Partial | Available | Linux provides provider-backed KDE assistance plus confirmed allowlisted actions for System Settings, Konsole, Dolphin, and screen locking; arbitrary shell execution is deliberately prohibited. |
 | Write/rewrite selected text | Available | Available | `Ctrl+Alt+W` opens Write Mode from any application. Linux captures and replaces selected text through the consented Wayland keyboard portal, with provider/model visibility plus retry, undo, preview, and clipboard recovery. The closed Fluid-1 model is not available. |

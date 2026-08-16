@@ -22,6 +22,10 @@ All notable changes to FluidVoice Linux are documented here. The project uses
   script and local session-bus bridge. Profiles match application-class or
   title fragments; the bridge reports no document, transcript, or keyboard
   content and remains disabled by default.
+- Upgraded the custom dictionary from capitalization-only terms to persistent
+  spoken-to-preferred phrase replacements, while retaining legacy entries.
+  Added quoted CSV/TSV import, CSV export, add-or-update behavior, and explicit
+  keep-existing, overwrite-matches, and replace-all conflict policies.
 - Added AI enhancement analytics for usage, success/fallback rate, average
   latency, and provider/model activity.
 - Added per-entry raw/final visual diffs, word and character deltas, and copy

@@ -182,6 +182,18 @@ pub mod ffi {
         fn add_dictionary_term(self: Pin<&mut Self>, term: &QString);
 
         #[qinvokable]
+        #[cxx_name = "addDictionaryReplacement"]
+        fn add_dictionary_replacement(self: Pin<&mut Self>, spoken: &QString, preferred: &QString);
+
+        #[qinvokable]
+        #[cxx_name = "importDictionary"]
+        fn import_dictionary(self: Pin<&mut Self>, path: &QString, conflict_mode: i32);
+
+        #[qinvokable]
+        #[cxx_name = "exportDictionary"]
+        fn export_dictionary(self: Pin<&mut Self>, path: &QString);
+
+        #[qinvokable]
         #[cxx_name = "removeDictionaryTerm"]
         fn remove_dictionary_term(self: Pin<&mut Self>, index: i32);
 
@@ -602,7 +614,10 @@ impl Default for FluidVoiceControllerRust {
                 .map(|(label, _)| QString::from(*label))
                 .collect(),
             selected_shortcut,
-            dictionary_terms: dictionary.iter().map(QString::from).collect(),
+            dictionary_terms: dictionary
+                .iter()
+                .map(|line| QString::from(&dictionary_display(line)))
+                .collect(),
             history_entries: history.iter().rev().map(QString::from).collect(),
             audio_history_enabled: preferences.audio_history_enabled,
             audio_history_budget_mb: preferences.audio_history_budget_mb,
@@ -2138,27 +2153,123 @@ impl ffi::FluidVoiceController {
         if term.is_empty() {
             return;
         }
-        let mut terms = load_lines(&dictionary_path());
-        if terms
+        let mut entries = load_dictionary_entries();
+        if entries
             .iter()
-            .any(|existing| existing.eq_ignore_ascii_case(&term))
+            .any(|entry| entry.spoken.eq_ignore_ascii_case(&term))
         {
             self.as_mut()
                 .set_status_text(QString::from("Dictionary entry already exists"));
             return;
         }
-        terms.push(term);
-        terms.sort_by_key(|value| value.to_lowercase());
-        if save_lines(&dictionary_path(), &terms).is_ok() {
+        entries.push(DictionaryEntry {
+            spoken: term.clone(),
+            preferred: term,
+        });
+        if save_dictionary_entries(&entries).is_ok() {
             self.as_mut()
-                .set_dictionary_terms(terms.iter().map(QString::from).collect());
+                .set_dictionary_terms(dictionary_ui_list(&entries));
             self.as_mut()
                 .set_status_text(QString::from("Dictionary updated"));
         }
     }
 
+    pub fn add_dictionary_replacement(
+        mut self: Pin<&mut Self>,
+        spoken: &QString,
+        preferred: &QString,
+    ) {
+        let spoken = sanitize_dictionary_field(&spoken.to_string());
+        let preferred = sanitize_dictionary_field(&preferred.to_string());
+        if spoken.is_empty() || preferred.is_empty() {
+            self.as_mut().set_status_text(QString::from(
+                "Spoken and preferred forms are both required",
+            ));
+            return;
+        }
+        let mut entries = load_dictionary_entries();
+        if let Some(entry) = entries
+            .iter_mut()
+            .find(|entry| entry.spoken.eq_ignore_ascii_case(&spoken))
+        {
+            entry.preferred = preferred;
+        } else {
+            entries.push(DictionaryEntry { spoken, preferred });
+        }
+        if save_dictionary_entries(&entries).is_ok() {
+            self.as_mut()
+                .set_dictionary_terms(dictionary_ui_list(&entries));
+            self.as_mut()
+                .set_status_text(QString::from("Dictionary replacement saved"));
+        }
+    }
+
+    pub fn import_dictionary(mut self: Pin<&mut Self>, path: &QString, conflict_mode: i32) {
+        let path = PathBuf::from(decode_file_url(&path.to_string()));
+        let imported = match read_dictionary_import(&path) {
+            Ok(entries) if !entries.is_empty() => entries,
+            Ok(_) => {
+                self.as_mut()
+                    .set_status_text(QString::from("Dictionary import contained no entries"));
+                return;
+            }
+            Err(error) => {
+                self.as_mut()
+                    .set_status_text(QString::from(&format!("Dictionary import failed: {error}")));
+                return;
+            }
+        };
+        let mut entries = if conflict_mode == 2 {
+            Vec::new()
+        } else {
+            load_dictionary_entries()
+        };
+        let mut added = 0;
+        let mut updated = 0;
+        let mut skipped = 0;
+        for candidate in imported {
+            if let Some(existing) = entries
+                .iter_mut()
+                .find(|entry| entry.spoken.eq_ignore_ascii_case(&candidate.spoken))
+            {
+                if conflict_mode == 1 || conflict_mode == 2 {
+                    existing.preferred = candidate.preferred;
+                    updated += 1;
+                } else {
+                    skipped += 1;
+                }
+            } else {
+                entries.push(candidate);
+                added += 1;
+            }
+        }
+        if let Err(error) = save_dictionary_entries(&entries) {
+            self.as_mut().set_status_text(QString::from(&format!(
+                "Dictionary import could not be saved: {error}"
+            )));
+            return;
+        }
+        self.as_mut()
+            .set_dictionary_terms(dictionary_ui_list(&entries));
+        self.as_mut().set_status_text(QString::from(&format!(
+            "Dictionary import complete · {added} added · {updated} updated · {skipped} kept"
+        )));
+    }
+
+    pub fn export_dictionary(mut self: Pin<&mut Self>, path: &QString) {
+        let path = PathBuf::from(decode_file_url(&path.to_string()));
+        match write_dictionary_csv(&path, &load_dictionary_entries()) {
+            Ok(()) => self
+                .as_mut()
+                .set_status_text(QString::from("Dictionary exported as CSV")),
+            Err(error) => self
+                .as_mut()
+                .set_status_text(QString::from(&format!("Dictionary export failed: {error}"))),
+        }
+    }
+
     pub fn remove_dictionary_term(mut self: Pin<&mut Self>, index: i32) {
-        let mut terms = load_lines(&dictionary_path());
+        let mut terms = load_dictionary_entries();
         let Ok(index) = usize::try_from(index) else {
             return;
         };
@@ -2166,9 +2277,9 @@ impl ffi::FluidVoiceController {
             return;
         }
         terms.remove(index);
-        if save_lines(&dictionary_path(), &terms).is_ok() {
+        if save_dictionary_entries(&terms).is_ok() {
             self.as_mut()
-                .set_dictionary_terms(terms.iter().map(QString::from).collect());
+                .set_dictionary_terms(dictionary_ui_list(&terms));
             self.as_mut()
                 .set_status_text(QString::from("Dictionary entry removed"));
         }
@@ -3561,10 +3672,142 @@ fn process_transcript(text: &str, command_mode: bool, dictionary: &[String]) -> 
             .replace(" \n", "\n")
             .replace("\n ", "\n");
     }
-    for preferred in dictionary {
-        processed = replace_ascii_case_insensitive(&processed, preferred, preferred);
+    for line in dictionary {
+        let entry = DictionaryEntry::from_storage(line);
+        processed = replace_ascii_case_insensitive(&processed, &entry.spoken, &entry.preferred);
     }
     processed
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct DictionaryEntry {
+    spoken: String,
+    preferred: String,
+}
+
+impl DictionaryEntry {
+    fn from_storage(line: &str) -> Self {
+        let (spoken, preferred) = line
+            .split_once('\t')
+            .map_or((line, line), |(spoken, preferred)| (spoken, preferred));
+        Self {
+            spoken: sanitize_dictionary_field(spoken),
+            preferred: sanitize_dictionary_field(preferred),
+        }
+    }
+
+    fn storage(&self) -> String {
+        format!("{}\t{}", self.spoken, self.preferred)
+    }
+}
+
+fn sanitize_dictionary_field(value: &str) -> String {
+    value
+        .replace(['\t', '\r', '\n'], " ")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn load_dictionary_entries() -> Vec<DictionaryEntry> {
+    load_lines(&dictionary_path())
+        .iter()
+        .map(|line| DictionaryEntry::from_storage(line))
+        .filter(|entry| !entry.spoken.is_empty() && !entry.preferred.is_empty())
+        .collect()
+}
+
+fn save_dictionary_entries(entries: &[DictionaryEntry]) -> Result<(), String> {
+    let mut entries = entries.to_vec();
+    entries.sort_by_key(|entry| entry.spoken.to_lowercase());
+    entries.dedup_by(|left, right| left.spoken.eq_ignore_ascii_case(&right.spoken));
+    save_lines(
+        &dictionary_path(),
+        &entries
+            .iter()
+            .map(DictionaryEntry::storage)
+            .collect::<Vec<_>>(),
+    )
+}
+
+fn dictionary_display(line: &str) -> String {
+    let entry = DictionaryEntry::from_storage(line);
+    if entry.spoken == entry.preferred {
+        entry.preferred
+    } else {
+        format!("{}  →  {}", entry.spoken, entry.preferred)
+    }
+}
+
+fn dictionary_ui_list(entries: &[DictionaryEntry]) -> QStringList {
+    let mut entries = entries.to_vec();
+    entries.sort_by_key(|entry| entry.spoken.to_lowercase());
+    entries
+        .iter()
+        .map(|entry| QString::from(&dictionary_display(&entry.storage())))
+        .collect()
+}
+
+fn read_dictionary_import(path: &PathBuf) -> Result<Vec<DictionaryEntry>, String> {
+    let contents = fs::read_to_string(path).map_err(|error| error.to_string())?;
+    let mut entries = Vec::new();
+    for (index, line) in contents.lines().enumerate() {
+        if line.trim().is_empty() {
+            continue;
+        }
+        let fields = if line.contains('\t') {
+            line.splitn(2, '\t').map(str::to_owned).collect::<Vec<_>>()
+        } else {
+            parse_csv_record(line)
+        };
+        if index == 0
+            && fields.first().is_some_and(|field| {
+                matches!(field.trim().to_lowercase().as_str(), "spoken" | "source")
+            })
+        {
+            continue;
+        }
+        let spoken = fields
+            .first()
+            .map_or_else(String::new, |value| sanitize_dictionary_field(value));
+        let preferred = fields
+            .get(1)
+            .map_or_else(|| spoken.clone(), |value| sanitize_dictionary_field(value));
+        if !spoken.is_empty() && !preferred.is_empty() {
+            entries.push(DictionaryEntry { spoken, preferred });
+        }
+    }
+    Ok(entries)
+}
+
+fn parse_csv_record(line: &str) -> Vec<String> {
+    let mut fields = vec![String::new()];
+    let mut quoted = false;
+    let mut characters = line.chars().peekable();
+    while let Some(character) = characters.next() {
+        match character {
+            '"' if quoted && characters.peek() == Some(&'"') => {
+                fields.last_mut().expect("CSV field").push('"');
+                characters.next();
+            }
+            '"' => quoted = !quoted,
+            ',' if !quoted => fields.push(String::new()),
+            value => fields.last_mut().expect("CSV field").push(value),
+        }
+    }
+    fields
+}
+
+fn write_dictionary_csv(path: &PathBuf, entries: &[DictionaryEntry]) -> Result<(), String> {
+    let mut output = "spoken,preferred\n".to_owned();
+    for entry in entries {
+        output.push_str(&format!(
+            "\"{}\",\"{}\"\n",
+            entry.spoken.replace('"', "\"\""),
+            entry.preferred.replace('"', "\"\"")
+        ));
+    }
+    fs::write(path, output).map_err(|error| error.to_string())
 }
 
 fn replace_ascii_case_insensitive(text: &str, needle: &str, replacement: &str) -> String {
@@ -4195,10 +4438,11 @@ mod tests {
     use std::{fs, time::Duration};
 
     use super::{
-        AiProfile, DesktopAction, asr_gain, decode_audio_file, decode_file_url,
-        history_clipboard_text, meter_level, parse_desktop_action, peak_db, process_transcript,
-        profile_matches_application, supported_languages, suspicious_single_word,
-        valid_ollama_model_name, version_tuple, whisper_model_catalog, write_history_export,
+        AiProfile, DesktopAction, DictionaryEntry, asr_gain, decode_audio_file, decode_file_url,
+        history_clipboard_text, meter_level, parse_csv_record, parse_desktop_action, peak_db,
+        process_transcript, profile_matches_application, read_dictionary_import,
+        supported_languages, suspicious_single_word, valid_ollama_model_name, version_tuple,
+        whisper_model_catalog, write_dictionary_csv, write_history_export,
     };
 
     #[test]
@@ -4356,7 +4600,11 @@ mod tests {
 
     #[test]
     fn applies_commands_and_preferred_spellings() {
-        let dictionary = vec!["FluidVoice".to_owned(), "KDE".to_owned()];
+        let dictionary = vec![
+            "FluidVoice".to_owned(),
+            "KDE".to_owned(),
+            "fluid voice\tFluidVoice Linux".to_owned(),
+        ];
         assert_eq!(
             process_transcript(
                 "fluidvoice comma new line kde question mark",
@@ -4369,6 +4617,50 @@ mod tests {
             process_transcript("fluidvoice comma", false, &dictionary),
             "FluidVoice comma"
         );
+        assert_eq!(
+            process_transcript("I use fluid voice daily", false, &dictionary),
+            "I use FluidVoice Linux daily"
+        );
+    }
+
+    #[test]
+    fn imports_and_exports_quoted_dictionary_csv() {
+        assert_eq!(
+            parse_csv_record("\"fluid, voice\",\"FluidVoice \"\"Linux\"\"\""),
+            ["fluid, voice", "FluidVoice \"Linux\""]
+        );
+        let input = std::env::temp_dir().join(format!(
+            "fluidvoice-dictionary-import-{}.csv",
+            std::process::id()
+        ));
+        let output = input.with_extension("export.csv");
+        fs::write(
+            &input,
+            "spoken,preferred\nfluid voice,FluidVoice Linux\nk d e,KDE\n",
+        )
+        .expect("write dictionary import");
+        let entries = read_dictionary_import(&input).expect("read dictionary import");
+        assert_eq!(
+            entries,
+            [
+                DictionaryEntry {
+                    spoken: "fluid voice".into(),
+                    preferred: "FluidVoice Linux".into()
+                },
+                DictionaryEntry {
+                    spoken: "k d e".into(),
+                    preferred: "KDE".into()
+                }
+            ]
+        );
+        write_dictionary_csv(&output, &entries).expect("write dictionary export");
+        assert!(
+            fs::read_to_string(&output)
+                .expect("read dictionary export")
+                .contains("\"fluid voice\",\"FluidVoice Linux\"")
+        );
+        fs::remove_file(input).expect("remove import");
+        fs::remove_file(output).expect("remove export");
     }
 
     #[test]
