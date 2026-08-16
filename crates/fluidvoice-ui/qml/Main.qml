@@ -446,27 +446,38 @@ ApplicationWindow {
                                                 value: controller.modelDownloadProgress
                                             }
                                         }
-                                        Button {
-                                            text: controller.downloadingModel === index ? qsTr("Cancel")
-                                                  : controller.modelStates[index] !== "Downloaded" ? qsTr("Download")
-                                                  : index === controller.selectedModel ? qsTr("Active") : qsTr("Activate")
-                                            enabled: !controller.recording && !controller.transcribing
-                                                     && (controller.downloadingModel < 0 || controller.downloadingModel === index)
-                                                     && !(controller.modelStates[index] === "Downloaded" && index === controller.selectedModel)
-                                            onClicked: {
-                                                if (controller.downloadingModel === index)
-                                                    controller.cancelModelDownload()
-                                                else if (controller.modelStates[index] !== "Downloaded")
-                                                    controller.downloadModel(index)
-                                                else
-                                                    controller.selectModel(index)
+                                        Item {
+                                            Layout.preferredWidth: 278
+                                            Layout.fillHeight: true
+
+                                            RowLayout {
+                                                anchors.fill: parent
+                                                spacing: 10
+                                                Button {
+                                                    Layout.preferredWidth: 134
+                                                    text: controller.downloadingModel === index ? qsTr("Cancel")
+                                                          : controller.modelStates[index] !== "Downloaded" ? qsTr("Download")
+                                                          : index === controller.selectedModel ? qsTr("Active") : qsTr("Activate")
+                                                    enabled: !controller.recording && !controller.transcribing
+                                                             && (controller.downloadingModel < 0 || controller.downloadingModel === index)
+                                                             && !(controller.modelStates[index] === "Downloaded" && index === controller.selectedModel)
+                                                    onClicked: {
+                                                        if (controller.downloadingModel === index)
+                                                            controller.cancelModelDownload()
+                                                        else if (controller.modelStates[index] !== "Downloaded")
+                                                            controller.downloadModel(index)
+                                                        else
+                                                            controller.selectModel(index)
+                                                    }
+                                                }
+                                                Button {
+                                                    Layout.preferredWidth: 134
+                                                    text: qsTr("Delete")
+                                                    visible: controller.modelStates[index] === "Downloaded" && index !== controller.selectedModel
+                                                    enabled: controller.downloadingModel < 0 && !controller.recording && !controller.transcribing
+                                                    onClicked: controller.deleteModel(index)
+                                                }
                                             }
-                                        }
-                                        Button {
-                                            text: qsTr("Delete")
-                                            visible: controller.modelStates[index] === "Downloaded" && index !== controller.selectedModel
-                                            enabled: controller.downloadingModel < 0 && !controller.recording && !controller.transcribing
-                                            onClicked: controller.deleteModel(index)
                                         }
                                     }
                                 }
