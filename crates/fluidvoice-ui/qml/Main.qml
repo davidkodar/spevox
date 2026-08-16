@@ -437,10 +437,14 @@ ApplicationWindow {
                             }
                         }
 
-                        RowLayout {
+                        Item {
                             Layout.fillWidth: true
-                            ColumnLayout {
-                                Layout.fillWidth: true
+                            height: 56
+                            Column {
+                                anchors.left: parent.left
+                                anchors.right: computeBackendSelector.left
+                                anchors.rightMargin: 24
+                                anchors.verticalCenter: parent.verticalCenter
                                 spacing: 3
                                 Text { text: qsTr("Compute backend"); color: root.primaryText; font.pixelSize: 14; font.weight: Font.Medium }
                                 Text {
@@ -452,7 +456,10 @@ ApplicationWindow {
                                 }
                             }
                             ComboBox {
-                                Layout.preferredWidth: 210
+                                id: computeBackendSelector
+                                anchors.right: parent.right
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: 260
                                 model: controller.computeBackends
                                 currentIndex: controller.selectedComputeBackend
                                 enabled: !controller.recording && !controller.transcribing
