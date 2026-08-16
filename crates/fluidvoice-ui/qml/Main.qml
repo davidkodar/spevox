@@ -487,7 +487,7 @@ ApplicationWindow {
 
     Window {
         id: overlay
-        width: 354
+        width: 520
         height: 82
         visible: controller.overlayVisible
         color: "transparent"
@@ -523,21 +523,35 @@ ApplicationWindow {
                     Layout.fillWidth: true
                     spacing: 3
                     Text { text: controller.recording ? qsTr("Listening…") : controller.transcribing ? qsTr("Transcribing…") : qsTr("Ready to dictate"); color: "#faf8ff"; font.pixelSize: 14; font.weight: Font.DemiBold }
-                    Row {
-                        spacing: 4
-                        Repeater {
-                            model: 13
-                            Rectangle {
-                                required property int index
-                                readonly property var barShape: [0.28, 0.42, 0.58, 0.76, 0.92, 0.72, 1.0, 0.72, 0.92, 0.76, 0.58, 0.42, 0.28]
-                                width: 3
-                                height: controller.recording ? 3 + controller.audioLevel * 25 * barShape[index] : 3
-                                radius: 2
-                                color: controller.recording && controller.audioLevel > 0.02 ? "#b5aaff" : "#777681"
-                                anchors.verticalCenter: parent.verticalCenter
-                                Behavior on height { NumberAnimation { duration: 55; easing.type: Easing.OutQuad } }
-                                Behavior on color { ColorAnimation { duration: 100 } }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 10
+                        Row {
+                            spacing: 3
+                            Repeater {
+                                model: 9
+                                Rectangle {
+                                    required property int index
+                                    readonly property var barShape: [0.35, 0.55, 0.78, 1.0, 0.72, 1.0, 0.78, 0.55, 0.35]
+                                    width: 3
+                                    height: controller.recording ? 3 + controller.audioLevel * 18 * barShape[index] : 3
+                                    radius: 2
+                                    color: controller.recording && controller.audioLevel > 0.02 ? "#b5aaff" : "#777681"
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    Behavior on height { NumberAnimation { duration: 55; easing.type: Easing.OutQuad } }
+                                    Behavior on color { ColorAnimation { duration: 100 } }
+                                }
                             }
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            text: controller.liveTranscript.length > 0
+                                  ? controller.liveTranscript
+                                  : qsTr("Speak naturally — text will appear here")
+                            color: controller.liveTranscript.length > 0 ? "#d9d5e7" : "#85838e"
+                            font.pixelSize: 10
+                            elide: Text.ElideLeft
+                            maximumLineCount: 1
                         }
                     }
                 }

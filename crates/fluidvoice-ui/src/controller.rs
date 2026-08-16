@@ -26,6 +26,7 @@ pub mod ffi {
         #[qproperty(f32, gain_db, cxx_name = "gainDb")]
         #[qproperty(bool, transcribing)]
         #[qproperty(QString, transcript_text, cxx_name = "transcriptText")]
+        #[qproperty(QString, live_transcript, cxx_name = "liveTranscript")]
         #[qproperty(QStringList, languages)]
         #[qproperty(i32, selected_language, cxx_name = "selectedLanguage")]
         #[qproperty(QStringList, models)]
@@ -79,7 +80,7 @@ use std::{
 
 use cxx_qt::{CxxQtType, Threading};
 use cxx_qt_lib::{QString, QStringList};
-use fluidvoice_audio::{AudioDevice, CaptureStopToken, PipeWireCapture};
+use fluidvoice_audio::{AudioBuffer, AudioDevice, CaptureStopToken, PipeWireCapture};
 use fluidvoice_delivery::ClipboardDelivery;
 use fluidvoice_portal::{
     GlobalShortcutBinding, GlobalShortcutConfig, GlobalShortcutEvent, TextInputSession,
@@ -101,6 +102,7 @@ pub struct FluidVoiceControllerRust {
     gain_db: f32,
     transcribing: bool,
     transcript_text: QString,
+    live_transcript: QString,
     stop_token: Option<CaptureStopToken>,
     capture_target: Option<String>,
     devices: Vec<AudioDevice>,
@@ -167,6 +169,7 @@ impl Default for FluidVoiceControllerRust {
             gain_db: 0.0,
             transcribing: false,
             transcript_text: QString::default(),
+            live_transcript: QString::default(),
             stop_token: None,
             capture_target: None,
             devices: Vec::new(),
@@ -411,6 +414,7 @@ impl ffi::FluidVoiceController {
         self.as_mut().set_input_db(-60.0);
         self.as_mut().set_audio_updates(0);
         self.as_mut().set_transcript_text(QString::default());
+        self.as_mut().set_live_transcript(QString::default());
         self.as_mut().set_recording(true);
         self.as_mut().set_status_text(QString::from("Listening…"));
         self.as_mut().set_overlay_visible(true);
@@ -418,8 +422,39 @@ impl ffi::FluidVoiceController {
         let qt_thread = self.qt_thread();
         std::thread::spawn(move || {
             let level_thread = qt_thread.clone();
+            let preview_thread = qt_thread.clone();
             let mut last_level_report: Option<Instant> = None;
-            let result = PipeWireCapture::capture_with_levels(
+            let (preview_sender, preview_receiver) =
+                std::sync::mpsc::sync_channel::<AudioBuffer>(1);
+            let preview_model = model.clone();
+            let preview_language = language.clone();
+            let preview_worker = std::thread::spawn(move || {
+                let Some(model) = preview_model else { return };
+                let config = TranscriptionConfig::default().with_language(Some(preview_language));
+                let Ok(transcriber) = WhisperTranscriber::load(&model, config) else {
+                    return;
+                };
+                while let Ok(audio) = preview_receiver.recv() {
+                    let mono = audio.to_asr_mono();
+                    let preview_audio = mono.amplified(asr_gain(mono.peak(), gain));
+                    let Ok(transcript) = transcriber.transcribe(&preview_audio) else {
+                        continue;
+                    };
+                    if transcript.text.is_empty() {
+                        continue;
+                    }
+                    preview_thread
+                        .queue(move |mut controller| {
+                            if *controller.as_ref().recording() {
+                                controller
+                                    .as_mut()
+                                    .set_live_transcript(QString::from(&transcript.text));
+                            }
+                        })
+                        .ok();
+                }
+            });
+            let result = PipeWireCapture::capture_with_preview(
                 Duration::from_mins(2),
                 capture_target.as_deref(),
                 &stop_token,
@@ -439,6 +474,9 @@ impl ffi::FluidVoiceController {
                             controller.set_audio_updates(updates);
                         })
                         .ok();
+                },
+                move |audio| {
+                    preview_sender.try_send(audio).ok();
                 },
             );
 
@@ -474,6 +512,7 @@ impl ffi::FluidVoiceController {
                     controller.set_status_text(QString::from("Transcribing locally…"));
                 })
                 .ok();
+            preview_worker.join().ok();
 
             let mono = audio.to_asr_mono();
             let combined_gain = asr_gain(mono.peak(), gain);
@@ -502,6 +541,9 @@ impl ffi::FluidVoiceController {
                     }
                     match transcription {
                         Ok(transcript) if !transcript.text.is_empty() => {
+                            controller
+                                .as_mut()
+                                .set_live_transcript(QString::from(&transcript.text));
                             let rust = controller.as_mut().rust_mut().get_mut();
                             if rust.clipboard.is_none() {
                                 rust.clipboard = ClipboardDelivery::connect().ok();

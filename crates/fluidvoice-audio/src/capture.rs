@@ -26,6 +26,7 @@ use crate::{AudioBuffer, AudioFormatError};
 const MAX_DURATION: Duration = Duration::from_mins(2);
 const MAX_SAMPLE_RATE: u128 = 192_000;
 const MAX_CHANNELS: u128 = 8;
+const PREVIEW_WINDOW_SECONDS: usize = 15;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AudioDevice {
@@ -147,6 +148,28 @@ impl PipeWireCapture {
         stop_token: &CaptureStopToken,
         mut report_level: impl FnMut(f32) + 'static,
     ) -> Result<AudioBuffer, AudioCaptureError> {
+        Self::capture_with_preview(
+            maximum_duration,
+            target,
+            stop_token,
+            move |level| report_level(level),
+            |_| {},
+        )
+    }
+
+    /// Captures until stopped, reporting levels and periodic accumulated-audio
+    /// snapshots suitable for live transcription previews.
+    ///
+    /// # Errors
+    /// Returns an error for invalid durations, `PipeWire` failures, or empty audio.
+    #[allow(clippy::too_many_lines)]
+    pub fn capture_with_preview(
+        maximum_duration: Duration,
+        target: Option<&str>,
+        stop_token: &CaptureStopToken,
+        mut report_level: impl FnMut(f32) + 'static,
+        mut report_preview: impl FnMut(AudioBuffer) + 'static,
+    ) -> Result<AudioBuffer, AudioCaptureError> {
         validate_duration(maximum_duration)?;
         let capacity = capture_capacity(maximum_duration)?;
         pw::init();
@@ -170,6 +193,7 @@ impl PipeWireCapture {
         let captured = Rc::new(RefCell::new(CapturedSamples::new(capacity)));
         let format_output = Rc::clone(&captured);
         let sample_output = Rc::clone(&captured);
+        let mut last_preview = Instant::now();
         let _listener = stream
             .add_local_listener_with_user_data(CaptureData::default())
             .param_changed(move |_, data, id, param| {
@@ -199,6 +223,30 @@ impl PipeWireCapture {
                 if let Some(bytes) = data.data() {
                     let peak = sample_output.borrow_mut().append_chunk(bytes, offset, size);
                     report_level(peak);
+                    if last_preview.elapsed() >= Duration::from_millis(1_250) {
+                        let output = sample_output.borrow();
+                        if output.sample_rate > 0
+                            && output.channels > 0
+                            && !output.samples.is_empty()
+                        {
+                            let channels = usize::try_from(output.channels).unwrap_or(1);
+                            let maximum_samples = usize::try_from(output.sample_rate)
+                                .unwrap_or_default()
+                                .saturating_mul(channels)
+                                .saturating_mul(PREVIEW_WINDOW_SECONDS);
+                            let complete = output.samples.len() - output.samples.len() % channels;
+                            let start = complete.saturating_sub(maximum_samples);
+                            if let Ok(snapshot) = AudioBuffer::new(
+                                output.samples[start..complete].to_vec(),
+                                output.sample_rate,
+                                output.channels,
+                                output.truncated,
+                            ) {
+                                report_preview(snapshot);
+                            }
+                        }
+                        last_preview = Instant::now();
+                    }
                 }
             })
             .register()
