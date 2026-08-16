@@ -15,6 +15,11 @@ ApplicationWindow {
     title: qsTr("FluidVoice")
     color: root.windowBackground
     property int settingsSection: 0
+
+    SystemPalette {
+        id: systemPalette
+        colorGroup: SystemPalette.Active
+    }
     readonly property var destinationTitles: [
         qsTr("Settings"), qsTr("Voice Engine"), qsTr("AI Enhancement"),
         qsTr("Custom Dictionary"), qsTr("Command Mode"), qsTr("File Transcription"),
@@ -49,7 +54,7 @@ ApplicationWindow {
     readonly property bool darkTheme: controller.selectedTheme === 1
                                       || (controller.selectedTheme === 0
                                           && root.palette.window.hslLightness < 0.5)
-    readonly property color accent: controller.selectedAccent === 0 ? root.palette.highlight
+    readonly property color accent: controller.selectedAccent === 0 ? systemPalette.highlight
                                     : controller.selectedAccent === 1 ? "#3ac8c6"
                                     : controller.selectedAccent === 2 ? "#55c98b"
                                     : "#9b87f5"
@@ -71,7 +76,13 @@ ApplicationWindow {
     readonly property color hairline: controller.selectedTheme === 0 ? root.palette.mid
                                       : darkTheme ? "#2b2b2e" : "#d7d7da"
     readonly property color selectionSurface: Qt.rgba(root.accent.r, root.accent.g, root.accent.b,
-                                                       darkTheme ? 0.18 : 0.12)
+                                                       darkTheme ? 0.30 : 0.18)
+    readonly property color accentText: root.accent.hslLightness > 0.62 ? "#202024" : "#ffffff"
+
+    // Feed the chosen accent back into Qt Quick Controls so sliders, switches,
+    // selections, progress bars, and focused controls all update with it.
+    palette.highlight: root.accent
+    palette.highlightedText: root.accentText
 
     FluidVoiceController {
         id: controller
@@ -203,6 +214,16 @@ ApplicationWindow {
                             color: root.tertiaryText
                             font.pixelSize: 11
                             font.weight: Font.Medium
+                        }
+                        Rectangle {
+                            visible: !parent.isHeader && modelData.page === root.settingsSection
+                            anchors.left: parent.left
+                            anchors.leftMargin: 2
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 3
+                            height: 20
+                            radius: 2
+                            color: root.accent
                         }
                         Row {
                             visible: !parent.isHeader
