@@ -103,10 +103,10 @@ The application ID is `io.github.davidkodar.FluidVoiceLinux`. The development di
 Build and install the current release binary, desktop entry, icon, AppStream metadata, and license with:
 
 ```sh
-sudo ./packaging/install-dev.sh
+./packaging/install-dev.sh
 ```
 
-Set `PREFIX` or `DESTDIR` to stage a package without touching the live system. The application enforces one running instance so a second launcher invocation cannot create a competing tray or portal session.
+Run the script as your normal user. It builds with your Rust toolchain, then requests `sudo` only while copying files into `/usr/local`. Set `PREFIX` or `DESTDIR` to stage a package without touching the live system. The application enforces one running instance so a second launcher invocation cannot create a competing tray or portal session.
 
 ## Status
 
