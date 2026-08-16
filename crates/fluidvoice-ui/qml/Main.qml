@@ -63,7 +63,8 @@ ApplicationWindow {
 
     Platform.SystemTrayIcon {
         visible: true
-        icon.name: "audio-input-microphone"
+        icon.source: "qrc:/qt/qml/io/github/davidkodar/FluidVoiceLinux/assets/fluidvoice-tray.png"
+        icon.mask: true
         tooltip: qsTr("FluidVoice — %1").arg(controller.statusText)
         menu: Platform.Menu {
             Platform.MenuItem {
@@ -118,20 +119,13 @@ ApplicationWindow {
             anchors.rightMargin: 16
             spacing: 10
 
-            Rectangle {
+            Image {
                 width: 28
                 height: 28
-                radius: 8
-                color: "#193536"
-                border.color: "#3f7475"
-
-                Text {
-                    anchors.centerIn: parent
-                    text: "●"
-                    color: root.accent
-                    font.pixelSize: 13
-                    font.weight: Font.DemiBold
-                }
+                source: "qrc:/qt/qml/io/github/davidkodar/FluidVoiceLinux/assets/fluidvoice-app.png"
+                fillMode: Image.PreserveAspectFit
+                smooth: true
+                mipmap: true
             }
 
             Text {
@@ -231,7 +225,7 @@ ApplicationWindow {
 
                 Text {
                     Layout.alignment: Qt.AlignHCenter
-                    text: "Private preview · 0.1.0"
+                    text: "Unofficial Linux port · 0.1.0"
                     color: root.tertiaryText
                     font.pixelSize: 11
                 }
@@ -707,12 +701,12 @@ ApplicationWindow {
                 RowLayout {
                     Layout.fillWidth: true
                     spacing: 10
-                    Rectangle {
+                    Image {
                         width: 22
                         height: 22
-                        radius: 6
-                        color: controller.recording ? "#193536" : "#242426"
-                        Text { anchors.centerIn: parent; text: "●"; color: controller.recording ? root.accent : "#77777c"; font.pixelSize: 9 }
+                        source: "qrc:/qt/qml/io/github/davidkodar/FluidVoiceLinux/assets/fluidvoice-app.png"
+                        fillMode: Image.PreserveAspectFit
+                        smooth: true
                     }
                     Item { Layout.fillWidth: true }
                     Row {

@@ -1,11 +1,11 @@
 [Desktop Entry]
 Type=Application
 Name=FluidVoice Linux
-Comment=Local-first voice dictation for KDE Plasma on Wayland
+Comment=Unofficial FluidVoice port for KDE Plasma on Wayland
 Exec=fluidvoice-ui
-Icon=audio-input-microphone
+Icon=io.github.davidkodar.FluidVoiceLinux
 Terminal=false
-Categories=Utility;Accessibility;AudioVideo;
+Categories=Utility;Accessibility;
 Keywords=dictation;speech;voice;transcription;accessibility;
 StartupNotify=false
 X-KDE-Wayland-VirtualKeyboard=false
