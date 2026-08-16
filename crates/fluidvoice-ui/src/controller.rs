@@ -65,6 +65,10 @@ pub mod ffi {
         #[qproperty(QStringList, ai_local_models, cxx_name = "aiLocalModels")]
         #[qproperty(bool, ai_local_endpoint, cxx_name = "aiLocalEndpoint")]
         #[qproperty(bool, ai_local_only, cxx_name = "aiLocalOnly")]
+        #[qproperty(QStringList, ai_profile_names, cxx_name = "aiProfileNames")]
+        #[qproperty(i32, selected_ai_profile, cxx_name = "selectedAiProfile")]
+        #[qproperty(QString, ai_profile_prompt, cxx_name = "aiProfilePrompt")]
+        #[qproperty(QString, ai_profile_name, cxx_name = "aiProfileName")]
         #[qproperty(QString, app_version, cxx_name = "appVersion")]
         type FluidVoiceController = super::FluidVoiceControllerRust;
 
@@ -195,6 +199,18 @@ pub mod ffi {
         #[qinvokable]
         #[cxx_name = "updateAiLocalOnly"]
         fn update_ai_local_only(self: Pin<&mut Self>, enabled: bool);
+
+        #[qinvokable]
+        #[cxx_name = "selectAiProfile"]
+        fn select_ai_profile(self: Pin<&mut Self>, index: i32);
+
+        #[qinvokable]
+        #[cxx_name = "saveAiProfile"]
+        fn save_ai_profile(self: Pin<&mut Self>, name: &QString, prompt: &QString);
+
+        #[qinvokable]
+        #[cxx_name = "deleteAiProfile"]
+        fn delete_ai_profile(self: Pin<&mut Self>);
     }
 
     impl cxx_qt::Threading for FluidVoiceController {}
@@ -281,6 +297,11 @@ pub struct FluidVoiceControllerRust {
     ai_local_models: QStringList,
     ai_local_endpoint: bool,
     ai_local_only: bool,
+    ai_profile_names: QStringList,
+    selected_ai_profile: i32,
+    ai_profile_prompt: QString,
+    ai_profile_name: QString,
+    ai_profiles: Vec<AiProfile>,
     app_version: QString,
 }
 
@@ -380,6 +401,7 @@ impl Default for FluidVoiceControllerRust {
             .map(|entry| history_field(entry, 1).unwrap_or(entry))
             .map(|text| text.split_whitespace().count())
             .sum::<usize>();
+        let ai_profiles = load_ai_profiles();
         Self {
             status_text: QString::from("Ready"),
             microphone_name: QString::from("Detecting PipeWire inputs…"),
@@ -470,6 +492,17 @@ impl Default for FluidVoiceControllerRust {
             }
             .is_local(),
             ai_local_only: preferences.ai_local_only,
+            ai_profile_names: std::iter::once(QString::from("Default"))
+                .chain(
+                    ai_profiles
+                        .iter()
+                        .map(|profile| QString::from(&profile.name)),
+                )
+                .collect(),
+            selected_ai_profile: 0,
+            ai_profile_prompt: QString::default(),
+            ai_profile_name: QString::default(),
+            ai_profiles,
             app_version: QString::from(env!("CARGO_PKG_VERSION")),
         }
     }
@@ -1024,6 +1057,99 @@ impl ffi::FluidVoiceController {
         self.as_ref().rust().save_preferences();
     }
 
+    pub fn select_ai_profile(mut self: Pin<&mut Self>, index: i32) {
+        if index < 0
+            || usize::try_from(index)
+                .ok()
+                .is_none_or(|value| value > self.as_ref().rust().ai_profiles.len())
+        {
+            return;
+        }
+        let (name, prompt) = {
+            let controller = self.as_ref();
+            let profile = usize::try_from(index - 1)
+                .ok()
+                .and_then(|value| controller.rust().ai_profiles.get(value));
+            profile.map_or_else(
+                || (String::new(), String::new()),
+                |profile| (profile.name.clone(), profile.prompt.clone()),
+            )
+        };
+        self.as_mut().set_selected_ai_profile(index);
+        self.as_mut().set_ai_profile_name(QString::from(&name));
+        self.as_mut().set_ai_profile_prompt(QString::from(&prompt));
+        self.as_mut().set_ai_status(QString::from(if index == 0 {
+            "Default cleanup prompt selected"
+        } else {
+            "Application profile selected · use this profile for the target app"
+        }));
+    }
+
+    pub fn save_ai_profile(mut self: Pin<&mut Self>, name: &QString, prompt: &QString) {
+        let name = name.to_string().trim().to_owned();
+        let prompt = prompt.to_string().trim().to_owned();
+        if name.is_empty() || prompt.is_empty() {
+            self.as_mut().set_ai_status(QString::from(
+                "Profile name and cleanup prompt are required",
+            ));
+            return;
+        }
+        let profiles = &mut self.as_mut().rust_mut().get_mut().ai_profiles;
+        let index = if let Some(index) = profiles
+            .iter()
+            .position(|profile| profile.name.eq_ignore_ascii_case(&name))
+        {
+            profiles[index] = AiProfile { name, prompt };
+            index
+        } else {
+            profiles.push(AiProfile { name, prompt });
+            profiles.len() - 1
+        };
+        if let Err(error) = save_ai_profiles(profiles) {
+            self.as_mut().set_ai_status(QString::from(&format!(
+                "Could not save application profile: {error}"
+            )));
+            return;
+        }
+        let names = std::iter::once(QString::from("Default"))
+            .chain(profiles.iter().map(|profile| QString::from(&profile.name)))
+            .collect();
+        let selected = i32::try_from(index + 1).unwrap_or(0);
+        let selected_name = profiles[index].name.clone();
+        let selected_prompt = profiles[index].prompt.clone();
+        self.as_mut().set_ai_profile_names(names);
+        self.as_mut().set_selected_ai_profile(selected);
+        self.as_mut()
+            .set_ai_profile_name(QString::from(&selected_name));
+        self.as_mut()
+            .set_ai_profile_prompt(QString::from(&selected_prompt));
+        self.as_mut()
+            .set_ai_status(QString::from("Application profile saved"));
+    }
+
+    pub fn delete_ai_profile(mut self: Pin<&mut Self>) {
+        let Ok(index) = usize::try_from(*self.as_ref().selected_ai_profile() - 1) else {
+            return;
+        };
+        let profiles = &mut self.as_mut().rust_mut().get_mut().ai_profiles;
+        if index >= profiles.len() {
+            return;
+        }
+        profiles.remove(index);
+        if save_ai_profiles(profiles).is_err() {
+            return;
+        }
+        let names = std::iter::once(QString::from("Default"))
+            .chain(profiles.iter().map(|profile| QString::from(&profile.name)))
+            .collect();
+        self.as_mut().set_ai_profile_names(names);
+        self.as_mut().set_selected_ai_profile(0);
+        self.as_mut().set_ai_profile_name(QString::default());
+        self.as_mut().set_ai_profile_prompt(QString::default());
+        self.as_mut()
+            .set_ai_status(QString::from("Application profile deleted"));
+    }
+
     pub fn add_dictionary_term(mut self: Pin<&mut Self>, term: &QString) {
         let term = term.to_string().trim().to_owned();
         if term.is_empty() {
@@ -1533,12 +1659,19 @@ impl FluidVoiceControllerRust {
 
     fn ai_config(&self) -> AiConfig {
         let provider = ai_provider(self.selected_ai_provider);
+        let prompt = usize::try_from(self.selected_ai_profile - 1)
+            .ok()
+            .and_then(|index| self.ai_profiles.get(index))
+            .map_or_else(
+                || self.ai_prompt.to_string(),
+                |profile| profile.prompt.clone(),
+            );
         AiConfig {
             enabled: self.ai_enabled,
             provider: provider.id.to_owned(),
             model: self.ai_model.to_string(),
             base_url: self.ai_base_url.to_string(),
-            prompt: self.ai_prompt.to_string(),
+            prompt,
             api_key: ai::load_api_key(provider.id),
             local_only: self.ai_local_only,
             timeout_seconds: 45,
@@ -1563,6 +1696,48 @@ struct Preferences {
     ai_base_url: String,
     ai_prompt: String,
     ai_local_only: bool,
+}
+
+#[derive(Clone)]
+struct AiProfile {
+    name: String,
+    prompt: String,
+}
+
+fn load_ai_profiles() -> Vec<AiProfile> {
+    let Ok(contents) = fs::read_to_string(ai_profiles_path()) else {
+        return Vec::new();
+    };
+    serde_json::from_str::<serde_json::Value>(&contents)
+        .ok()
+        .and_then(|value| value.as_array().cloned())
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|value| {
+            Some(AiProfile {
+                name: value.get("name")?.as_str()?.to_owned(),
+                prompt: value.get("prompt")?.as_str()?.to_owned(),
+            })
+        })
+        .filter(|profile| !profile.name.trim().is_empty() && !profile.prompt.trim().is_empty())
+        .collect()
+}
+
+fn save_ai_profiles(profiles: &[AiProfile]) -> Result<(), String> {
+    let values = profiles
+        .iter()
+        .map(|profile| serde_json::json!({"name": profile.name, "prompt": profile.prompt}))
+        .collect::<Vec<_>>();
+    let path = ai_profiles_path();
+    let parent = path
+        .parent()
+        .ok_or_else(|| "profile path has no parent".to_owned())?;
+    fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    fs::write(
+        path,
+        serde_json::to_string_pretty(&values).map_err(|error| error.to_string())?,
+    )
+    .map_err(|error| error.to_string())
 }
 
 impl Default for Preferences {
@@ -1816,6 +1991,10 @@ fn dictionary_path() -> PathBuf {
 
 fn history_path() -> PathBuf {
     data_directory().join("history.tsv")
+}
+
+fn ai_profiles_path() -> PathBuf {
+    data_directory().join("ai-profiles.json")
 }
 
 fn load_lines(path: &PathBuf) -> Vec<String> {

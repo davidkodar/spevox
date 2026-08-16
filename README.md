@@ -31,6 +31,7 @@ configures.
 - Optional post-transcription cleanup through standard cloud providers, Ollama,
   LM Studio, or a custom OpenAI-compatible endpoint, with local model discovery
   and raw-text fallback.
+- Persistent application/workflow profiles with profile-specific cleanup prompts.
 - Upstream-inspired settings navigation, onboarding, changelog, and feedback pages.
 
 See [CHANGELOG.md](CHANGELOG.md) for release-by-release details.
@@ -112,7 +113,7 @@ usable but does not yet match the depth of the current macOS implementation.
 | File transcription | Partial | Available | Linux currently accepts 16-bit PCM WAV; broader formats and meeting workflows are planned. |
 | Transcript history | Partial | Available | Linux provides search, timestamps, raw/final text, AI provider/model/status/latency metadata, source labels, word counts, and JSON/CSV export; app/window metadata, audio retention, and reports are still missing. |
 | Usage statistics | Partial | Available | Linux provides today/all-time totals, estimated time saved, streaks, averages, and a seven-day chart; editable typing speed, 30-day charts, milestones, insights, and records are still missing. |
-| Per-application configuration | Missing | Available | No app-specific prompt or behavior profiles yet. |
+| Per-application configuration | Partial | Available | Linux provides persistent named prompt profiles with explicit selection; automatic focused-app matching is unavailable to ordinary Plasma Wayland clients. |
 | Audio recording history | Missing | Available | Linux does not retain microphone audio after transcription. |
 | Adaptive themes and accents | Available | Available | System/KDE defaults plus explicit FluidVoice themes and colors. |
 | Tray/menu-bar integration | Available | Available | Plasma tray is the Linux equivalent of the macOS menu bar item. |
@@ -135,6 +136,7 @@ User data follows XDG conventions:
 - History: `$XDG_DATA_HOME/fluidvoice/history.tsv` (legacy entries are migrated
   compatibly as new enriched entries are appended).
 - Settings: `$XDG_CONFIG_HOME/fluidvoice/settings.conf` or `~/.config/fluidvoice/settings.conf`.
+- Application profiles: `$XDG_DATA_HOME/fluidvoice/ai-profiles.json`.
 
 Audio is processed locally and is not retained by the normal dictation flow.
 History and dictionary data can be cleared from the interface or removed from

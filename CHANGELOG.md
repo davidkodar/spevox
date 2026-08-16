@@ -18,6 +18,8 @@ All notable changes to FluidVoice Linux are documented here. The project uses
   processing latency, backward-compatible parsing, and JSON/CSV export.
 - Added streamed AI cleanup updates in the recording overlay for
   OpenAI-compatible and Anthropic event-stream responses.
+- Added persistent named application/workflow profiles with explicit selection
+  and profile-specific cleanup prompts on Plasma Wayland.
 - Broader file-format support beyond 16-bit PCM WAV.
 - Added searchable history cards with relative and full local timestamps and word counts.
 - Expanded local statistics with today's activity, estimated time saved, streaks,

@@ -1099,6 +1099,25 @@ ApplicationWindow {
                                 color: controller.aiLocalEndpoint ? root.accent : "#d9a441"; font.pixelSize: 11; wrapMode: Text.Wrap
                             }
                         }
+                        Text { text: qsTr("APPLICATION PROFILE"); color: root.tertiaryText; font.pixelSize: 11; font.weight: Font.Medium }
+                        ComboBox {
+                            Layout.fillWidth: true; model: controller.aiProfileNames
+                            currentIndex: controller.selectedAiProfile
+                            onActivated: function(index) { controller.selectAiProfile(index) }
+                        }
+                        Text { Layout.fillWidth: true; text: qsTr("Choose a profile before dictating in its target application. Plasma Wayland does not expose the focused application to ordinary clients, so profile selection is explicit and privacy-preserving."); color: root.secondaryText; font.pixelSize: 11; wrapMode: Text.Wrap }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            TextField { id: aiProfileName; Layout.fillWidth: true; placeholderText: qsTr("Application or workflow name"); text: controller.aiProfileName }
+                            Button { text: qsTr("Save profile"); enabled: aiProfileName.text.trim().length > 0 && aiProfilePrompt.text.trim().length > 0; onClicked: controller.saveAiProfile(aiProfileName.text, aiProfilePrompt.text) }
+                            Button { text: qsTr("Delete"); enabled: controller.selectedAiProfile > 0; onClicked: controller.deleteAiProfile() }
+                        }
+                        TextArea {
+                            id: aiProfilePrompt; Layout.fillWidth: true; implicitHeight: 100
+                            placeholderText: qsTr("Profile-specific cleanup instructions")
+                            text: controller.aiProfilePrompt; wrapMode: TextEdit.Wrap
+                            background: Rectangle { color: root.panelRaised; border.color: root.hairline; radius: 8 }
+                        }
                         Text { text: qsTr("CLEANUP PROMPT"); color: root.tertiaryText; font.pixelSize: 11; font.weight: Font.Medium }
                         TextArea {
                             Layout.fillWidth: true; implicitHeight: 150; text: controller.aiPrompt; wrapMode: TextEdit.Wrap
