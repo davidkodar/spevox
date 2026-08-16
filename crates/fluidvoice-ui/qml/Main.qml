@@ -309,15 +309,22 @@ ApplicationWindow {
                         anchors.margins: 16
                         spacing: 10
                         Text { text: qsTr("APP SETTINGS"); color: root.tertiaryText; font.pixelSize: 11; font.weight: Font.Medium }
-                        RowLayout {
+                        Item {
                             Layout.fillWidth: true
-                            ColumnLayout {
-                                Layout.fillWidth: true
+                            height: 48
+                            Column {
+                                anchors.left: parent.left
+                                anchors.right: backgroundStatusPill.left
+                                anchors.rightMargin: 20
+                                anchors.verticalCenter: parent.verticalCenter
                                 spacing: 2
                                 Text { text: qsTr("Background operation"); color: root.primaryText; font.pixelSize: 14; font.weight: Font.Medium }
                                 Text { text: qsTr("FluidVoice stays available in the Plasma system tray when this window is closed."); color: root.secondaryText; font.pixelSize: 13 }
                             }
                             Rectangle {
+                                id: backgroundStatusPill
+                                anchors.right: parent.right
+                                anchors.verticalCenter: parent.verticalCenter
                                 implicitWidth: backgroundStatus.implicitWidth + 18
                                 implicitHeight: 26
                                 radius: 13
@@ -614,7 +621,7 @@ ApplicationWindow {
                 Rectangle {
                     visible: root.settingsSection === 0
                     Layout.fillWidth: true
-                    height: 180
+                    height: 204
                     radius: 16
                     color: root.panel
                     border.color: root.hairline
@@ -625,16 +632,23 @@ ApplicationWindow {
                         spacing: 14
                         Text { text: qsTr("DICTATION"); color: root.tertiaryText; font.pixelSize: 11; font.weight: Font.Medium }
 
-                        RowLayout {
+                        Item {
                             Layout.fillWidth: true
-                            ColumnLayout {
-                                Layout.fillWidth: true
+                            height: 56
+                            Column {
+                                anchors.left: parent.left
+                                anchors.right: shortcutSelector.left
+                                anchors.rightMargin: 24
+                                anchors.verticalCenter: parent.verticalCenter
                                 spacing: 4
                                 Text { text: qsTr("Hold to dictate"); color: root.primaryText; font.pixelSize: 14; font.weight: Font.Medium }
                                 Text { text: qsTr("Recording stops when the shortcut is released."); color: root.secondaryText; font.pixelSize: 12 }
                             }
                             ComboBox {
-                                Layout.preferredWidth: 190
+                                id: shortcutSelector
+                                anchors.right: parent.right
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: 260
                                 model: controller.shortcuts
                                 currentIndex: controller.selectedShortcut
                                 enabled: !controller.recording && !controller.transcribing
@@ -644,15 +658,22 @@ ApplicationWindow {
 
                         Rectangle { Layout.fillWidth: true; height: 1; color: root.hairline }
 
-                        RowLayout {
+                        Item {
                             Layout.fillWidth: true
-                            ColumnLayout {
-                                Layout.fillWidth: true
+                            height: 56
+                            Column {
+                                anchors.left: parent.left
+                                anchors.right: overlaySwitch.left
+                                anchors.rightMargin: 24
+                                anchors.verticalCenter: parent.verticalCenter
                                 spacing: 4
                                 Text { text: qsTr("Recording overlay"); color: root.primaryText; font.pixelSize: 14; font.weight: Font.Medium }
                                 Text { text: qsTr("Show the compact listening indicator above other windows."); color: root.secondaryText; font.pixelSize: 12 }
                             }
                             Switch {
+                                id: overlaySwitch
+                                anchors.right: parent.right
+                                anchors.verticalCenter: parent.verticalCenter
                                 checked: controller.overlayEnabled
                                 onToggled: controller.updateOverlayEnabled(checked)
                             }
@@ -755,7 +776,7 @@ ApplicationWindow {
                 Rectangle {
                     visible: root.settingsSection === 0
                     Layout.fillWidth: true
-                    height: 174
+                    height: 198
                     radius: 16
                     color: root.panel
                     border.color: root.hairline
@@ -765,33 +786,46 @@ ApplicationWindow {
                         anchors.margins: 16
                         spacing: 12
                         Text { text: qsTr("INTERFACE"); color: root.tertiaryText; font.pixelSize: 11; font.weight: Font.Medium }
-                        RowLayout {
+                        Item {
                             Layout.fillWidth: true
-                            ColumnLayout {
-                                Layout.fillWidth: true
+                            height: 52
+                            Column {
+                                anchors.left: parent.left
+                                anchors.right: themeSelector.left
+                                anchors.rightMargin: 24
+                                anchors.verticalCenter: parent.verticalCenter
                                 spacing: 2
                                 Text { text: qsTr("Theme"); color: root.primaryText; font.pixelSize: 14; font.weight: Font.Medium }
                                 Text { text: qsTr("Follow Plasma or use an explicit FluidVoice appearance."); color: root.secondaryText; font.pixelSize: 13 }
                             }
                             ComboBox {
-                                Layout.preferredWidth: 190
+                                id: themeSelector
+                                anchors.right: parent.right
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: 260
                                 model: controller.themeOptions
                                 currentIndex: controller.selectedTheme
                                 onActivated: function(index) { controller.selectTheme(index) }
                             }
                         }
                         Rectangle { Layout.fillWidth: true; height: 1; color: root.hairline }
-                        RowLayout {
+                        Item {
                             Layout.fillWidth: true
-                            ColumnLayout {
-                                Layout.fillWidth: true
+                            height: 52
+                            Column {
+                                anchors.left: parent.left
+                                anchors.right: accentSelector.left
+                                anchors.rightMargin: 24
+                                anchors.verticalCenter: parent.verticalCenter
                                 spacing: 2
                                 Text { text: qsTr("Accent color"); color: root.primaryText; font.pixelSize: 14; font.weight: Font.Medium }
                                 Text { text: qsTr("Use Plasma's accent or a FluidVoice color."); color: root.secondaryText; font.pixelSize: 13 }
                             }
-                            Rectangle { width: 18; height: 18; radius: 9; color: root.accent; border.color: "#66ffffff" }
                             ComboBox {
-                                Layout.preferredWidth: 190
+                                id: accentSelector
+                                anchors.right: parent.right
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: 260
                                 model: controller.accentOptions
                                 currentIndex: controller.selectedAccent
                                 onActivated: function(index) { controller.selectAccent(index) }
