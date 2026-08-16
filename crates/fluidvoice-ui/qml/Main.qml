@@ -11,7 +11,7 @@ ApplicationWindow {
     height: 680
     minimumWidth: 800
     minimumHeight: 500
-    visible: false
+    visible: true
     title: qsTr("FluidVoice")
     color: "#121212"
     property bool quitting: false

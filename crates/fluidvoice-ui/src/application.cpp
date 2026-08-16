@@ -2,7 +2,9 @@
 
 #include <QDir>
 #include <QIcon>
+#include <QLocalSocket>
 #include <QStandardPaths>
+#include <QWindow>
 
 namespace fluidvoice {
 
@@ -23,6 +25,35 @@ FluidVoiceApplication::FluidVoiceApplication(int &argc, char **argv)
     primaryInstance = instanceLock->tryLock(0);
     if (!primaryInstance && instanceLock->removeStaleLockFile()) {
         primaryInstance = instanceLock->tryLock(0);
+    }
+    const QString activationName = "fluidvoice-linux-activation";
+    if (primaryInstance) {
+        QLocalServer::removeServer(activationName);
+        activationServer = std::make_unique<QLocalServer>();
+        connect(activationServer.get(), &QLocalServer::newConnection, this, [this]() {
+            while (QLocalSocket *socket = activationServer->nextPendingConnection()) {
+                connect(socket, &QLocalSocket::disconnected, socket, &QObject::deleteLater);
+                socket->disconnectFromServer();
+            }
+            for (QWindow *window : topLevelWindows()) {
+                if (window->title() != "FluidVoice") {
+                    continue;
+                }
+                window->show();
+                window->raise();
+                window->requestActivate();
+            }
+        });
+        activationServer->listen(activationName);
+    } else {
+        QLocalSocket socket;
+        socket.connectToServer(activationName, QIODevice::WriteOnly);
+        if (socket.waitForConnected(500)) {
+            socket.write("activate");
+            socket.flush();
+            socket.waitForBytesWritten(500);
+            socket.disconnectFromServer();
+        }
     }
 }
 

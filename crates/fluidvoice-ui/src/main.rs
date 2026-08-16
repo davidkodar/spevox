@@ -10,7 +10,7 @@ fn main() {
         .as_ref()
         .is_none_or(|application| !application::is_primary_instance(application))
     {
-        eprintln!("FluidVoice is already running in the system tray.");
+        eprintln!("FluidVoice is already running; requested its settings window.");
         return;
     }
     let mut engine = QQmlApplicationEngine::new();

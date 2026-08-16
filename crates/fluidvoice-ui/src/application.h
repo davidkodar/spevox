@@ -2,6 +2,7 @@
 
 #include <QApplication>
 #include <QLockFile>
+#include <QLocalServer>
 #include <memory>
 
 namespace fluidvoice {
@@ -13,6 +14,7 @@ public:
 
 private:
     std::unique_ptr<QLockFile> instanceLock;
+    std::unique_ptr<QLocalServer> activationServer;
     bool primaryInstance = false;
 };
 
