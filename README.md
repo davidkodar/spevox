@@ -107,7 +107,7 @@ usable but does not yet match the depth of the current macOS implementation.
 | Spoken formatting | Available | Available | Linux handles newline, paragraph, comma, period, question mark, and exclamation mark. |
 | Command Mode system actions | Missing | Available | Linux does not yet launch apps or execute desktop workflows by voice. |
 | Write/rewrite selected text | Missing | Available | Requires a richer Wayland text-selection and editing integration. |
-| AI Enhancement | Partial | Available | Linux supports configurable standard and local providers with a cleanup prompt and safe raw-text fallback; streaming enhancement and per-app prompts are not yet implemented. |
+| AI Enhancement | Partial | Available | Linux supports configurable standard and local providers, streamed overlay updates, a cleanup prompt, and safe raw-text fallback; per-app prompts are not yet implemented. |
 | Fluid Intelligence / Fluid-1 | Missing | Available | Fluid-1 weights, runtime, and training code are separately maintained and not available in the GPL repository. |
 | File transcription | Partial | Available | Linux currently accepts 16-bit PCM WAV; broader formats and meeting workflows are planned. |
 | Transcript history | Partial | Available | Linux provides search, timestamps, raw/final text, AI provider/model/status/latency metadata, source labels, word counts, and JSON/CSV export; app/window metadata, audio retention, and reports are still missing. |

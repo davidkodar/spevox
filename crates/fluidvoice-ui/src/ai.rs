@@ -1,5 +1,5 @@
 use std::{
-    io::Write,
+    io::{BufRead, BufReader, Write},
     process::{Command, Stdio},
     time::Duration,
 };
@@ -120,6 +120,82 @@ pub fn enhance(config: &AiConfig, transcript: &str) -> Result<String, String> {
         return Err("AI provider returned an empty response".to_owned());
     }
     Ok(output.to_owned())
+}
+
+pub fn enhance_streaming(
+    config: &AiConfig,
+    transcript: &str,
+    mut on_update: impl FnMut(&str),
+) -> Result<String, String> {
+    validate_config(config)?;
+    let prompt = effective_prompt(config);
+    let agent = ureq::Agent::config_builder()
+        .timeout_global(Some(Duration::from_secs(
+            config.timeout_seconds.clamp(5, 120),
+        )))
+        .build()
+        .new_agent();
+    let mut response = if is_anthropic(config) {
+        let endpoint = format!("{}/messages", config.base_url.trim_end_matches('/'));
+        let body = json!({
+            "model": config.model, "max_tokens": 2048, "temperature": 0.2,
+            "stream": true, "system": prompt,
+            "messages": [{"role": "user", "content": transcript}]
+        })
+        .to_string();
+        send_with_retry(|| {
+            agent
+                .post(&endpoint)
+                .header("content-type", "application/json")
+                .header("x-api-key", &config.api_key)
+                .header("anthropic-version", "2023-06-01")
+                .send(body.as_str())
+        })?
+    } else {
+        let endpoint = chat_completions_url(&config.base_url);
+        let body = json!({
+            "model": config.model, "temperature": 0.2, "stream": true,
+            "messages": [{"role": "user", "content": format!("{prompt}\n\n{transcript}")}]
+        })
+        .to_string();
+        send_with_retry(|| {
+            let mut request = agent
+                .post(&endpoint)
+                .header("content-type", "application/json");
+            if !config.is_local() {
+                request = request.header("authorization", &format!("Bearer {}", config.api_key));
+            }
+            request.send(body.as_str())
+        })?
+    };
+    parse_stream(&mut response, &mut on_update)
+}
+
+fn validate_config(config: &AiConfig) -> Result<(), String> {
+    if config.model.trim().is_empty() {
+        return Err("No AI model is configured".to_owned());
+    }
+    if config.base_url.trim().is_empty() {
+        return Err("No AI provider URL is configured".to_owned());
+    }
+    if config.local_only && !config.is_local() {
+        return Err("Network AI providers are disabled by the local-only privacy lock".to_owned());
+    }
+    if matches!(config.provider.as_str(), "ollama" | "lmstudio") && !config.is_local() {
+        return Err("Local providers are restricted to this computer".to_owned());
+    }
+    if !config.is_local() && config.api_key.trim().is_empty() {
+        return Err("No API key is stored for the selected provider".to_owned());
+    }
+    Ok(())
+}
+
+fn effective_prompt(config: &AiConfig) -> &str {
+    if config.prompt.trim().is_empty() {
+        DEFAULT_PROMPT
+    } else {
+        config.prompt.trim()
+    }
 }
 
 pub fn discover_local_models(config: &AiConfig) -> Result<Vec<String>, String> {
@@ -272,6 +348,51 @@ fn parse_response(response: &mut ureq::http::Response<ureq::Body>) -> Result<Val
     }
     serde_json::from_str(&body)
         .map_err(|error| format!("AI provider returned invalid JSON: {error}"))
+}
+
+fn parse_stream(
+    response: &mut ureq::http::Response<ureq::Body>,
+    on_update: &mut impl FnMut(&str),
+) -> Result<String, String> {
+    const MAX_RESPONSE_BYTES: usize = 1_048_576;
+    let mut output = String::new();
+    let mut raw = String::new();
+    for line in BufReader::new(response.body_mut().as_reader()).lines() {
+        let line = line.map_err(|error| error.to_string())?;
+        if raw.len().saturating_add(line.len()) > MAX_RESPONSE_BYTES {
+            return Err("AI provider response exceeded the 1 MiB safety limit".to_owned());
+        }
+        raw.push_str(&line);
+        let payload = line
+            .strip_prefix("data:")
+            .map(str::trim)
+            .unwrap_or(line.trim());
+        if payload.is_empty() || payload == "[DONE]" {
+            continue;
+        }
+        let Ok(event) = serde_json::from_str::<Value>(payload) else {
+            continue;
+        };
+        let delta = event
+            .pointer("/choices/0/delta/content")
+            .and_then(Value::as_str)
+            .or_else(|| event.pointer("/delta/text").and_then(Value::as_str));
+        if let Some(delta) = delta {
+            output.push_str(delta);
+            on_update(output.trim());
+        } else if output.is_empty() {
+            if let Some(text) = extract_text(&event) {
+                output.push_str(text);
+                on_update(output.trim());
+            }
+        }
+    }
+    let output = strip_markdown_fence(output.trim());
+    if output.is_empty() {
+        Err("AI provider returned no streamed text".to_owned())
+    } else {
+        Ok(output.to_owned())
+    }
 }
 
 #[cfg(test)]
@@ -427,6 +548,35 @@ mod tests {
             enhance(&config, "raw").expect("retry provider"),
             "clean text"
         );
+        server.join().expect("join local test server");
+    }
+
+    #[test]
+    fn streams_openai_compatible_text_updates() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind local test server");
+        let address = listener.local_addr().expect("read local server address");
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept local request");
+            let mut request = [0_u8; 4096];
+            stream.read(&mut request).expect("read request");
+            let body = "data: {\"choices\":[{\"delta\":{\"content\":\"clean \"}}]}\n\ndata: {\"choices\":[{\"delta\":{\"content\":\"text\"}}]}\n\ndata: [DONE]\n\n";
+            write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).expect("write stream");
+        });
+        let config = AiConfig {
+            enabled: true,
+            provider: "ollama".into(),
+            model: "local-test".into(),
+            base_url: format!("http://{address}/v1"),
+            prompt: String::new(),
+            api_key: String::new(),
+            local_only: true,
+            timeout_seconds: 5,
+        };
+        let mut updates = Vec::new();
+        let result = enhance_streaming(&config, "raw", |text| updates.push(text.to_owned()))
+            .expect("stream enhancement");
+        assert_eq!(result, "clean text");
+        assert_eq!(updates, ["clean", "clean text"]);
         server.join().expect("join local test server");
     }
 }

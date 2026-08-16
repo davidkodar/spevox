@@ -1363,7 +1363,25 @@ impl ffi::FluidVoiceController {
             let enhancement_started = Instant::now();
             let enhancement = transcription.as_ref().ok().and_then(|transcript| {
                 if ai_config.enabled {
-                    Some(ai::enhance(&ai_config, &transcript.text))
+                    let stream_thread = qt_thread.clone();
+                    Some(ai::enhance_streaming(
+                        &ai_config,
+                        &transcript.text,
+                        move |text| {
+                            let text = text.to_owned();
+                            stream_thread
+                                .queue(move |mut controller| {
+                                    controller.as_mut().set_overlay_visible(true);
+                                    controller
+                                        .as_mut()
+                                        .set_live_transcript(QString::from(&text));
+                                    controller.set_status_text(QString::from(
+                                        "Enhancing locally or with selected provider…",
+                                    ));
+                                })
+                                .ok();
+                        },
+                    ))
                 } else {
                     None
                 }
