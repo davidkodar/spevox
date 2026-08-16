@@ -37,6 +37,10 @@ pub mod ffi {
         fn initialize_audio(self: Pin<&mut Self>);
 
         #[qinvokable]
+        #[cxx_name = "initializeDesktopRuntime"]
+        fn initialize_desktop_runtime(self: Pin<&mut Self>);
+
+        #[qinvokable]
         #[cxx_name = "selectInput"]
         fn select_input(self: Pin<&mut Self>, index: i32);
 
@@ -57,7 +61,12 @@ use std::{
 use cxx_qt::{CxxQtType, Threading};
 use cxx_qt_lib::{QString, QStringList};
 use fluidvoice_audio::{AudioDevice, CaptureStopToken, PipeWireCapture};
+use fluidvoice_delivery::ClipboardDelivery;
+use fluidvoice_portal::{
+    GlobalShortcutBinding, GlobalShortcutConfig, GlobalShortcutEvent, TextInputSession,
+};
 use fluidvoice_transcription::{TranscriptionConfig, WhisperTranscriber};
+use tokio::sync::mpsc;
 
 pub struct FluidVoiceControllerRust {
     status_text: QString,
@@ -76,6 +85,8 @@ pub struct FluidVoiceControllerRust {
     stop_token: Option<CaptureStopToken>,
     capture_target: Option<String>,
     devices: Vec<AudioDevice>,
+    clipboard: Option<ClipboardDelivery>,
+    paste_sender: Option<mpsc::UnboundedSender<()>>,
 }
 
 impl Default for FluidVoiceControllerRust {
@@ -97,11 +108,105 @@ impl Default for FluidVoiceControllerRust {
             stop_token: None,
             capture_target: None,
             devices: Vec::new(),
+            clipboard: None,
+            paste_sender: None,
         }
     }
 }
 
 impl ffi::FluidVoiceController {
+    pub fn initialize_desktop_runtime(mut self: Pin<&mut Self>) {
+        if self.as_ref().rust().paste_sender.is_some() {
+            return;
+        }
+        let (paste_sender, mut paste_receiver) = mpsc::unbounded_channel();
+        self.as_mut().rust_mut().get_mut().paste_sender = Some(paste_sender);
+        let qt_thread = self.qt_thread();
+        std::thread::spawn(move || {
+            let runtime = match tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+            {
+                Ok(runtime) => runtime,
+                Err(error) => {
+                    eprintln!("Desktop runtime failed: {error}");
+                    return;
+                }
+            };
+            runtime.block_on(async move {
+                let config = match GlobalShortcutConfig::new(
+                    "dictate_hold",
+                    "Hold to dictate with FluidVoice Linux",
+                    Some("CTRL+ALT+D"),
+                ) {
+                    Ok(config) => config,
+                    Err(error) => {
+                        eprintln!("Shortcut configuration failed: {error}");
+                        return;
+                    }
+                };
+                let binding = match GlobalShortcutBinding::bind(&config).await {
+                    Ok(binding) => binding,
+                    Err(error) => {
+                        eprintln!("Global shortcut unavailable: {error}");
+                        return;
+                    }
+                };
+                let (event_sender, mut events) = mpsc::channel(16);
+                tokio::spawn(async move {
+                    if let Err(error) = binding.forward_events(event_sender).await {
+                        eprintln!("Global shortcut stopped: {error}");
+                    }
+                });
+                let text_input = TextInputSession::request().await.ok();
+                let automatic_paste = text_input.is_some();
+                qt_thread
+                    .queue(move |controller| {
+                        controller.set_status_text(QString::from(if automatic_paste {
+                            "Ready · hold Ctrl+Alt+D to dictate"
+                        } else {
+                            "Ready · shortcut active · clipboard fallback"
+                        }));
+                    })
+                    .ok();
+
+                loop {
+                    tokio::select! {
+                        event = events.recv() => match event {
+                            Some(GlobalShortcutEvent::Activated { .. }) => {
+                                qt_thread.queue(|mut controller| {
+                                    if !*controller.as_ref().recording()
+                                        && !*controller.as_ref().transcribing()
+                                    {
+                                        controller.as_mut().toggle_recording();
+                                    }
+                                }).ok();
+                            }
+                            Some(GlobalShortcutEvent::Deactivated { .. }) => {
+                                qt_thread.queue(|mut controller| {
+                                    if *controller.as_ref().recording() {
+                                        controller.as_mut().toggle_recording();
+                                    }
+                                }).ok();
+                            }
+                            None => break,
+                        },
+                        request = paste_receiver.recv() => match request {
+                            Some(()) => {
+                                if let Some(session) = text_input.as_ref() {
+                                    if let Err(error) = session.paste_clipboard().await {
+                                        eprintln!("Automatic paste failed: {error}");
+                                    }
+                                }
+                            }
+                            None => break,
+                        }
+                    }
+                }
+            });
+        });
+    }
+
     pub fn initialize_audio(self: Pin<&mut Self>) {
         let qt_thread = self.qt_thread();
         std::thread::spawn(move || {
@@ -177,6 +282,10 @@ impl ffi::FluidVoiceController {
                 token.stop();
             }
             self.set_status_text(QString::from("Finishing…"));
+            return;
+        }
+
+        if *self.as_ref().transcribing() {
             return;
         }
 
@@ -277,14 +386,30 @@ impl ffi::FluidVoiceController {
                     }
                     match transcription {
                         Ok(transcript) if !transcript.text.is_empty() => {
+                            let rust = controller.as_mut().rust_mut().get_mut();
+                            if rust.clipboard.is_none() {
+                                rust.clipboard = ClipboardDelivery::connect().ok();
+                            }
+                            let delivery_result = rust
+                                .clipboard
+                                .as_mut()
+                                .ok_or(())
+                                .and_then(|delivery| {
+                                    delivery.copy_transcript(&transcript.text).map_err(|_| ())
+                                });
+                            if delivery_result.is_ok() {
+                                if let Some(sender) = controller.as_ref().rust().paste_sender.as_ref() {
+                                    sender.send(()).ok();
+                                }
+                            }
                             controller
                                 .as_mut()
                                 .set_transcript_text(QString::from(&transcript.text));
-                            controller.set_status_text(QString::from(&format!(
-                                "Transcribed {:.1}s locally · ASR peak {:.0}%",
-                                duration.as_secs_f32(),
-                                asr_peak * 100.0
-                            )));
+                            controller.set_status_text(QString::from(if delivery_result.is_ok() {
+                                format!("Dictated {:.1}s · pasted or copied", duration.as_secs_f32())
+                            } else {
+                                format!("Transcribed {:.1}s · clipboard unavailable", duration.as_secs_f32())
+                            }));
                         }
                         Ok(_) => {
                             controller.as_mut().set_transcript_text(QString::from(&format!(

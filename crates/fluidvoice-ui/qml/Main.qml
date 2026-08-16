@@ -26,7 +26,10 @@ ApplicationWindow {
         id: controller
     }
 
-    Component.onCompleted: controller.initializeAudio()
+    Component.onCompleted: {
+        controller.initializeAudio()
+        controller.initializeDesktopRuntime()
+    }
 
     Platform.SystemTrayIcon {
         visible: true

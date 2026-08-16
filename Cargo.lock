@@ -70,6 +70,7 @@ dependencies = [
  "futures-util",
  "getrandom",
  "serde",
+ "serde_repr",
  "tokio",
  "zbus",
 ]
@@ -671,8 +672,11 @@ dependencies = [
  "cxx-qt-build",
  "cxx-qt-lib",
  "fluidvoice-audio",
+ "fluidvoice-delivery",
+ "fluidvoice-portal",
  "fluidvoice-transcription",
  "hound",
+ "tokio",
 ]
 
 [[package]]
