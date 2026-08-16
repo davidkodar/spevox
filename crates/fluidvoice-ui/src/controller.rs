@@ -26,6 +26,12 @@ pub mod ffi {
         #[qproperty(f32, gain_db, cxx_name = "gainDb")]
         #[qproperty(bool, transcribing)]
         #[qproperty(QString, transcript_text, cxx_name = "transcriptText")]
+        #[qproperty(QStringList, languages)]
+        #[qproperty(i32, selected_language, cxx_name = "selectedLanguage")]
+        #[qproperty(QStringList, models)]
+        #[qproperty(i32, selected_model, cxx_name = "selectedModel")]
+        #[qproperty(QStringList, shortcuts)]
+        #[qproperty(i32, selected_shortcut, cxx_name = "selectedShortcut")]
         type FluidVoiceController = super::FluidVoiceControllerRust;
 
         #[qinvokable]
@@ -45,6 +51,18 @@ pub mod ffi {
         fn select_input(self: Pin<&mut Self>, index: i32);
 
         #[qinvokable]
+        #[cxx_name = "selectLanguage"]
+        fn select_language(self: Pin<&mut Self>, index: i32);
+
+        #[qinvokable]
+        #[cxx_name = "selectModel"]
+        fn select_model(self: Pin<&mut Self>, index: i32);
+
+        #[qinvokable]
+        #[cxx_name = "selectShortcut"]
+        fn select_shortcut(self: Pin<&mut Self>, index: i32);
+
+        #[qinvokable]
         #[cxx_name = "setOverlayPreview"]
         fn set_overlay_preview(self: Pin<&mut Self>, visible: bool);
     }
@@ -53,6 +71,7 @@ pub mod ffi {
 }
 
 use std::{
+    fs,
     path::PathBuf,
     pin::Pin,
     time::{Duration, Instant},
@@ -87,14 +106,57 @@ pub struct FluidVoiceControllerRust {
     devices: Vec<AudioDevice>,
     clipboard: Option<ClipboardDelivery>,
     paste_sender: Option<mpsc::UnboundedSender<()>>,
+    languages: QStringList,
+    selected_language: i32,
+    language_codes: Vec<String>,
+    models: QStringList,
+    selected_model: i32,
+    model_paths: Vec<PathBuf>,
+    shortcuts: QStringList,
+    selected_shortcut: i32,
 }
 
 impl Default for FluidVoiceControllerRust {
     fn default() -> Self {
+        let preferences = Preferences::load();
+        let language_codes = supported_languages()
+            .iter()
+            .map(|(_, code)| (*code).to_owned())
+            .collect::<Vec<_>>();
+        let languages = supported_languages()
+            .iter()
+            .map(|(name, _)| QString::from(*name))
+            .collect::<QStringList>();
+        let selected_language = language_codes
+            .iter()
+            .position(|code| code == &preferences.language)
+            .and_then(|index| i32::try_from(index).ok())
+            .unwrap_or(0);
+        let model_paths = discover_whisper_models();
+        let models = model_paths
+            .iter()
+            .map(|path| QString::from(&model_display_name(path)))
+            .collect::<QStringList>();
+        let selected_model = model_paths
+            .iter()
+            .position(|path| path == &preferences.model)
+            .and_then(|index| i32::try_from(index).ok())
+            .unwrap_or(0);
+        let selected_shortcut = shortcut_triggers()
+            .iter()
+            .position(|(_, trigger)| *trigger == preferences.shortcut)
+            .and_then(|index| i32::try_from(index).ok())
+            .unwrap_or(0);
+        let model_name = model_paths
+            .get(usize::try_from(selected_model).unwrap_or_default())
+            .map_or_else(
+                || QString::from("No Whisper model installed"),
+                |path| QString::from(&model_display_name(path)),
+            );
         Self {
             status_text: QString::from("Ready"),
             microphone_name: QString::from("Detecting PipeWire inputs…"),
-            model_name: QString::from("Whisper Tiny · Multilingual"),
+            model_name,
             recording: false,
             overlay_visible: false,
             audio_level: 0.0,
@@ -110,6 +172,17 @@ impl Default for FluidVoiceControllerRust {
             devices: Vec::new(),
             clipboard: None,
             paste_sender: None,
+            languages,
+            selected_language,
+            language_codes,
+            models,
+            selected_model,
+            model_paths,
+            shortcuts: shortcut_triggers()
+                .iter()
+                .map(|(label, _)| QString::from(*label))
+                .collect(),
+            selected_shortcut,
         }
     }
 }
@@ -122,6 +195,7 @@ impl ffi::FluidVoiceController {
         let (paste_sender, mut paste_receiver) = mpsc::unbounded_channel();
         self.as_mut().rust_mut().get_mut().paste_sender = Some(paste_sender);
         let qt_thread = self.qt_thread();
+        let shortcut = selected_shortcut_trigger(self.as_ref().rust());
         std::thread::spawn(move || {
             let runtime = match tokio::runtime::Builder::new_current_thread()
                 .enable_all()
@@ -137,7 +211,7 @@ impl ffi::FluidVoiceController {
                 let config = match GlobalShortcutConfig::new(
                     "dictate_hold",
                     "Hold to dictate with FluidVoice Linux",
-                    Some("CTRL+ALT+D"),
+                    Some(shortcut),
                 ) {
                     Ok(config) => config,
                     Err(error) => {
@@ -275,6 +349,44 @@ impl ffi::FluidVoiceController {
         self.set_status_text(QString::from("Input selected · ready to test"));
     }
 
+    pub fn select_language(mut self: Pin<&mut Self>, index: i32) {
+        if !valid_index(index, self.as_ref().rust().language_codes.len()) {
+            return;
+        }
+        self.as_mut().set_selected_language(index);
+        self.as_ref().rust().save_preferences();
+        self.set_status_text(QString::from("Language updated"));
+    }
+
+    pub fn select_model(mut self: Pin<&mut Self>, index: i32) {
+        if !valid_index(index, self.as_ref().rust().model_paths.len()) {
+            return;
+        }
+        self.as_mut().set_selected_model(index);
+        let model_name = self
+            .as_ref()
+            .rust()
+            .model_paths
+            .get(usize::try_from(index).unwrap_or_default())
+            .map(|path| model_display_name(path));
+        if let Some(model_name) = model_name {
+            self.as_mut().set_model_name(QString::from(&model_name));
+        }
+        self.as_ref().rust().save_preferences();
+        self.set_status_text(QString::from("Speech model updated"));
+    }
+
+    pub fn select_shortcut(mut self: Pin<&mut Self>, index: i32) {
+        if !valid_index(index, shortcut_triggers().len()) {
+            return;
+        }
+        self.as_mut().set_selected_shortcut(index);
+        self.as_ref().rust().save_preferences();
+        self.set_status_text(QString::from(
+            "Shortcut saved · restart FluidVoice to rebind",
+        ));
+    }
+
     #[allow(clippy::too_many_lines)]
     pub fn toggle_recording(mut self: Pin<&mut Self>) {
         if *self.as_ref().recording() {
@@ -291,6 +403,8 @@ impl ffi::FluidVoiceController {
 
         let stop_token = CaptureStopToken::new();
         let capture_target = self.as_ref().rust().capture_target.clone();
+        let language = selected_language_code(self.as_ref().rust());
+        let model = selected_model_path(self.as_ref().rust());
         let gain = 10.0_f32.powf(*self.as_ref().gain_db() / 20.0);
         self.as_mut().rust_mut().get_mut().stop_token = Some(stop_token.clone());
         self.as_mut().set_audio_level(0.0);
@@ -366,17 +480,19 @@ impl ffi::FluidVoiceController {
             let asr_audio = mono.amplified(combined_gain);
             let asr_peak = asr_audio.peak();
             let diagnostic_dump = dump_asr_audio(&asr_audio);
-            let transcription = find_whisper_model().and_then(|model| {
-                // The current preview UI is English-first. Automatic language
-                // detection can classify short utterances correctly yet return
-                // no segments; the fixed language path is reliable for the same
-                // captured buffer and avoids wasting audio on detection.
-                let config = TranscriptionConfig::default().with_language(Some("en".to_owned()));
-                WhisperTranscriber::load(&model, config)
-                    .map_err(|error| error.to_string())?
-                    .transcribe(&asr_audio)
-                    .map_err(|error| error.to_string())
-            });
+            let transcription = model
+                .ok_or_else(|| "No Whisper model is installed".to_owned())
+                .and_then(|model| {
+                    // The current preview UI is English-first. Automatic language
+                    // detection can classify short utterances correctly yet return
+                    // no segments; the fixed language path is reliable for the same
+                    // captured buffer and avoids wasting audio on detection.
+                    let config = TranscriptionConfig::default().with_language(Some(language));
+                    WhisperTranscriber::load(&model, config)
+                        .map_err(|error| error.to_string())?
+                        .transcribe(&asr_audio)
+                        .map_err(|error| error.to_string())
+                });
             qt_thread
                 .queue(move |mut controller| {
                     controller.as_mut().set_transcribing(false);
@@ -446,19 +562,181 @@ impl ffi::FluidVoiceController {
     }
 }
 
-fn find_whisper_model() -> Result<PathBuf, String> {
-    let configured = std::env::var_os("FLUIDVOICE_WHISPER_MODEL").map(PathBuf::from);
-    let development =
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../work/models/ggml-tiny.bin");
-    let path = configured.unwrap_or(development);
-    if path.is_file() {
-        Ok(path)
-    } else {
-        Err(format!(
-            "Whisper model not found at {}. Set FLUIDVOICE_WHISPER_MODEL.",
-            path.display()
-        ))
+impl FluidVoiceControllerRust {
+    fn save_preferences(&self) {
+        let preferences = Preferences {
+            language: selected_language_code(self),
+            model: selected_model_path(self).unwrap_or_default(),
+            shortcut: selected_shortcut_trigger(self),
+        };
+        if let Err(error) = preferences.save() {
+            eprintln!("Failed to save preferences: {error}");
+        }
     }
+}
+
+struct Preferences {
+    language: String,
+    model: PathBuf,
+    shortcut: String,
+}
+
+impl Default for Preferences {
+    fn default() -> Self {
+        Self {
+            language: "en".to_owned(),
+            model: PathBuf::new(),
+            shortcut: "CTRL+ALT+D".to_owned(),
+        }
+    }
+}
+
+impl Preferences {
+    fn load() -> Self {
+        let Ok(contents) = fs::read_to_string(preferences_path()) else {
+            return Self::default();
+        };
+        let mut preferences = Self::default();
+        for line in contents.lines() {
+            if let Some(value) = line.strip_prefix("language=") {
+                preferences.language = value.to_owned();
+            } else if let Some(value) = line.strip_prefix("model=") {
+                preferences.model = PathBuf::from(value);
+            } else if let Some(value) = line.strip_prefix("shortcut=") {
+                preferences.shortcut = value.to_owned();
+            }
+        }
+        preferences
+    }
+
+    fn save(&self) -> Result<(), String> {
+        let path = preferences_path();
+        let parent = path
+            .parent()
+            .ok_or_else(|| "preferences path has no parent".to_owned())?;
+        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+        fs::write(
+            path,
+            format!(
+                "language={}\nmodel={}\nshortcut={}\n",
+                self.language,
+                self.model.display(),
+                self.shortcut
+            ),
+        )
+        .map_err(|error| error.to_string())
+    }
+}
+
+fn preferences_path() -> PathBuf {
+    if let Some(directory) = std::env::var_os("XDG_CONFIG_HOME") {
+        return PathBuf::from(directory).join("fluidvoice/settings.conf");
+    }
+    std::env::var_os("HOME").map_or_else(
+        || PathBuf::from(".fluidvoice-settings.conf"),
+        |home| PathBuf::from(home).join(".config/fluidvoice/settings.conf"),
+    )
+}
+
+fn supported_languages() -> &'static [(&'static str, &'static str)] {
+    &[
+        ("English", "en"),
+        ("Swedish", "sv"),
+        ("Danish", "da"),
+        ("Norwegian", "no"),
+        ("Finnish", "fi"),
+        ("German", "de"),
+        ("French", "fr"),
+        ("Spanish", "es"),
+        ("Italian", "it"),
+        ("Portuguese", "pt"),
+        ("Dutch", "nl"),
+        ("Polish", "pl"),
+        ("Ukrainian", "uk"),
+        ("Russian", "ru"),
+        ("Japanese", "ja"),
+        ("Korean", "ko"),
+        ("Chinese", "zh"),
+    ]
+}
+
+fn shortcut_triggers() -> &'static [(&'static str, &'static str)] {
+    &[
+        ("Ctrl  Alt  D", "CTRL+ALT+D"),
+        ("Ctrl  Alt  Space", "CTRL+ALT+SPACE"),
+        ("Meta  Alt  D", "META+ALT+D"),
+        ("Meta  Shift  Space", "META+SHIFT+SPACE"),
+    ]
+}
+
+fn selected_language_code(controller: &FluidVoiceControllerRust) -> String {
+    usize::try_from(controller.selected_language)
+        .ok()
+        .and_then(|index| controller.language_codes.get(index))
+        .cloned()
+        .unwrap_or_else(|| "en".to_owned())
+}
+
+fn selected_model_path(controller: &FluidVoiceControllerRust) -> Option<PathBuf> {
+    usize::try_from(controller.selected_model)
+        .ok()
+        .and_then(|index| controller.model_paths.get(index))
+        .cloned()
+}
+
+fn selected_shortcut_trigger(controller: &FluidVoiceControllerRust) -> String {
+    usize::try_from(controller.selected_shortcut)
+        .ok()
+        .and_then(|index| shortcut_triggers().get(index))
+        .map_or("CTRL+ALT+D", |(_, trigger)| trigger)
+        .to_owned()
+}
+
+fn valid_index(index: i32, length: usize) -> bool {
+    usize::try_from(index).is_ok_and(|index| index < length)
+}
+
+fn discover_whisper_models() -> Vec<PathBuf> {
+    let mut directories = vec![PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../work/models")];
+    if let Some(data_home) = std::env::var_os("XDG_DATA_HOME") {
+        directories.push(PathBuf::from(data_home).join("fluidvoice/models"));
+    } else if let Some(home) = std::env::var_os("HOME") {
+        directories.push(PathBuf::from(home).join(".local/share/fluidvoice/models"));
+    }
+    let mut models = directories
+        .into_iter()
+        .filter_map(|directory| fs::read_dir(directory).ok())
+        .flatten()
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| path.extension().is_some_and(|extension| extension == "bin"))
+        .collect::<Vec<_>>();
+    if let Some(configured) = std::env::var_os("FLUIDVOICE_WHISPER_MODEL").map(PathBuf::from) {
+        if configured.is_file() {
+            models.push(configured);
+        }
+    }
+    models.sort();
+    models.dedup();
+    models
+}
+
+fn model_display_name(path: &std::path::Path) -> String {
+    let stem = path
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .unwrap_or("Whisper model")
+        .trim_start_matches("ggml-")
+        .replace(['-', '_'], " ");
+    let mut characters = stem.chars();
+    let name = characters.next().map_or_else(
+        || "Whisper".to_owned(),
+        |first| format!("{}{}", first.to_uppercase(), characters.as_str()),
+    );
+    let size = fs::metadata(path)
+        .map(|metadata| format!(" · {:.0} MB", metadata.len() as f64 / 1_048_576.0))
+        .unwrap_or_default();
+    format!("Whisper {name}{size}")
 }
 
 fn dump_asr_audio(audio: &fluidvoice_audio::MonoAudioBuffer) -> Result<(), String> {

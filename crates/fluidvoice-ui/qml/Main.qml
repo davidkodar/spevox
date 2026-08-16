@@ -15,6 +15,7 @@ ApplicationWindow {
     title: qsTr("FluidVoice")
     color: "#111216"
     property bool quitting: false
+    property int settingsSection: 0
     onClosing: function(close) {
         if (quitting) {
             close.accepted = true
@@ -182,16 +183,24 @@ ApplicationWindow {
                         Layout.fillWidth: true
                         height: 44
                         radius: 12
-                        color: index === 0 ? "#2b2940" : "transparent"
+                        color: index === root.settingsSection ? "#2b2940" : "transparent"
 
                         Text {
                             anchors.left: parent.left
                             anchors.leftMargin: 15
                             anchors.verticalCenter: parent.verticalCenter
                             text: modelData
-                            color: index === 0 ? "#f4f0ff" : root.secondaryText
+                            color: index === root.settingsSection ? "#f4f0ff" : root.secondaryText
                             font.pixelSize: 13
-                            font.weight: index === 0 ? Font.DemiBold : Font.Normal
+                            font.weight: index === root.settingsSection ? Font.DemiBold : Font.Normal
+                        }
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                root.settingsSection = index
+                                settingsFlick.contentY = [0, 0, 250, 480, 650][index]
+                            }
                         }
                     }
                 }
@@ -208,6 +217,7 @@ ApplicationWindow {
         }
 
         Flickable {
+            id: settingsFlick
             Layout.fillWidth: true
             Layout.fillHeight: true
             contentHeight: contentColumn.implicitHeight
@@ -280,6 +290,68 @@ ApplicationWindow {
                     }
                 }
 
+                ColumnLayout {
+                    spacing: 5
+                    Text {
+                        text: qsTr("Transcription")
+                        color: root.primaryText
+                        font.pixelSize: 22
+                        font.weight: Font.DemiBold
+                    }
+                    Text {
+                        text: qsTr("Choose the local speech model and spoken language.")
+                        color: root.secondaryText
+                        font.pixelSize: 12
+                    }
+                }
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    height: 176
+                    radius: 18
+                    color: root.panel
+                    border.color: "#2d2e37"
+
+                    ColumnLayout {
+                        anchors.fill: parent
+                        anchors.margins: 20
+                        spacing: 12
+                        Text { text: qsTr("SPEECH ENGINE"); color: "#777581"; font.pixelSize: 10; font.letterSpacing: 1.2 }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 14
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                Text { text: qsTr("Language"); color: root.primaryText; font.pixelSize: 13; font.weight: Font.Medium }
+                                ComboBox {
+                                    Layout.fillWidth: true
+                                    model: controller.languages
+                                    currentIndex: controller.selectedLanguage
+                                    enabled: !controller.recording && !controller.transcribing
+                                    onActivated: function(index) { controller.selectLanguage(index) }
+                                }
+                            }
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                Text { text: qsTr("Whisper model"); color: root.primaryText; font.pixelSize: 13; font.weight: Font.Medium }
+                                ComboBox {
+                                    Layout.fillWidth: true
+                                    model: controller.models
+                                    currentIndex: controller.selectedModel
+                                    enabled: !controller.recording && !controller.transcribing && count > 0
+                                    displayText: count > 0 ? currentText : qsTr("No model installed")
+                                    onActivated: function(index) { controller.selectModel(index) }
+                                }
+                            }
+                        }
+                        Text {
+                            text: qsTr("Runs entirely on this computer. Audio and transcripts never leave FluidVoice.")
+                            color: "#7fd7a4"
+                            font.pixelSize: 11
+                        }
+                    }
+                }
+
                 Rectangle {
                     Layout.fillWidth: true
                     height: 180
@@ -301,13 +373,12 @@ ApplicationWindow {
                                 Text { text: qsTr("Hold to dictate"); color: root.primaryText; font.pixelSize: 14; font.weight: Font.Medium }
                                 Text { text: qsTr("Recording stops when the shortcut is released."); color: root.secondaryText; font.pixelSize: 12 }
                             }
-                            Rectangle {
-                                width: shortcutLabel.implicitWidth + 22
-                                height: 32
-                                radius: 9
-                                color: "#25262e"
-                                border.color: "#3a3b45"
-                                Text { id: shortcutLabel; anchors.centerIn: parent; text: "Ctrl  Alt  D"; color: "#dedbe8"; font.pixelSize: 11; font.family: "monospace" }
+                            ComboBox {
+                                Layout.preferredWidth: 190
+                                model: controller.shortcuts
+                                currentIndex: controller.selectedShortcut
+                                enabled: !controller.recording && !controller.transcribing
+                                onActivated: function(index) { controller.selectShortcut(index) }
                             }
                         }
 
