@@ -402,19 +402,28 @@ ApplicationWindow {
                                             }
                                         }
                                         Item {
+                                            implicitWidth: 186
                                             Layout.preferredWidth: 186
+                                            Layout.minimumWidth: 186
+                                            Layout.maximumWidth: 186
                                             Layout.fillHeight: true
 
                                             RowLayout {
                                                 anchors.fill: parent
                                                 spacing: 10
                                                 StackLayout {
+                                                    implicitWidth: 134
                                                     Layout.preferredWidth: 134
+                                                    Layout.minimumWidth: 134
+                                                    Layout.maximumWidth: 134
                                                     currentIndex: controller.modelStates[index] === "Downloaded"
                                                                   && index === controller.selectedModel ? 1 : 0
 
                                                     Button {
-                                                        Layout.fillWidth: true
+                                                        implicitWidth: 134
+                                                        Layout.preferredWidth: 134
+                                                        Layout.minimumWidth: 134
+                                                        Layout.maximumWidth: 134
                                                         text: controller.downloadingModel === index ? qsTr("Cancel")
                                                               : controller.modelStates[index] !== "Downloaded" ? qsTr("Download")
                                                               : qsTr("Activate")
@@ -450,7 +459,10 @@ ApplicationWindow {
                                                     }
                                                 }
                                                 ToolButton {
+                                                    implicitWidth: 42
                                                     Layout.preferredWidth: 42
+                                                    Layout.minimumWidth: 42
+                                                    Layout.maximumWidth: 42
                                                     Layout.preferredHeight: 38
                                                     visible: controller.modelStates[index] === "Downloaded" && index !== controller.selectedModel
                                                     enabled: controller.downloadingModel < 0 && !controller.recording && !controller.transcribing

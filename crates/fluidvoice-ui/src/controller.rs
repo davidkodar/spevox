@@ -271,8 +271,7 @@ impl ffi::FluidVoiceController {
                 }
             };
             runtime.block_on(async move {
-                let text_input = TextInputSession::request().await.ok();
-                let automatic_paste = text_input.is_some();
+                let mut text_input = None;
                 let mut requested_shortcut = shortcut;
                 loop {
                     let config = match GlobalShortcutConfig::new(
@@ -307,11 +306,7 @@ impl ffi::FluidVoiceController {
                         }
                     });
                     let shortcut_label = requested_shortcut.replace('+', "+");
-                    let ready_status = if automatic_paste {
-                        format!("Ready · hold {shortcut_label} to dictate")
-                    } else {
-                        "Ready · shortcut active · clipboard fallback".to_owned()
-                    };
+                    let ready_status = format!("Ready · hold {shortcut_label} to dictate");
                     qt_thread
                         .queue(move |controller| {
                             controller.set_status_text(QString::from(&ready_status))
@@ -342,6 +337,12 @@ impl ffi::FluidVoiceController {
                             },
                             request = desktop_receiver.recv() => match request {
                                 Some(DesktopCommand::Paste) => {
+                                    // Request optional text injection only after
+                                    // capture and transcription have succeeded,
+                                    // so it can never delay the shortcut loop.
+                                    if text_input.is_none() {
+                                        text_input = TextInputSession::request().await.ok();
+                                    }
                                     if let Some(session) = text_input.as_ref() {
                                         if let Err(error) = session.paste_clipboard().await {
                                             eprintln!("Automatic paste failed: {error}");

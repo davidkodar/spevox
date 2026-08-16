@@ -28,4 +28,8 @@ fi
   "$destination$prefix/share/icons/hicolor/512x512/apps/io.github.davidkodar.FluidVoiceLinux.png"
 "${install_command[@]}" -Dm644 LICENSE "$destination$prefix/share/licenses/fluidvoice-linux/LICENSE"
 
+if [[ -z "$destination" ]] && command -v kbuildsycoca6 >/dev/null; then
+  kbuildsycoca6 --noincremental
+fi
+
 echo "FluidVoice Linux installed under $destination$prefix"

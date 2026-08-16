@@ -14,7 +14,11 @@ FluidVoiceApplication::FluidVoiceApplication(int &argc, char **argv)
     setApplicationDisplayName("FluidVoice");
     setOrganizationName("FluidVoice Linux");
     setDesktopFileName("io.github.davidkodar.FluidVoiceLinux");
-    setWindowIcon(QIcon(":/qt/qml/io/github/davidkodar/FluidVoiceLinux/assets/fluidvoice-app.png"));
+    QIcon applicationIcon = QIcon::fromTheme("io.github.davidkodar.FluidVoiceLinux");
+    if (applicationIcon.isNull()) {
+        applicationIcon = QIcon(":/qt/qml/io/github/davidkodar/FluidVoiceLinux/assets/fluidvoice-app.png");
+    }
+    setWindowIcon(applicationIcon);
     setQuitOnLastWindowClosed(false);
     QString runtimeDirectory = QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation);
     if (runtimeDirectory.isEmpty()) {

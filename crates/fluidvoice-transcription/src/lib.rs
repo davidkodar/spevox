@@ -96,7 +96,10 @@ impl WhisperTranscriber {
         let mut parameters = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
         parameters.set_n_threads(self.config.thread_count);
         parameters.set_language(self.config.language());
-        parameters.set_detect_language(self.config.language().is_none());
+        // A null language already asks whisper.cpp to auto-detect and then
+        // continue decoding. Its separate detect_language flag means "detect
+        // only" and returns before creating transcript segments.
+        parameters.set_detect_language(false);
         parameters.set_translate(false);
         parameters.set_no_context(true);
         parameters.set_suppress_blank(true);
