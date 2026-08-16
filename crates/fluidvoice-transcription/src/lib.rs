@@ -1,6 +1,6 @@
 //! Offline speech-to-text through `whisper.cpp`.
 
-use std::{error::Error, fmt, path::Path, thread};
+use std::{error::Error, fmt, path::Path, thread, time::Duration};
 
 use fluidvoice_audio::MonoAudioBuffer;
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
@@ -72,6 +72,147 @@ pub struct Transcript {
 pub struct WhisperTranscriber {
     context: WhisperContext,
     config: TranscriptionConfig,
+}
+
+/// A local OpenAI-compatible speech endpoint, such as a user-managed
+/// `whisper.cpp` or `sherpa-onnx` gateway. Network hosts are deliberately
+/// rejected so enabling this backend cannot upload microphone audio.
+pub struct LocalSpeechServer {
+    endpoint: String,
+}
+
+impl LocalSpeechServer {
+    /// # Errors
+    /// Returns an error unless the URL is plain HTTP on loopback.
+    pub fn new(base_url: &str) -> Result<Self, TranscriptionError> {
+        let base = base_url.trim().trim_end_matches('/');
+        let local = base.strip_prefix("http://").is_some_and(|host| {
+            host == "localhost"
+                || host.starts_with("localhost:")
+                || host == "127.0.0.1"
+                || host.starts_with("127.0.0.1:")
+                || host == "[::1]"
+                || host.starts_with("[::1]:")
+        });
+        if !local {
+            return Err(TranscriptionError::new(
+                "external speech server must use HTTP loopback (localhost, 127.0.0.1, or ::1)",
+            ));
+        }
+        let endpoint = if base.ends_with("/v1/audio/transcriptions") {
+            base.to_owned()
+        } else {
+            format!("{base}/v1/audio/transcriptions")
+        };
+        Ok(Self { endpoint })
+    }
+
+    /// Sends bounded mono audio to the explicitly configured local service.
+    ///
+    /// # Errors
+    /// Returns an error for empty/oversized audio, transport failures, or an
+    /// invalid OpenAI-compatible JSON response.
+    pub fn transcribe(
+        &self,
+        audio: &MonoAudioBuffer,
+        language: Option<&str>,
+    ) -> Result<Transcript, TranscriptionError> {
+        if audio.samples().is_empty() {
+            return Err(TranscriptionError::new("cannot transcribe empty audio"));
+        }
+        if audio.samples().len() > 16_000 * 60 * 2 {
+            return Err(TranscriptionError::new(
+                "local speech-server dictation is limited to two minutes",
+            ));
+        }
+        let boundary = "fluidvoice-local-asr-boundary";
+        let wav = pcm16_wav(audio.samples(), 16_000);
+        let mut body = Vec::with_capacity(wav.len() + 512);
+        append_form_field(&mut body, boundary, "model", "default");
+        append_form_field(&mut body, boundary, "response_format", "json");
+        if let Some(language) = language.filter(|value| !value.trim().is_empty()) {
+            append_form_field(&mut body, boundary, "language", language);
+        }
+        body.extend_from_slice(format!("--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"dictation.wav\"\r\nContent-Type: audio/wav\r\n\r\n").as_bytes());
+        body.extend_from_slice(&wav);
+        body.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());
+        let agent = ureq::Agent::config_builder()
+            .timeout_global(Some(Duration::from_secs(120)))
+            .build()
+            .new_agent();
+        let mut response = agent
+            .post(&self.endpoint)
+            .header(
+                "content-type",
+                &format!("multipart/form-data; boundary={boundary}"),
+            )
+            .send(body)
+            .map_err(|error| {
+                TranscriptionError::new(format!("local speech server failed: {error}"))
+            })?;
+        let response = response
+            .body_mut()
+            .read_to_string()
+            .map_err(|error| TranscriptionError::new(error.to_string()))?;
+        if response.len() > 1_048_576 {
+            return Err(TranscriptionError::new(
+                "local speech response exceeded 1 MiB",
+            ));
+        }
+        let value: serde_json::Value = serde_json::from_str(&response).map_err(|error| {
+            TranscriptionError::new(format!("invalid speech response: {error}"))
+        })?;
+        let text = value
+            .get("text")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or_default()
+            .trim()
+            .to_owned();
+        if text.is_empty() {
+            return Err(TranscriptionError::new(
+                "local speech server returned no text",
+            ));
+        }
+        Ok(Transcript {
+            text,
+            segments: Vec::new(),
+            detected_language: value
+                .get("language")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_owned),
+        })
+    }
+}
+
+fn append_form_field(body: &mut Vec<u8>, boundary: &str, name: &str, value: &str) {
+    body.extend_from_slice(
+        format!(
+            "--{boundary}\r\nContent-Disposition: form-data; name=\"{name}\"\r\n\r\n{value}\r\n"
+        )
+        .as_bytes(),
+    );
+}
+
+fn pcm16_wav(samples: &[f32], sample_rate: u32) -> Vec<u8> {
+    let data_size = u32::try_from(samples.len().saturating_mul(2)).unwrap_or(u32::MAX);
+    let mut wav = Vec::with_capacity(44 + samples.len() * 2);
+    wav.extend_from_slice(b"RIFF");
+    wav.extend_from_slice(&(36 + data_size).to_le_bytes());
+    wav.extend_from_slice(b"WAVEfmt ");
+    wav.extend_from_slice(&16_u32.to_le_bytes());
+    wav.extend_from_slice(&1_u16.to_le_bytes());
+    wav.extend_from_slice(&1_u16.to_le_bytes());
+    wav.extend_from_slice(&sample_rate.to_le_bytes());
+    wav.extend_from_slice(&(sample_rate * 2).to_le_bytes());
+    wav.extend_from_slice(&2_u16.to_le_bytes());
+    wav.extend_from_slice(&16_u16.to_le_bytes());
+    wav.extend_from_slice(b"data");
+    wav.extend_from_slice(&data_size.to_le_bytes());
+    for sample in samples {
+        let encoded = (sample.clamp(-1.0, 1.0) * f32::from(i16::MAX)) as i16;
+        wav.extend_from_slice(&encoded.to_le_bytes());
+    }
+    wav
 }
 
 impl WhisperTranscriber {
@@ -187,8 +328,12 @@ fn default_thread_count() -> i32 {
 
 #[cfg(test)]
 mod tests {
-    use super::{TranscriptionConfig, WhisperTranscriber};
+    use super::{LocalSpeechServer, TranscriptionConfig, WhisperTranscriber, pcm16_wav};
     use std::path::Path;
+    use std::{
+        io::{Read, Write},
+        net::{Ipv4Addr, TcpListener},
+    };
 
     #[test]
     fn defaults_to_language_detection_and_bounded_parallelism() {
@@ -212,5 +357,70 @@ mod tests {
             TranscriptionConfig::default(),
         );
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn local_server_rejects_non_loopback_audio_destinations() {
+        assert!(LocalSpeechServer::new("http://127.0.0.1:8080").is_ok());
+        assert!(LocalSpeechServer::new("http://localhost:8080/v1/audio/transcriptions").is_ok());
+        assert!(LocalSpeechServer::new("https://example.com").is_err());
+        assert!(LocalSpeechServer::new("http://127.0.0.1.example.com").is_err());
+    }
+
+    #[test]
+    fn encodes_standard_mono_pcm_wav() {
+        let wav = pcm16_wav(&[0.0, 1.0, -1.0], 16_000);
+        assert_eq!(&wav[..4], b"RIFF");
+        assert_eq!(&wav[8..12], b"WAVE");
+        assert_eq!(wav.len(), 50);
+    }
+
+    #[test]
+    fn local_server_sends_multipart_wav_and_reads_text() {
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = Vec::new();
+            let mut chunk = [0_u8; 4096];
+            let expected = loop {
+                let count = stream.read(&mut chunk).unwrap();
+                request.extend_from_slice(&chunk[..count]);
+                if let Some(header_end) = request.windows(4).position(|part| part == b"\r\n\r\n") {
+                    let headers = String::from_utf8_lossy(&request[..header_end]);
+                    let length = headers
+                        .lines()
+                        .find_map(|line| {
+                            let (name, value) = line.split_once(':')?;
+                            name.eq_ignore_ascii_case("content-length")
+                                .then(|| value.trim().parse::<usize>().ok())
+                                .flatten()
+                        })
+                        .unwrap();
+                    break header_end + 4 + length;
+                }
+            };
+            while request.len() < expected {
+                let count = stream.read(&mut chunk).unwrap();
+                if count == 0 {
+                    break;
+                }
+                request.extend_from_slice(&chunk[..count]);
+            }
+            assert!(request.windows(4).any(|part| part == b"RIFF"));
+            assert!(String::from_utf8_lossy(&request).contains("name=\"language\"\r\n\r\nsv"));
+            let body = r#"{"text":"hej världen","language":"sv"}"#;
+            write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).unwrap();
+        });
+        let audio = fluidvoice_audio::AudioBuffer::new(vec![0.0, 0.2, -0.2], 16_000, 1, false)
+            .unwrap()
+            .to_asr_mono();
+        let transcript = LocalSpeechServer::new(&format!("http://{address}"))
+            .unwrap()
+            .transcribe(&audio, Some("sv"))
+            .unwrap();
+        assert_eq!(transcript.text, "hej världen");
+        assert_eq!(transcript.detected_language.as_deref(), Some("sv"));
+        server.join().unwrap();
     }
 }

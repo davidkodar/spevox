@@ -20,6 +20,8 @@ configures.
 - Hold-to-dictate from any application through a Plasma-managed global shortcut.
 - Selectable PipeWire microphone with software gain, live dBFS meter, and input test.
 - Local multilingual Whisper transcription across all 99 supported languages.
+- Experimental loopback-only OpenAI-compatible speech-server backend for
+  user-managed local ASR runtimes.
 - Automatic language detection or a fixed language for more reliable short dictation.
 - Tiny, Base, Small, Medium, Large Turbo, and Large v3 model management.
 - Vulkan acceleration on compatible NVIDIA, AMD, and Intel GPUs with CPU fallback.
@@ -118,7 +120,7 @@ usable but does not yet match the depth of the current macOS implementation.
 | Direct typing into applications | Partial | Available | Linux uses Wayland portal/clipboard delivery; application support can vary. |
 | Live transcript overlay | Available | Available | Linux provides compact/standard/expanded layouts, placement, opacity, text visibility, streamed AI retry, copy, raw recovery, and undo; previews use periodic local Whisper rather than the newest Parakeet streaming path. |
 | Whisper models | Available | Available | Linux supports all six listed multilingual GGML sizes. |
-| Parakeet, Nemotron, Cohere, Apple Speech | Missing | Available | Linux currently ships only the Whisper engine. |
+| Parakeet, Nemotron, Cohere, Apple Speech | Partial | Available | Linux ships built-in Whisper plus an experimental loopback-only OpenAI-compatible ASR bridge. Native upstream models use Apple CoreML/FluidAudio and cannot run directly; user-managed Linux services such as sherpa-onnx can integrate through the bridge when they expose the standard transcription route. |
 | Vulkan GPU acceleration | Available | Not applicable | Linux supports cross-vendor Vulkan with CPU fallback. |
 | Automatic/fixed language | Available | Available | All 99 Whisper languages are exposed. |
 | Model download and deletion | Available | Available | Downloads are size-validated and remain `.part` until complete. |
@@ -146,6 +148,17 @@ platform behavior.
 One multilingual Whisper model works for every exposed language. Managed model
 downloads come from the official
 [`ggml-org/whisper.cpp`](https://github.com/ggml-org/whisper.cpp) artifacts.
+
+Built-in Whisper is the supported default. **Local speech server
+(experimental)** accepts an OpenAI-compatible `/v1/audio/transcriptions`
+service at HTTP loopback only. FluidVoice encodes the captured mono signal as
+PCM WAV and will reject remote hosts, HTTPS URLs, recordings longer than two
+minutes, or responses above 1 MiB. Live preview is unavailable because the
+external process receives audio only after recording stops. This keeps native
+ASR runtimes independently updateable; [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx)
+is a promising Linux/Rust route with offline, streaming, Parakeet/NeMo-class,
+and diarization support, but 0.4.0 does not bundle its rapidly evolving native
+runtime or model catalog.
 
 User data follows XDG conventions:
 

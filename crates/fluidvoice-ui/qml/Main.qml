@@ -935,6 +935,27 @@ ApplicationWindow {
                         spacing: 12
                         Text { text: qsTr("SPEECH ENGINE"); color: root.tertiaryText; font.pixelSize: 11; font.weight: Font.Medium }
 
+                        ComboBox {
+                            Layout.fillWidth: true
+                            model: controller.speechEngines
+                            currentIndex: controller.selectedSpeechEngine
+                            enabled: !controller.recording && !controller.transcribing
+                            onActivated: function(index) { controller.selectSpeechEngine(index) }
+                        }
+                        TextField {
+                            visible: controller.selectedSpeechEngine === 1
+                            Layout.fillWidth: true
+                            text: controller.localSpeechUrl
+                            placeholderText: qsTr("http://127.0.0.1:8080")
+                            onEditingFinished: controller.updateLocalSpeechUrl(text)
+                        }
+                        Text {
+                            visible: controller.selectedSpeechEngine === 1
+                            Layout.fillWidth: true
+                            text: qsTr("Experimental OpenAI-compatible /v1/audio/transcriptions endpoint. Only HTTP loopback is accepted; live preview is unavailable with an external process.")
+                            color: root.accent; font.pixelSize: 11; wrapMode: Text.Wrap
+                        }
+
                         ColumnLayout {
                             Layout.fillWidth: true
                             spacing: 5
@@ -949,8 +970,9 @@ ApplicationWindow {
                         }
 
                         Item {
+                            visible: controller.selectedSpeechEngine === 0
                             Layout.fillWidth: true
-                            height: 56
+                            height: visible ? 56 : 0
                             Column {
                                 anchors.left: parent.left
                                 anchors.right: computeBackendSelector.left
@@ -978,10 +1000,11 @@ ApplicationWindow {
                             }
                         }
 
-                        Text { text: qsTr("Whisper models"); color: root.primaryText; font.pixelSize: 14; font.weight: Font.Medium }
+                        Text { visible: controller.selectedSpeechEngine === 0; text: qsTr("Whisper models"); color: root.primaryText; font.pixelSize: 14; font.weight: Font.Medium }
 
                         ColumnLayout {
                             id: modelList
+                            visible: controller.selectedSpeechEngine === 0
                             Layout.fillWidth: true
                             spacing: 8
                             Repeater {
@@ -1119,6 +1142,7 @@ ApplicationWindow {
                             }
                         }
                         Text {
+                            visible: controller.selectedSpeechEngine === 0
                             text: qsTr("One multilingual model works for every listed language. Downloads are stored locally and audio never leaves this computer.")
                             color: root.accent
                             font.pixelSize: 11

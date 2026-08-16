@@ -44,6 +44,12 @@ All notable changes to FluidVoice Linux are documented here. The project uses
   stable/beta update manifests, and keyless Sigstore signing of tagged release
   artifacts through GitHub Actions. Automatic installation remains deliberately
   separate from update discovery.
+- Added an experimental local speech-server engine using the standard
+  `/v1/audio/transcriptions` contract. It accepts only HTTP loopback endpoints,
+  caps dictation and response sizes, sends bounded PCM WAV after recording,
+  and leaves built-in Whisper as the supported default. This provides a safe
+  integration boundary for user-managed Linux ASR runtimes without bundling
+  upstream's Apple-only CoreML/FluidAudio implementations.
 - Added AI enhancement analytics for usage, success/fallback rate, average
   latency, and provider/model activity.
 - Added per-entry raw/final visual diffs, word and character deltas, and copy

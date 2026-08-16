@@ -718,6 +718,8 @@ name = "fluidvoice-transcription"
 version = "0.4.0"
 dependencies = [
  "fluidvoice-audio",
+ "serde_json",
+ "ureq",
  "whisper-rs",
 ]
 

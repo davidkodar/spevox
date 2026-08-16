@@ -100,6 +100,9 @@ pub mod ffi {
         #[qproperty(bool, local_api_enabled, cxx_name = "localApiEnabled")]
         #[qproperty(i32, local_api_port, cxx_name = "localApiPort")]
         #[qproperty(QString, local_api_status, cxx_name = "localApiStatus")]
+        #[qproperty(QStringList, speech_engines, cxx_name = "speechEngines")]
+        #[qproperty(i32, selected_speech_engine, cxx_name = "selectedSpeechEngine")]
+        #[qproperty(QString, local_speech_url, cxx_name = "localSpeechUrl")]
         type FluidVoiceController = super::FluidVoiceControllerRust;
 
         #[qinvokable]
@@ -372,6 +375,14 @@ pub mod ffi {
         #[qinvokable]
         #[cxx_name = "copyLocalApiToken"]
         fn copy_local_api_token(self: Pin<&mut Self>);
+
+        #[qinvokable]
+        #[cxx_name = "selectSpeechEngine"]
+        fn select_speech_engine(self: Pin<&mut Self>, index: i32);
+
+        #[qinvokable]
+        #[cxx_name = "updateLocalSpeechUrl"]
+        fn update_local_speech_url(self: Pin<&mut Self>, url: &QString);
     }
 
     impl cxx_qt::Threading for FluidVoiceController {}
@@ -398,7 +409,7 @@ use fluidvoice_portal::{
     ActiveApplication, GlobalShortcutBinding, GlobalShortcutConfig, GlobalShortcutEvent,
     TextInputSession, run_profile_bridge,
 };
-use fluidvoice_transcription::{TranscriptionConfig, WhisperTranscriber};
+use fluidvoice_transcription::{LocalSpeechServer, TranscriptionConfig, WhisperTranscriber};
 use tokio::sync::mpsc;
 
 use crate::ai::{self, AiConfig};
@@ -501,6 +512,9 @@ pub struct FluidVoiceControllerRust {
     local_api_enabled: bool,
     local_api_port: i32,
     local_api_status: QString,
+    speech_engines: QStringList,
+    selected_speech_engine: i32,
+    local_speech_url: QString,
 }
 
 impl Default for FluidVoiceControllerRust {
@@ -758,6 +772,12 @@ impl Default for FluidVoiceControllerRust {
             } else {
                 "Off · no local port is open".to_owned()
             }),
+            speech_engines: ["Built-in Whisper", "Local speech server (experimental)"]
+                .into_iter()
+                .map(QString::from)
+                .collect(),
+            selected_speech_engine: preferences.speech_engine.clamp(0, 1),
+            local_speech_url: QString::from(&preferences.local_speech_url),
         }
     }
 }
@@ -2274,6 +2294,32 @@ impl ffi::FluidVoiceController {
             }));
     }
 
+    pub fn select_speech_engine(mut self: Pin<&mut Self>, index: i32) {
+        self.as_mut().set_selected_speech_engine(index.clamp(0, 1));
+        self.as_ref().rust().save_preferences();
+        self.as_mut().set_status_text(QString::from(if index == 1 {
+            "Experimental local speech server selected · audio stays on loopback"
+        } else {
+            "Built-in Whisper selected"
+        }));
+    }
+
+    pub fn update_local_speech_url(mut self: Pin<&mut Self>, url: &QString) {
+        let url = url.to_string();
+        match LocalSpeechServer::new(&url) {
+            Ok(_) => {
+                self.as_mut().set_local_speech_url(QString::from(&url));
+                self.as_ref().rust().save_preferences();
+                self.as_mut().set_status_text(QString::from(
+                    "Local speech endpoint saved · microphone audio cannot leave loopback",
+                ));
+            }
+            Err(error) => self
+                .as_mut()
+                .set_status_text(QString::from(&format!("Speech endpoint rejected: {error}"))),
+        }
+    }
+
     pub fn add_dictionary_term(mut self: Pin<&mut Self>, term: &QString) {
         let term = term.to_string().trim().to_owned();
         if term.is_empty() {
@@ -2748,6 +2794,8 @@ impl ffi::FluidVoiceController {
         let language = selected_language_code(self.as_ref().rust());
         let use_gpu = self.as_ref().rust().selected_compute_backend != 2;
         let model = selected_model_path(self.as_ref().rust());
+        let speech_engine = *self.as_ref().selected_speech_engine();
+        let local_speech_url = self.as_ref().local_speech_url().to_string();
         let ai_config = self.as_ref().rust().ai_config();
         let retain_audio = *self.as_ref().audio_history_enabled();
         let audio_budget_bytes =
@@ -2776,6 +2824,9 @@ impl ffi::FluidVoiceController {
             let preview_model = model.clone();
             let preview_language = language.clone();
             let preview_worker = std::thread::spawn(move || {
+                if speech_engine == 1 {
+                    return;
+                }
                 let Some(model) = preview_model else { return };
                 let automatic_language = preview_language.is_empty();
                 let config = TranscriptionConfig::default()
@@ -2879,41 +2930,52 @@ impl ffi::FluidVoiceController {
             let asr_audio = mono.amplified(combined_gain);
             let asr_peak = asr_audio.peak();
             let diagnostic_dump = dump_asr_audio(&asr_audio);
-            let transcription = model
-                .as_deref()
-                .ok_or_else(|| "No Whisper model is installed".to_owned())
-                .and_then(|model| {
-                    // The current preview UI is English-first. Automatic language
-                    // detection can classify short utterances correctly yet return
-                    // no segments; the fixed language path is reliable for the same
-                    // captured buffer and avoids wasting audio on detection.
-                    let config = TranscriptionConfig::default()
-                        .with_language(Some(language))
-                        .with_gpu(use_gpu);
-                    let first = WhisperTranscriber::load(model, config.clone())
-                        .map_err(|error| error.to_string())?
-                        .transcribe(&asr_audio)
-                        .map_err(|error| error.to_string())?;
-
-                    // A tiny Whisper model can occasionally return a one-word
-                    // hallucination after the live-preview context has been busy.
-                    // The captured buffer is still valid, so retry suspicious
-                    // multi-second results with a completely fresh context and use
-                    // the richer deterministic decode. This happens before either
-                    // the UI or clipboard observes the result.
-                    if suspicious_single_word(&first.text, duration) {
-                        let retry = WhisperTranscriber::load(model, config)
+            let transcription = if speech_engine == 1 {
+                LocalSpeechServer::new(&local_speech_url)
+                    .and_then(|server| {
+                        server.transcribe(
+                            &asr_audio,
+                            (!language.is_empty()).then_some(language.as_str()),
+                        )
+                    })
+                    .map_err(|error| error.to_string())
+            } else {
+                model
+                    .as_deref()
+                    .ok_or_else(|| "No Whisper model is installed".to_owned())
+                    .and_then(|model| {
+                        // The current preview UI is English-first. Automatic language
+                        // detection can classify short utterances correctly yet return
+                        // no segments; the fixed language path is reliable for the same
+                        // captured buffer and avoids wasting audio on detection.
+                        let config = TranscriptionConfig::default()
+                            .with_language(Some(language))
+                            .with_gpu(use_gpu);
+                        let first = WhisperTranscriber::load(model, config.clone())
                             .map_err(|error| error.to_string())?
                             .transcribe(&asr_audio)
                             .map_err(|error| error.to_string())?;
-                        if retry.text.split_whitespace().count()
-                            > first.text.split_whitespace().count()
-                        {
-                            return Ok(retry);
+
+                        // A tiny Whisper model can occasionally return a one-word
+                        // hallucination after the live-preview context has been busy.
+                        // The captured buffer is still valid, so retry suspicious
+                        // multi-second results with a completely fresh context and use
+                        // the richer deterministic decode. This happens before either
+                        // the UI or clipboard observes the result.
+                        if suspicious_single_word(&first.text, duration) {
+                            let retry = WhisperTranscriber::load(model, config)
+                                .map_err(|error| error.to_string())?
+                                .transcribe(&asr_audio)
+                                .map_err(|error| error.to_string())?;
+                            if retry.text.split_whitespace().count()
+                                > first.text.split_whitespace().count()
+                            {
+                                return Ok(retry);
+                            }
                         }
-                    }
-                    Ok(first)
-                });
+                        Ok(first)
+                    })
+            };
             let enhancement_started = Instant::now();
             let enhancement = transcription.as_ref().ok().and_then(|transcript| {
                 if ai_config.enabled {
@@ -3113,6 +3175,8 @@ impl FluidVoiceControllerRust {
             audio_history_budget_mb: self.audio_history_budget_mb,
             local_api_enabled: self.local_api_enabled,
             local_api_port: self.local_api_port,
+            speech_engine: self.selected_speech_engine,
+            local_speech_url: self.local_speech_url.to_string(),
         };
         if let Err(error) = preferences.save() {
             eprintln!("Failed to save preferences: {error}");
@@ -3169,6 +3233,8 @@ struct Preferences {
     audio_history_budget_mb: i32,
     local_api_enabled: bool,
     local_api_port: i32,
+    speech_engine: i32,
+    local_speech_url: String,
 }
 
 #[derive(Clone)]
@@ -3265,6 +3331,8 @@ impl Default for Preferences {
             audio_history_budget_mb: 500,
             local_api_enabled: false,
             local_api_port: 43_128,
+            speech_engine: 0,
+            local_speech_url: "http://127.0.0.1:8080".to_owned(),
         }
     }
 }
@@ -3331,6 +3399,10 @@ impl Preferences {
                 preferences.local_api_enabled = value == "true";
             } else if let Some(value) = line.strip_prefix("local_api_port=") {
                 preferences.local_api_port = value.parse().unwrap_or(43_128).clamp(1024, 65_535);
+            } else if let Some(value) = line.strip_prefix("speech_engine=") {
+                preferences.speech_engine = value.parse().unwrap_or(0).clamp(0, 1);
+            } else if let Some(value) = line.strip_prefix("local_speech_url=") {
+                preferences.local_speech_url = unescape_setting(value);
             }
         }
         preferences
@@ -3345,7 +3417,7 @@ impl Preferences {
         fs::write(
             path,
             format!(
-                "language={}\nmodel={}\nshortcut={}\ninput={}\ngain_db={}\noverlay_enabled={}\noverlay_size={}\noverlay_position={}\noverlay_show_text={}\noverlay_opacity={}\ncommand_mode_enabled={}\ncompute_backend={}\ntheme={}\naccent={}\nai_enabled={}\nai_provider={}\nai_model={}\nai_base_url={}\nai_prompt={}\nai_local_only={}\nauto_profiles_enabled={}\ntyping_wpm={}\nskip_weekends={}\naudio_history_enabled={}\naudio_history_budget_mb={}\nlocal_api_enabled={}\nlocal_api_port={}\n",
+                "language={}\nmodel={}\nshortcut={}\ninput={}\ngain_db={}\noverlay_enabled={}\noverlay_size={}\noverlay_position={}\noverlay_show_text={}\noverlay_opacity={}\ncommand_mode_enabled={}\ncompute_backend={}\ntheme={}\naccent={}\nai_enabled={}\nai_provider={}\nai_model={}\nai_base_url={}\nai_prompt={}\nai_local_only={}\nauto_profiles_enabled={}\ntyping_wpm={}\nskip_weekends={}\naudio_history_enabled={}\naudio_history_budget_mb={}\nlocal_api_enabled={}\nlocal_api_port={}\nspeech_engine={}\nlocal_speech_url={}\n",
                 self.language,
                 self.model.display(),
                 self.shortcut,
@@ -3372,7 +3444,9 @@ impl Preferences {
                 self.audio_history_enabled,
                 self.audio_history_budget_mb,
                 self.local_api_enabled,
-                self.local_api_port
+                self.local_api_port,
+                self.speech_engine,
+                escape_setting(&self.local_speech_url)
             ),
         )
         .map_err(|error| error.to_string())
