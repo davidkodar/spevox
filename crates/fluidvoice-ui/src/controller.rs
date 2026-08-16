@@ -258,7 +258,12 @@ impl ffi::FluidVoiceController {
             let asr_peak = asr_audio.peak();
             let diagnostic_dump = dump_asr_audio(&asr_audio);
             let transcription = find_whisper_model().and_then(|model| {
-                WhisperTranscriber::load(&model, TranscriptionConfig::default())
+                // The current preview UI is English-first. Automatic language
+                // detection can classify short utterances correctly yet return
+                // no segments; the fixed language path is reliable for the same
+                // captured buffer and avoids wasting audio on detection.
+                let config = TranscriptionConfig::default().with_language(Some("en".to_owned()));
+                WhisperTranscriber::load(&model, config)
                     .map_err(|error| error.to_string())?
                     .transcribe(&asr_audio)
                     .map_err(|error| error.to_string())
