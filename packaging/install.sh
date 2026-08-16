@@ -27,6 +27,8 @@ fi
 "${installer[@]}" -Dm644 data/io.github.davidkodar.FluidVoiceLinux.metainfo.xml "$destination$prefix/share/metainfo/io.github.davidkodar.FluidVoiceLinux.metainfo.xml"
 "${installer[@]}" -Dm644 crates/fluidvoice-ui/assets/fluidvoice-app.png "$destination$prefix/share/icons/hicolor/256x256/apps/io.github.davidkodar.FluidVoiceLinux.png"
 "${installer[@]}" -Dm644 LICENSE "$destination$prefix/share/licenses/fluidvoice-linux/LICENSE"
+"${installer[@]}" -Dm644 packaging/kwin-script/metadata.json "$destination$prefix/share/kwin/scripts/fluidvoiceprofiles/metadata.json"
+"${installer[@]}" -Dm644 packaging/kwin-script/contents/code/main.js "$destination$prefix/share/kwin/scripts/fluidvoiceprofiles/contents/code/main.js"
 
 if [[ -z "$destination" ]] && command -v kbuildsycoca6 >/dev/null; then
   kbuildsycoca6 --noincremental

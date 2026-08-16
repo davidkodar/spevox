@@ -1,0 +1,17 @@
+{
+  "KPackageStructure": "KWin/Script",
+  "KPlugin": {
+    "Authors": [
+      {
+        "Email": "185648273+davidkodar@users.noreply.github.com",
+        "Name": "David Bolin"
+      }
+    ],
+    "Description": "Opt-in active-application bridge for FluidVoice profiles",
+    "Icon": "io.github.davidkodar.FluidVoiceLinux",
+    "Id": "fluidvoiceprofiles",
+    "License": "GPL-3.0-or-later",
+    "Name": "FluidVoice Application Profiles"
+  },
+  "X-Plasma-API": "javascript"
+}

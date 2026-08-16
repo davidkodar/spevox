@@ -9,6 +9,8 @@ files=(
   "$destination$prefix/share/metainfo/io.github.davidkodar.FluidVoiceLinux.metainfo.xml"
   "$destination$prefix/share/icons/hicolor/256x256/apps/io.github.davidkodar.FluidVoiceLinux.png"
   "$destination$prefix/share/licenses/fluidvoice-linux/LICENSE"
+  "$destination$prefix/share/kwin/scripts/fluidvoiceprofiles/metadata.json"
+  "$destination$prefix/share/kwin/scripts/fluidvoiceprofiles/contents/code/main.js"
 )
 
 remover=(rm -f)

@@ -42,6 +42,10 @@ fi
 "${install_command[@]}" -Dm644 crates/fluidvoice-ui/assets/fluidvoice-app.png \
   "$destination$prefix/share/icons/hicolor/256x256/apps/io.github.davidkodar.FluidVoiceLinux.png"
 "${install_command[@]}" -Dm644 LICENSE "$destination$prefix/share/licenses/fluidvoice-linux/LICENSE"
+"${install_command[@]}" -Dm644 packaging/kwin-script/metadata.json \
+  "$destination$prefix/share/kwin/scripts/fluidvoiceprofiles/metadata.json"
+"${install_command[@]}" -Dm644 packaging/kwin-script/contents/code/main.js \
+  "$destination$prefix/share/kwin/scripts/fluidvoiceprofiles/contents/code/main.js"
 
 if [[ -z "$destination" ]]; then
   # KDE gives per-user desktop entries priority. Replace the early development

@@ -88,6 +88,9 @@ pub mod ffi {
         #[qproperty(i32, selected_ai_profile, cxx_name = "selectedAiProfile")]
         #[qproperty(QString, ai_profile_prompt, cxx_name = "aiProfilePrompt")]
         #[qproperty(QString, ai_profile_name, cxx_name = "aiProfileName")]
+        #[qproperty(QString, ai_profile_match, cxx_name = "aiProfileMatch")]
+        #[qproperty(bool, auto_profiles_enabled, cxx_name = "autoProfilesEnabled")]
+        #[qproperty(QString, active_application, cxx_name = "activeApplication")]
         #[qproperty(QString, app_version, cxx_name = "appVersion")]
         #[qproperty(QString, update_status, cxx_name = "updateStatus")]
         type FluidVoiceController = super::FluidVoiceControllerRust;
@@ -296,7 +299,16 @@ pub mod ffi {
 
         #[qinvokable]
         #[cxx_name = "saveAiProfile"]
-        fn save_ai_profile(self: Pin<&mut Self>, name: &QString, prompt: &QString);
+        fn save_ai_profile(
+            self: Pin<&mut Self>,
+            name: &QString,
+            prompt: &QString,
+            application_match: &QString,
+        );
+
+        #[qinvokable]
+        #[cxx_name = "updateAutoProfilesEnabled"]
+        fn update_auto_profiles_enabled(self: Pin<&mut Self>, enabled: bool);
 
         #[qinvokable]
         #[cxx_name = "deleteAiProfile"]
@@ -340,7 +352,8 @@ use cxx_qt_lib::{QString, QStringList};
 use fluidvoice_audio::{AudioBuffer, AudioDevice, CaptureStopToken, PipeWireCapture};
 use fluidvoice_delivery::ClipboardDelivery;
 use fluidvoice_portal::{
-    GlobalShortcutBinding, GlobalShortcutConfig, GlobalShortcutEvent, TextInputSession,
+    ActiveApplication, GlobalShortcutBinding, GlobalShortcutConfig, GlobalShortcutEvent,
+    TextInputSession, run_profile_bridge,
 };
 use fluidvoice_transcription::{TranscriptionConfig, WhisperTranscriber};
 use tokio::sync::mpsc;
@@ -428,6 +441,9 @@ pub struct FluidVoiceControllerRust {
     selected_ai_profile: i32,
     ai_profile_prompt: QString,
     ai_profile_name: QString,
+    ai_profile_match: QString,
+    auto_profiles_enabled: bool,
+    active_application: QString,
     ai_profiles: Vec<AiProfile>,
     last_write_instruction: String,
     app_version: QString,
@@ -666,6 +682,9 @@ impl Default for FluidVoiceControllerRust {
             selected_ai_profile: 0,
             ai_profile_prompt: QString::default(),
             ai_profile_name: QString::default(),
+            ai_profile_match: QString::default(),
+            auto_profiles_enabled: preferences.auto_profiles_enabled,
+            active_application: QString::from("KWin bridge has not reported an application."),
             ai_profiles,
             last_write_instruction: String::new(),
             app_version: QString::from(env!("CARGO_PKG_VERSION")),
@@ -697,6 +716,12 @@ impl ffi::FluidVoiceController {
             runtime.block_on(async move {
                 let mut text_input = None;
                 let mut requested_shortcut = shortcut;
+                let (profile_sender, mut profile_events) = mpsc::channel(16);
+                tokio::spawn(async move {
+                    if let Err(error) = run_profile_bridge(profile_sender).await {
+                        eprintln!("Application profile bridge stopped: {error}");
+                    }
+                });
                 loop {
                     let config = match GlobalShortcutConfig::new(
                         "dictate_hold",
@@ -837,6 +862,14 @@ impl ffi::FluidVoiceController {
                                     reply.send(portal).ok();
                                 }
                                 None => break,
+                            },
+                            application = profile_events.recv() => match application {
+                                Some(application) => {
+                                    qt_thread.queue(move |mut controller| {
+                                        controller.as_mut().apply_active_application(application);
+                                    }).ok();
+                                }
+                                None => {}
                             }
                         }
                     }
@@ -1722,19 +1755,27 @@ impl ffi::FluidVoiceController {
         {
             return;
         }
-        let (name, prompt) = {
+        let (name, prompt, application_match) = {
             let controller = self.as_ref();
             let profile = usize::try_from(index - 1)
                 .ok()
                 .and_then(|value| controller.rust().ai_profiles.get(value));
             profile.map_or_else(
-                || (String::new(), String::new()),
-                |profile| (profile.name.clone(), profile.prompt.clone()),
+                || (String::new(), String::new(), String::new()),
+                |profile| {
+                    (
+                        profile.name.clone(),
+                        profile.prompt.clone(),
+                        profile.application_match.clone(),
+                    )
+                },
             )
         };
         self.as_mut().set_selected_ai_profile(index);
         self.as_mut().set_ai_profile_name(QString::from(&name));
         self.as_mut().set_ai_profile_prompt(QString::from(&prompt));
+        self.as_mut()
+            .set_ai_profile_match(QString::from(&application_match));
         self.as_mut().set_ai_status(QString::from(if index == 0 {
             "Default cleanup prompt selected"
         } else {
@@ -1742,9 +1783,15 @@ impl ffi::FluidVoiceController {
         }));
     }
 
-    pub fn save_ai_profile(mut self: Pin<&mut Self>, name: &QString, prompt: &QString) {
+    pub fn save_ai_profile(
+        mut self: Pin<&mut Self>,
+        name: &QString,
+        prompt: &QString,
+        application_match: &QString,
+    ) {
         let name = name.to_string().trim().to_owned();
         let prompt = prompt.to_string().trim().to_owned();
+        let application_match = application_match.to_string().trim().to_owned();
         if name.is_empty() || prompt.is_empty() {
             self.as_mut().set_ai_status(QString::from(
                 "Profile name and cleanup prompt are required",
@@ -1756,10 +1803,18 @@ impl ffi::FluidVoiceController {
             .iter()
             .position(|profile| profile.name.eq_ignore_ascii_case(&name))
         {
-            profiles[index] = AiProfile { name, prompt };
+            profiles[index] = AiProfile {
+                name,
+                prompt,
+                application_match,
+            };
             index
         } else {
-            profiles.push(AiProfile { name, prompt });
+            profiles.push(AiProfile {
+                name,
+                prompt,
+                application_match,
+            });
             profiles.len() - 1
         };
         if let Err(error) = save_ai_profiles(profiles) {
@@ -1774,12 +1829,15 @@ impl ffi::FluidVoiceController {
         let selected = i32::try_from(index + 1).unwrap_or(0);
         let selected_name = profiles[index].name.clone();
         let selected_prompt = profiles[index].prompt.clone();
+        let selected_match = profiles[index].application_match.clone();
         self.as_mut().set_ai_profile_names(names);
         self.as_mut().set_selected_ai_profile(selected);
         self.as_mut()
             .set_ai_profile_name(QString::from(&selected_name));
         self.as_mut()
             .set_ai_profile_prompt(QString::from(&selected_prompt));
+        self.as_mut()
+            .set_ai_profile_match(QString::from(&selected_match));
         self.as_mut()
             .set_ai_status(QString::from("Application profile saved"));
     }
@@ -1803,8 +1861,52 @@ impl ffi::FluidVoiceController {
         self.as_mut().set_selected_ai_profile(0);
         self.as_mut().set_ai_profile_name(QString::default());
         self.as_mut().set_ai_profile_prompt(QString::default());
+        self.as_mut().set_ai_profile_match(QString::default());
         self.as_mut()
             .set_ai_status(QString::from("Application profile deleted"));
+    }
+
+    pub fn update_auto_profiles_enabled(mut self: Pin<&mut Self>, enabled: bool) {
+        let script = configure_kwin_profile_script(enabled);
+        self.as_mut().set_auto_profiles_enabled(enabled);
+        self.as_ref().rust().save_preferences();
+        self.as_mut()
+            .set_ai_status(QString::from(if let Err(error) = script {
+                format!("Could not configure the FluidVoice KWin script: {error}")
+            } else if enabled {
+                "Automatic profiles enabled · switch applications to test matching".to_owned()
+            } else {
+                "Automatic profiles disabled · profile selection remains manual".to_owned()
+            }));
+    }
+
+    fn apply_active_application(mut self: Pin<&mut Self>, application: ActiveApplication) {
+        let label = if application.title.is_empty() {
+            application.resource_class.clone()
+        } else {
+            format!("{} · {}", application.resource_class, application.title)
+        };
+        self.as_mut().set_active_application(QString::from(&label));
+        if !*self.as_ref().auto_profiles_enabled() {
+            return;
+        }
+        let haystack =
+            format!("{}\n{}", application.resource_class, application.title).to_lowercase();
+        let matched = self
+            .as_ref()
+            .rust()
+            .ai_profiles
+            .iter()
+            .position(|profile| profile_matches_application(profile, &haystack));
+        if let Some(index) = matched {
+            let selected = i32::try_from(index + 1).unwrap_or(0);
+            self.as_mut().select_ai_profile(selected);
+            let name = self.as_ref().ai_profile_name().to_string();
+            self.as_mut().set_ai_status(QString::from(&format!(
+                "Automatically selected {name} for {}",
+                application.resource_class
+            )));
+        }
     }
 
     pub fn rewrite_selected_text(mut self: Pin<&mut Self>, instruction: &QString) {
@@ -2683,6 +2785,7 @@ impl FluidVoiceControllerRust {
             ai_base_url: self.ai_base_url.to_string(),
             ai_prompt: self.ai_prompt.to_string(),
             ai_local_only: self.ai_local_only,
+            auto_profiles_enabled: self.auto_profiles_enabled,
             audio_history_enabled: self.audio_history_enabled,
             audio_history_budget_mb: self.audio_history_budget_mb,
         };
@@ -2734,6 +2837,7 @@ struct Preferences {
     ai_base_url: String,
     ai_prompt: String,
     ai_local_only: bool,
+    auto_profiles_enabled: bool,
     audio_history_enabled: bool,
     audio_history_budget_mb: i32,
 }
@@ -2742,6 +2846,7 @@ struct Preferences {
 struct AiProfile {
     name: String,
     prompt: String,
+    application_match: String,
 }
 
 fn load_ai_profiles() -> Vec<AiProfile> {
@@ -2757,6 +2862,11 @@ fn load_ai_profiles() -> Vec<AiProfile> {
             Some(AiProfile {
                 name: value.get("name")?.as_str()?.to_owned(),
                 prompt: value.get("prompt")?.as_str()?.to_owned(),
+                application_match: value
+                    .get("application_match")
+                    .and_then(|value| value.as_str())
+                    .unwrap_or_default()
+                    .to_owned(),
             })
         })
         .filter(|profile| !profile.name.trim().is_empty() && !profile.prompt.trim().is_empty())
@@ -2766,7 +2876,13 @@ fn load_ai_profiles() -> Vec<AiProfile> {
 fn save_ai_profiles(profiles: &[AiProfile]) -> Result<(), String> {
     let values = profiles
         .iter()
-        .map(|profile| serde_json::json!({"name": profile.name, "prompt": profile.prompt}))
+        .map(|profile| {
+            serde_json::json!({
+                "name": profile.name,
+                "prompt": profile.prompt,
+                "application_match": profile.application_match
+            })
+        })
         .collect::<Vec<_>>();
     let path = ai_profiles_path();
     let parent = path
@@ -2778,6 +2894,16 @@ fn save_ai_profiles(profiles: &[AiProfile]) -> Result<(), String> {
         serde_json::to_string_pretty(&values).map_err(|error| error.to_string())?,
     )
     .map_err(|error| error.to_string())
+}
+
+fn profile_matches_application(profile: &AiProfile, lowercase_window_identity: &str) -> bool {
+    let matcher = profile.application_match.trim().to_lowercase();
+    !matcher.is_empty()
+        && matcher
+            .split(',')
+            .map(str::trim)
+            .filter(|part| !part.is_empty())
+            .any(|part| lowercase_window_identity.contains(part))
 }
 
 impl Default for Preferences {
@@ -2803,6 +2929,7 @@ impl Default for Preferences {
             ai_base_url: String::new(),
             ai_prompt: String::new(),
             ai_local_only: true,
+            auto_profiles_enabled: false,
             audio_history_enabled: false,
             audio_history_budget_mb: 500,
         }
@@ -2856,6 +2983,8 @@ impl Preferences {
                 preferences.ai_prompt = unescape_setting(value);
             } else if let Some(value) = line.strip_prefix("ai_local_only=") {
                 preferences.ai_local_only = value == "true";
+            } else if let Some(value) = line.strip_prefix("auto_profiles_enabled=") {
+                preferences.auto_profiles_enabled = value == "true";
             } else if let Some(value) = line.strip_prefix("audio_history_enabled=") {
                 preferences.audio_history_enabled = value == "true";
             } else if let Some(value) = line.strip_prefix("audio_history_budget_mb=") {
@@ -2875,7 +3004,7 @@ impl Preferences {
         fs::write(
             path,
             format!(
-                "language={}\nmodel={}\nshortcut={}\ninput={}\ngain_db={}\noverlay_enabled={}\noverlay_size={}\noverlay_position={}\noverlay_show_text={}\noverlay_opacity={}\ncommand_mode_enabled={}\ncompute_backend={}\ntheme={}\naccent={}\nai_enabled={}\nai_provider={}\nai_model={}\nai_base_url={}\nai_prompt={}\nai_local_only={}\naudio_history_enabled={}\naudio_history_budget_mb={}\n",
+                "language={}\nmodel={}\nshortcut={}\ninput={}\ngain_db={}\noverlay_enabled={}\noverlay_size={}\noverlay_position={}\noverlay_show_text={}\noverlay_opacity={}\ncommand_mode_enabled={}\ncompute_backend={}\ntheme={}\naccent={}\nai_enabled={}\nai_provider={}\nai_model={}\nai_base_url={}\nai_prompt={}\nai_local_only={}\nauto_profiles_enabled={}\naudio_history_enabled={}\naudio_history_budget_mb={}\n",
                 self.language,
                 self.model.display(),
                 self.shortcut,
@@ -2896,6 +3025,7 @@ impl Preferences {
                 escape_setting(&self.ai_base_url),
                 escape_setting(&self.ai_prompt),
                 self.ai_local_only,
+                self.auto_profiles_enabled,
                 self.audio_history_enabled,
                 self.audio_history_budget_mb
             ),
@@ -2948,6 +3078,32 @@ impl DesktopAction {
             .map(|_| ())
             .map_err(|error| error.to_string())
     }
+}
+
+fn configure_kwin_profile_script(enabled: bool) -> Result<(), String> {
+    let value = if enabled { "true" } else { "false" };
+    let status = Command::new("kwriteconfig6")
+        .args([
+            "--file",
+            "kwinrc",
+            "--group",
+            "Plugins",
+            "--key",
+            "fluidvoiceprofilesEnabled",
+            value,
+        ])
+        .status()
+        .map_err(|error| format!("kwriteconfig6 is unavailable: {error}"))?;
+    if !status.success() {
+        return Err(format!("kwriteconfig6 exited with {status}"));
+    }
+    Command::new("qdbus6")
+        .args(["org.kde.KWin", "/KWin", "org.kde.KWin.reconfigure"])
+        .status()
+        .map_err(|error| format!("KWin could not reload its scripts: {error}"))?
+        .success()
+        .then_some(())
+        .ok_or_else(|| "KWin rejected the script reload request".to_owned())
 }
 
 fn parse_desktop_action(value: &str) -> Option<DesktopAction> {
@@ -4039,10 +4195,10 @@ mod tests {
     use std::{fs, time::Duration};
 
     use super::{
-        DesktopAction, asr_gain, decode_audio_file, decode_file_url, history_clipboard_text,
-        meter_level, parse_desktop_action, peak_db, process_transcript, supported_languages,
-        suspicious_single_word, valid_ollama_model_name, version_tuple, whisper_model_catalog,
-        write_history_export,
+        AiProfile, DesktopAction, asr_gain, decode_audio_file, decode_file_url,
+        history_clipboard_text, meter_level, parse_desktop_action, peak_db, process_transcript,
+        profile_matches_application, supported_languages, suspicious_single_word,
+        valid_ollama_model_name, version_tuple, whisper_model_catalog, write_history_export,
     };
 
     #[test]
@@ -4051,6 +4207,27 @@ mod tests {
         assert!((meter_level(0.01) - 1.0 / 3.0).abs() < 0.001);
         assert_eq!(meter_level(1.0), 1.0);
         assert_eq!(meter_level(f32::NAN), 0.0);
+    }
+
+    #[test]
+    fn matches_application_profiles_by_class_or_title_fragments() {
+        let profile = AiProfile {
+            name: "Development".into(),
+            prompt: "Keep code identifiers exact".into(),
+            application_match: "org.kde.konsole, visual studio code".into(),
+        };
+        assert!(profile_matches_application(
+            &profile,
+            "org.kde.konsole\nproject shell"
+        ));
+        assert!(profile_matches_application(
+            &profile,
+            "code\nvisual studio code"
+        ));
+        assert!(!profile_matches_application(
+            &profile,
+            "org.mozilla.firefox\nnews"
+        ));
     }
 
     #[test]

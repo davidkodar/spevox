@@ -119,7 +119,7 @@ usable but does not yet match the depth of the current macOS implementation.
 | File transcription | Partial | Available | Linux accepts MP3, FLAC, Ogg/Opus, M4A/AAC, WebM, MP4, and varied WAV encodings through FFmpeg with a two-hour decoded-audio safety limit; meeting workflows remain planned. |
 | Transcript history | Partial | Available | Linux provides search, timestamps, raw/final visual diffs, change counts, copy/undo actions, optional retained audio, AI metadata, word counts, and JSON/CSV/ZIP export; app/window metadata and feedback reports remain missing. |
 | Usage statistics | Partial | Available | Linux provides today/all-time totals, estimated time saved, streaks, averages, a seven-day chart, AI enhancement rate, success/fallback rate, latency, and provider/model activity; editable typing speed, 30-day charts, milestones, and records are still missing. |
-| Per-application configuration | Partial | Available | Linux provides persistent named prompt profiles with explicit selection; automatic focused-app matching is unavailable to ordinary Plasma Wayland clients. |
+| Per-application configuration | Available | Available | Linux provides persistent named prompt profiles and opt-in automatic matching through a packaged KWin script. Only application class and window title cross the local session bus; the bridge is disabled by default. |
 | Audio recording history | Available | Available | Optional and off by default; Linux retains local mono WAV recordings within a configurable budget, supports playback and deletion, and exports audio plus metadata as ZIP. |
 | Adaptive themes and accents | Available | Available | System/KDE defaults plus explicit FluidVoice themes and colors. |
 | Tray/menu-bar integration | Available | Available | Plasma tray is the Linux equivalent of the macOS menu bar item. |
@@ -168,6 +168,13 @@ stored through the desktop Secret Service using `secret-tool`; they are never
 written to `settings.conf`. If enhancement is unavailable or fails, FluidVoice
 delivers the unenhanced transcript. Provider responses are time-bounded,
 size-limited, and transient failures are retried before fallback.
+
+Automatic application profiles are also disabled by default. The installer
+ships `fluidvoiceprofiles`, a small KWin script, but it is enabled only when the
+user turns on **Automatic KWin profile selection**. KWin then reports the active
+application class and window title to FluidVoice's session-local D-Bus endpoint.
+Profile rules use comma-separated, case-insensitive fragments; blank rules stay
+manual-only. Disabling the option disables the KWin script again.
 
 ## GPU acceleration
 

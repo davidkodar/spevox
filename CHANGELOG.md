@@ -18,6 +18,10 @@ All notable changes to FluidVoice Linux are documented here. The project uses
 - Made Wayland text delivery recover from stale keyboard-portal sessions,
   report direct-paste versus clipboard-only outcomes, and added non-destructive
   in-app and CLI delivery diagnostics with actionable Plasma error details.
+- Added opt-in automatic AI profile selection through a packaged GPLv3 KWin
+  script and local session-bus bridge. Profiles match application-class or
+  title fragments; the bridge reports no document, transcript, or keyboard
+  content and remains disabled by default.
 - Added AI enhancement analytics for usage, success/fallback rate, average
   latency, and provider/model activity.
 - Added per-entry raw/final visual diffs, word and character deltas, and copy

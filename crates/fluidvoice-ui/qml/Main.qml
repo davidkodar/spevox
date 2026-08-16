@@ -1324,13 +1324,23 @@ ApplicationWindow {
                             currentIndex: controller.selectedAiProfile
                             onActivated: function(index) { controller.selectAiProfile(index) }
                         }
-                        Text { Layout.fillWidth: true; text: qsTr("Choose a profile before dictating in its target application. Plasma Wayland does not expose the focused application to ordinary clients, so profile selection is explicit and privacy-preserving."); color: root.secondaryText; font.pixelSize: 11; wrapMode: Text.Wrap }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            ColumnLayout { Layout.fillWidth: true; spacing: 2
+                                Text { text: qsTr("Automatic KWin profile selection"); color: root.primaryText; font.pixelSize: 12; font.weight: Font.Medium }
+                                Text { Layout.fillWidth: true; text: qsTr("Opt in to the packaged KWin bridge. It reports only application class and window title over the local session bus—never document or keyboard content."); color: root.secondaryText; font.pixelSize: 11; wrapMode: Text.Wrap }
+                            }
+                            Switch { checked: controller.autoProfilesEnabled; onToggled: controller.updateAutoProfilesEnabled(checked) }
+                        }
+                        Text { Layout.fillWidth: true; text: qsTr("Active application: %1").arg(controller.activeApplication); color: root.secondaryText; font.pixelSize: 11; wrapMode: Text.Wrap }
                         RowLayout {
                             Layout.fillWidth: true
                             TextField { id: aiProfileName; Layout.fillWidth: true; placeholderText: qsTr("Application or workflow name"); text: controller.aiProfileName }
-                            Button { text: qsTr("Save profile"); enabled: aiProfileName.text.trim().length > 0 && aiProfilePrompt.text.trim().length > 0; onClicked: controller.saveAiProfile(aiProfileName.text, aiProfilePrompt.text) }
+                            Button { text: qsTr("Save profile"); enabled: aiProfileName.text.trim().length > 0 && aiProfilePrompt.text.trim().length > 0; onClicked: controller.saveAiProfile(aiProfileName.text, aiProfilePrompt.text, aiProfileMatch.text) }
                             Button { text: qsTr("Delete"); enabled: controller.selectedAiProfile > 0; onClicked: controller.deleteAiProfile() }
                         }
+                        TextField { id: aiProfileMatch; Layout.fillWidth: true; placeholderText: qsTr("Application match, e.g. org.kde.konsole, firefox"); text: controller.aiProfileMatch }
+                        Text { Layout.fillWidth: true; text: qsTr("Comma-separated, case-insensitive fragments are matched against the KWin application class and title. Leave blank for a manual-only profile."); color: root.tertiaryText; font.pixelSize: 10; wrapMode: Text.Wrap }
                         TextArea {
                             id: aiProfilePrompt; Layout.fillWidth: true; implicitHeight: 100
                             placeholderText: qsTr("Profile-specific cleanup instructions")

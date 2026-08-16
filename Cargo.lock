@@ -710,6 +710,7 @@ dependencies = [
  "ashpd",
  "futures-util",
  "tokio",
+ "zbus",
 ]
 
 [[package]]
