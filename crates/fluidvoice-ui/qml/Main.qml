@@ -192,7 +192,7 @@ ApplicationWindow {
                         { "name": qsTr("Stats"), "symbol": "▥", "page": 7 },
                         { "header": true, "name": qsTr("HELP") },
                         { "name": qsTr("Getting Started"), "symbol": "⌂", "page": 8 },
-                        { "name": qsTr("Change logs"), "symbol": "⌕", "page": 9 },
+                        { "name": qsTr("Change logs"), "symbol": "≡", "page": 9 },
                         { "name": qsTr("Feedback"), "symbol": "✉", "page": 10 }
                     ]
                     delegate: Rectangle {
@@ -257,7 +257,7 @@ ApplicationWindow {
 
                 Text {
                     Layout.alignment: Qt.AlignHCenter
-                    text: "Unofficial Linux port · 0.1.0"
+                    text: qsTr("Unofficial Linux port · %1").arg(controller.appVersion)
                     color: root.tertiaryText
                     font.pixelSize: 11
                 }
@@ -1037,8 +1037,14 @@ ApplicationWindow {
                     Text { text: root.destinationDescriptions[9]; color: root.secondaryText; font.pixelSize: 14 }
                     Rectangle { Layout.fillWidth: true; implicitHeight: changeContent.implicitHeight + 32; radius: 16; color: root.panel; border.color: root.hairline
                         ColumnLayout { id: changeContent; anchors.fill: parent; anchors.margins: 16; spacing: 10
-                            Text { text: qsTr("0.1.0 · Private preview"); color: root.primaryText; font.pixelSize: 15; font.weight: Font.DemiBold }
-                            Text { Layout.fillWidth: true; text: qsTr("Native KDE Wayland dictation, PipeWire microphone selection, local Whisper models, language selection, live overlay, model management, custom dictionary, formatting commands, WAV transcription, history, and statistics."); color: root.secondaryText; font.pixelSize: 13; wrapMode: Text.Wrap }
+                            Text { text: qsTr("%1 · Current private preview").arg(controller.appVersion); color: root.primaryText; font.pixelSize: 15; font.weight: Font.DemiBold }
+                            Text { text: qsTr("NEW"); color: root.accent; font.pixelSize: 11; font.weight: Font.DemiBold }
+                            Text { Layout.fillWidth: true; text: qsTr("• Vulkan GPU acceleration with automatic CPU fallback\n• KDE system, FluidVoice Dark, and FluidVoice Light themes\n• KDE and selectable FluidVoice accent colors\n• Upstream-style grouped navigation and consistent settings layouts"); color: root.secondaryText; font.pixelSize: 13; lineHeight: 1.25; wrapMode: Text.Wrap }
+                            Text { text: qsTr("FEATURES"); color: root.accent; font.pixelSize: 11; font.weight: Font.DemiBold; Layout.topMargin: 4 }
+                            Text { Layout.fillWidth: true; text: qsTr("• Downloadable and selectable multilingual Whisper models\n• Automatic or fixed-language transcription\n• Persistent custom dictionary and spoken formatting commands\n• Local WAV file transcription, history, statistics, and onboarding\n• Native Plasma tray, global shortcut, live transcript overlay, and Wayland delivery"); color: root.secondaryText; font.pixelSize: 13; lineHeight: 1.25; wrapMode: Text.Wrap }
+                            Rectangle { Layout.fillWidth: true; height: 1; color: root.hairline; Layout.topMargin: 4; Layout.bottomMargin: 4 }
+                            Text { text: qsTr("0.1.0 · Foundation preview"); color: root.primaryText; font.pixelSize: 14; font.weight: Font.DemiBold }
+                            Text { Layout.fillWidth: true; text: qsTr("Established the Rust/CXX-Qt application shell, PipeWire microphone capture, local whisper.cpp transcription, KDE Wayland global shortcut, clipboard recovery, and the first macOS-inspired recording overlay."); color: root.secondaryText; font.pixelSize: 13; wrapMode: Text.Wrap }
                         }
                     }
                 }

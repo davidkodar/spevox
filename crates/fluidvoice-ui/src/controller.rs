@@ -54,6 +54,7 @@ pub mod ffi {
         #[qproperty(i32, selected_theme, cxx_name = "selectedTheme")]
         #[qproperty(QStringList, accent_options, cxx_name = "accentOptions")]
         #[qproperty(i32, selected_accent, cxx_name = "selectedAccent")]
+        #[qproperty(QString, app_version, cxx_name = "appVersion")]
         type FluidVoiceController = super::FluidVoiceControllerRust;
 
         #[qinvokable]
@@ -212,6 +213,7 @@ pub struct FluidVoiceControllerRust {
     selected_theme: i32,
     accent_options: QStringList,
     selected_accent: i32,
+    app_version: QString,
 }
 
 impl Default for FluidVoiceControllerRust {
@@ -338,6 +340,7 @@ impl Default for FluidVoiceControllerRust {
                 .map(QString::from)
                 .collect(),
             selected_accent: preferences.accent.clamp(0, 3),
+            app_version: QString::from(env!("CARGO_PKG_VERSION")),
         }
     }
 }

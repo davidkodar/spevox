@@ -5,6 +5,9 @@
   <summary>Private, local voice dictation for KDE Plasma</summary>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>GPL-3.0-only</project_license>
+  <developer id="github.com/davidkodar"><name>David Bolin</name></developer>
+  <url type="homepage">https://github.com/davidkodar/fluidvoice-linux</url>
+  <url type="bugtracker">https://github.com/davidkodar/fluidvoice-linux/issues</url>
   <description>
     <p>FluidVoice Linux provides local Whisper speech recognition, a global hold-to-dictate shortcut, and Wayland-aware text delivery for KDE Plasma.</p>
   </description>
@@ -12,4 +15,12 @@
   <provides><binary>fluidvoice-ui</binary></provides>
   <categories><category>Utility</category><category>Accessibility</category></categories>
   <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="0.2.0" date="2026-08-16">
+      <description><p>Adds Vulkan acceleration, KDE-aware appearance settings, upstream-style navigation, model management, and local productivity features.</p></description>
+    </release>
+    <release version="0.1.0" date="2026-08-15">
+      <description><p>Initial private preview with native KDE Wayland dictation, PipeWire capture, local Whisper transcription, and clipboard delivery.</p></description>
+    </release>
+  </releases>
 </component>
