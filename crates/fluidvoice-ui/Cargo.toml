@@ -16,6 +16,7 @@ fluidvoice-portal = { path = "../fluidvoice-portal" }
 fluidvoice-transcription = { path = "../fluidvoice-transcription" }
 hound = "3.5.1"
 tokio = { version = "1.53.1", features = ["macros", "rt", "sync"] }
+ureq = { version = "3.1.4", default-features = false, features = ["rustls"] }
 
 [build-dependencies]
 cxx-qt-build = { version = "0.9.1", features = ["link_qt_object_files"] }

@@ -374,47 +374,109 @@ ApplicationWindow {
 
                 Rectangle {
                     Layout.fillWidth: true
-                    height: 176
+                    implicitHeight: speechEngineColumn.implicitHeight + 32
                     radius: 16
                     color: root.panel
                     border.color: root.hairline
 
                     ColumnLayout {
+                        id: speechEngineColumn
                         anchors.fill: parent
                         anchors.margins: 16
                         spacing: 12
                         Text { text: qsTr("SPEECH ENGINE"); color: root.tertiaryText; font.pixelSize: 11; font.weight: Font.Medium }
-                        RowLayout {
+
+                        ColumnLayout {
                             Layout.fillWidth: true
-                            spacing: 14
-                            ColumnLayout {
+                            spacing: 5
+                            Text { text: qsTr("Language"); color: root.primaryText; font.pixelSize: 14; font.weight: Font.Medium }
+                            ComboBox {
                                 Layout.fillWidth: true
-                                Text { text: qsTr("Language"); color: root.primaryText; font.pixelSize: 13; font.weight: Font.Medium }
-                                ComboBox {
-                                    Layout.fillWidth: true
-                                    model: controller.languages
-                                    currentIndex: controller.selectedLanguage
-                                    enabled: !controller.recording && !controller.transcribing
-                                    onActivated: function(index) { controller.selectLanguage(index) }
-                                }
+                                model: controller.languages
+                                currentIndex: controller.selectedLanguage
+                                enabled: !controller.recording && !controller.transcribing
+                                onActivated: function(index) { controller.selectLanguage(index) }
                             }
-                            ColumnLayout {
-                                Layout.fillWidth: true
-                                Text { text: qsTr("Whisper model"); color: root.primaryText; font.pixelSize: 13; font.weight: Font.Medium }
-                                ComboBox {
+                        }
+
+                        Text { text: qsTr("Whisper models"); color: root.primaryText; font.pixelSize: 14; font.weight: Font.Medium }
+
+                        ColumnLayout {
+                            id: modelList
+                            Layout.fillWidth: true
+                            spacing: 8
+                            Repeater {
+                                model: controller.models
+                                delegate: Rectangle {
+                                    required property string modelData
+                                    required property int index
                                     Layout.fillWidth: true
-                                    model: controller.models
-                                    currentIndex: controller.selectedModel
-                                    enabled: !controller.recording && !controller.transcribing && count > 0
-                                    displayText: count > 0 ? currentText : qsTr("No model installed")
-                                    onActivated: function(index) { controller.selectModel(index) }
+                                    implicitHeight: 72
+                                    radius: 10
+                                    color: index === controller.selectedModel ? "#18292a" : "#19191b"
+                                    border.color: index === controller.selectedModel ? "#487778" : root.hairline
+
+                                    RowLayout {
+                                        anchors.fill: parent
+                                        anchors.margins: 12
+                                        spacing: 10
+                                        Rectangle {
+                                            Layout.preferredWidth: 8
+                                            Layout.preferredHeight: 8
+                                            radius: 4
+                                            color: index === controller.selectedModel ? root.accent : "#55555a"
+                                        }
+                                        ColumnLayout {
+                                            Layout.fillWidth: true
+                                            spacing: 3
+                                            RowLayout {
+                                                Layout.fillWidth: true
+                                                Text { text: modelData; color: root.primaryText; font.pixelSize: 13; font.weight: Font.Medium }
+                                                Text {
+                                                    text: controller.modelStates[index] || ""
+                                                    color: controller.modelStates[index] === "Downloaded" ? root.accent : root.tertiaryText
+                                                    font.pixelSize: 11
+                                                }
+                                            }
+                                            Text { text: controller.modelDetails[index] || ""; color: root.secondaryText; font.pixelSize: 11 }
+                                            ProgressBar {
+                                                Layout.fillWidth: true
+                                                visible: controller.downloadingModel === index
+                                                value: controller.modelDownloadProgress
+                                            }
+                                        }
+                                        Button {
+                                            text: controller.downloadingModel === index ? qsTr("Cancel")
+                                                  : controller.modelStates[index] !== "Downloaded" ? qsTr("Download")
+                                                  : index === controller.selectedModel ? qsTr("Active") : qsTr("Activate")
+                                            enabled: !controller.recording && !controller.transcribing
+                                                     && (controller.downloadingModel < 0 || controller.downloadingModel === index)
+                                                     && !(controller.modelStates[index] === "Downloaded" && index === controller.selectedModel)
+                                            onClicked: {
+                                                if (controller.downloadingModel === index)
+                                                    controller.cancelModelDownload()
+                                                else if (controller.modelStates[index] !== "Downloaded")
+                                                    controller.downloadModel(index)
+                                                else
+                                                    controller.selectModel(index)
+                                            }
+                                        }
+                                        Button {
+                                            text: qsTr("Delete")
+                                            visible: controller.modelStates[index] === "Downloaded" && index !== controller.selectedModel
+                                            enabled: controller.downloadingModel < 0 && !controller.recording && !controller.transcribing
+                                            onClicked: controller.deleteModel(index)
+                                        }
+                                    }
                                 }
                             }
                         }
                         Text {
-                            text: qsTr("Runs entirely on this computer. Audio and transcripts never leave FluidVoice.")
-                            color: "#7fd7a4"
+                            text: qsTr("One multilingual model works for every listed language. Downloads are stored locally and audio never leaves this computer.")
+                            color: root.accent
                             font.pixelSize: 11
+                            wrapMode: Text.Wrap
+                            Layout.fillWidth: true
                         }
                     }
                 }

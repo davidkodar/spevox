@@ -30,7 +30,11 @@ pub mod ffi {
         #[qproperty(QStringList, languages)]
         #[qproperty(i32, selected_language, cxx_name = "selectedLanguage")]
         #[qproperty(QStringList, models)]
+        #[qproperty(QStringList, model_states, cxx_name = "modelStates")]
+        #[qproperty(QStringList, model_details, cxx_name = "modelDetails")]
         #[qproperty(i32, selected_model, cxx_name = "selectedModel")]
+        #[qproperty(i32, downloading_model, cxx_name = "downloadingModel")]
+        #[qproperty(f32, model_download_progress, cxx_name = "modelDownloadProgress")]
         #[qproperty(QStringList, shortcuts)]
         #[qproperty(i32, selected_shortcut, cxx_name = "selectedShortcut")]
         type FluidVoiceController = super::FluidVoiceControllerRust;
@@ -60,6 +64,18 @@ pub mod ffi {
         fn select_model(self: Pin<&mut Self>, index: i32);
 
         #[qinvokable]
+        #[cxx_name = "downloadModel"]
+        fn download_model(self: Pin<&mut Self>, index: i32);
+
+        #[qinvokable]
+        #[cxx_name = "cancelModelDownload"]
+        fn cancel_model_download(self: Pin<&mut Self>);
+
+        #[qinvokable]
+        #[cxx_name = "deleteModel"]
+        fn delete_model(self: Pin<&mut Self>, index: i32);
+
+        #[qinvokable]
         #[cxx_name = "selectShortcut"]
         fn select_shortcut(self: Pin<&mut Self>, index: i32);
 
@@ -73,8 +89,13 @@ pub mod ffi {
 
 use std::{
     fs,
+    io::{Read, Write},
     path::PathBuf,
     pin::Pin,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
     time::{Duration, Instant},
 };
 
@@ -112,8 +133,13 @@ pub struct FluidVoiceControllerRust {
     selected_language: i32,
     language_codes: Vec<String>,
     models: QStringList,
+    model_states: QStringList,
+    model_details: QStringList,
     selected_model: i32,
     model_paths: Vec<PathBuf>,
+    downloading_model: i32,
+    model_download_progress: f32,
+    model_download_cancel: Option<Arc<AtomicBool>>,
     shortcuts: QStringList,
     selected_shortcut: i32,
 }
@@ -134,14 +160,25 @@ impl Default for FluidVoiceControllerRust {
             .position(|code| code == &preferences.language)
             .and_then(|index| i32::try_from(index).ok())
             .unwrap_or(0);
-        let model_paths = discover_whisper_models();
-        let models = model_paths
+        let model_paths = whisper_model_catalog()
             .iter()
-            .map(|path| QString::from(&model_display_name(path)))
+            .map(resolve_model_path)
+            .collect::<Vec<_>>();
+        let models = whisper_model_catalog()
+            .iter()
+            .map(|model| QString::from(model.display_name))
             .collect::<QStringList>();
         let selected_model = model_paths
             .iter()
-            .position(|path| path == &preferences.model)
+            .position(|path| {
+                path == &preferences.model
+                    || path.file_name().is_some_and(|name| {
+                        preferences
+                            .model
+                            .file_name()
+                            .is_some_and(|saved| saved == name)
+                    })
+            })
             .and_then(|index| i32::try_from(index).ok())
             .unwrap_or(0);
         let selected_shortcut = shortcut_triggers()
@@ -153,8 +190,15 @@ impl Default for FluidVoiceControllerRust {
             .get(usize::try_from(selected_model).unwrap_or_default())
             .map_or_else(
                 || QString::from("No Whisper model installed"),
-                |path| QString::from(&model_display_name(path)),
+                |_| {
+                    QString::from(
+                        whisper_model_catalog()
+                            [usize::try_from(selected_model).unwrap_or_default()]
+                        .display_name,
+                    )
+                },
             );
+        let (model_states, model_details) = model_ui_lists(&model_paths);
         Self {
             status_text: QString::from("Ready"),
             microphone_name: QString::from("Detecting PipeWire inputs…"),
@@ -179,8 +223,13 @@ impl Default for FluidVoiceControllerRust {
             selected_language,
             language_codes,
             models,
+            model_states,
+            model_details,
             selected_model,
             model_paths,
+            downloading_model: -1,
+            model_download_progress: 0.0,
+            model_download_cancel: None,
             shortcuts: shortcut_triggers()
                 .iter()
                 .map(|(label, _)| QString::from(*label))
@@ -365,18 +414,105 @@ impl ffi::FluidVoiceController {
         if !valid_index(index, self.as_ref().rust().model_paths.len()) {
             return;
         }
-        self.as_mut().set_selected_model(index);
-        let model_name = self
-            .as_ref()
-            .rust()
-            .model_paths
-            .get(usize::try_from(index).unwrap_or_default())
-            .map(|path| model_display_name(path));
-        if let Some(model_name) = model_name {
-            self.as_mut().set_model_name(QString::from(&model_name));
+        let index_usize = usize::try_from(index).unwrap_or_default();
+        if !model_file_valid(
+            &self.as_ref().rust().model_paths[index_usize],
+            &whisper_model_catalog()[index_usize],
+        ) {
+            self.set_status_text(QString::from("Model not downloaded · choose Download"));
+            return;
         }
+        self.as_mut().set_selected_model(index);
+        self.as_mut().set_model_name(QString::from(
+            whisper_model_catalog()[index_usize].display_name,
+        ));
         self.as_ref().rust().save_preferences();
-        self.set_status_text(QString::from("Speech model updated"));
+        self.set_status_text(QString::from("Speech model activated"));
+    }
+
+    pub fn download_model(mut self: Pin<&mut Self>, index: i32) {
+        if *self.as_ref().downloading_model() >= 0
+            || !valid_index(index, whisper_model_catalog().len())
+        {
+            return;
+        }
+        let index_usize = usize::try_from(index).unwrap_or_default();
+        let model = whisper_model_catalog()[index_usize];
+        let destination = managed_model_directory().join(model.file_name);
+        if model_file_valid(&destination, &model) {
+            self.as_mut().refresh_model_catalog();
+            self.set_status_text(QString::from("Model is already downloaded"));
+            return;
+        }
+        let cancel = Arc::new(AtomicBool::new(false));
+        self.as_mut().rust_mut().get_mut().model_download_cancel = Some(Arc::clone(&cancel));
+        self.as_mut().set_downloading_model(index);
+        self.as_mut().set_model_download_progress(0.0);
+        self.as_mut().set_status_text(QString::from(&format!(
+            "Downloading {}…",
+            model.display_name
+        )));
+        let qt_thread = self.qt_thread();
+        std::thread::spawn(move || {
+            let progress_thread = qt_thread.clone();
+            let result = download_whisper_model(model, &destination, &cancel, move |progress| {
+                progress_thread
+                    .queue(move |mut controller| {
+                        controller.as_mut().set_model_download_progress(progress);
+                    })
+                    .ok();
+            });
+            qt_thread
+                .queue(move |mut controller| {
+                    controller.as_mut().set_downloading_model(-1);
+                    controller.as_mut().set_model_download_progress(0.0);
+                    controller
+                        .as_mut()
+                        .rust_mut()
+                        .get_mut()
+                        .model_download_cancel = None;
+                    controller.as_mut().refresh_model_catalog();
+                    controller.set_status_text(QString::from(match result {
+                        Ok(()) => format!("{} downloaded · ready to activate", model.display_name),
+                        Err(error) if error == "cancelled" => {
+                            format!("{} download cancelled", model.display_name)
+                        }
+                        Err(error) => format!("Model download failed: {error}"),
+                    }));
+                })
+                .ok();
+        });
+    }
+
+    pub fn cancel_model_download(self: Pin<&mut Self>) {
+        if let Some(cancel) = self.as_ref().rust().model_download_cancel.as_ref() {
+            cancel.store(true, Ordering::Relaxed);
+        }
+    }
+
+    pub fn delete_model(mut self: Pin<&mut Self>, index: i32) {
+        if !valid_index(index, whisper_model_catalog().len()) {
+            return;
+        }
+        if index == *self.as_ref().selected_model() {
+            self.set_status_text(QString::from(
+                "Activate another model before deleting this one",
+            ));
+            return;
+        }
+        let model = whisper_model_catalog()[usize::try_from(index).unwrap_or_default()];
+        let path = managed_model_directory().join(model.file_name);
+        if path.is_file() {
+            match fs::remove_file(path) {
+                Ok(()) => self
+                    .as_mut()
+                    .set_status_text(QString::from("Downloaded model deleted")),
+                Err(error) => self
+                    .as_mut()
+                    .set_status_text(QString::from(&format!("Could not delete model: {error}"))),
+            }
+        }
+        self.as_mut().refresh_model_catalog();
     }
 
     pub fn select_shortcut(mut self: Pin<&mut Self>, index: i32) {
@@ -625,6 +761,17 @@ impl ffi::FluidVoiceController {
             self.set_status_text(QString::from("Finishing…"));
         }
     }
+
+    fn refresh_model_catalog(mut self: Pin<&mut Self>) {
+        let paths = whisper_model_catalog()
+            .iter()
+            .map(resolve_model_path)
+            .collect::<Vec<_>>();
+        let (states, details) = model_ui_lists(&paths);
+        self.as_mut().rust_mut().get_mut().model_paths = paths;
+        self.as_mut().set_model_states(states);
+        self.as_mut().set_model_details(details);
+    }
 }
 
 impl FluidVoiceControllerRust {
@@ -705,24 +852,256 @@ fn preferences_path() -> PathBuf {
 
 fn supported_languages() -> &'static [(&'static str, &'static str)] {
     &[
-        ("English", "en"),
-        ("Swedish", "sv"),
+        ("Automatic detection", ""),
+        ("Afrikaans", "af"),
+        ("Amharic", "am"),
+        ("Arabic", "ar"),
+        ("Assamese", "as"),
+        ("Azerbaijani", "az"),
+        ("Bashkir", "ba"),
+        ("Belarusian", "be"),
+        ("Bulgarian", "bg"),
+        ("Bengali", "bn"),
+        ("Tibetan", "bo"),
+        ("Breton", "br"),
+        ("Bosnian", "bs"),
+        ("Catalan", "ca"),
+        ("Czech", "cs"),
+        ("Welsh", "cy"),
         ("Danish", "da"),
-        ("Norwegian", "no"),
-        ("Finnish", "fi"),
         ("German", "de"),
-        ("French", "fr"),
+        ("Greek", "el"),
+        ("English", "en"),
         ("Spanish", "es"),
+        ("Estonian", "et"),
+        ("Basque", "eu"),
+        ("Persian", "fa"),
+        ("Finnish", "fi"),
+        ("Faroese", "fo"),
+        ("French", "fr"),
+        ("Galician", "gl"),
+        ("Gujarati", "gu"),
+        ("Hausa", "ha"),
+        ("Hawaiian", "haw"),
+        ("Hebrew", "iw"),
+        ("Hindi", "hi"),
+        ("Croatian", "hr"),
+        ("Haitian Creole", "ht"),
+        ("Hungarian", "hu"),
+        ("Armenian", "hy"),
+        ("Indonesian", "id"),
+        ("Icelandic", "is"),
         ("Italian", "it"),
-        ("Portuguese", "pt"),
-        ("Dutch", "nl"),
-        ("Polish", "pl"),
-        ("Ukrainian", "uk"),
-        ("Russian", "ru"),
         ("Japanese", "ja"),
+        ("Javanese", "jw"),
+        ("Georgian", "ka"),
+        ("Kazakh", "kk"),
+        ("Khmer", "km"),
+        ("Kannada", "kn"),
         ("Korean", "ko"),
+        ("Latin", "la"),
+        ("Luxembourgish", "lb"),
+        ("Lingala", "ln"),
+        ("Lao", "lo"),
+        ("Lithuanian", "lt"),
+        ("Latvian", "lv"),
+        ("Malagasy", "mg"),
+        ("Maori", "mi"),
+        ("Macedonian", "mk"),
+        ("Malayalam", "ml"),
+        ("Mongolian", "mn"),
+        ("Marathi", "mr"),
+        ("Malay", "ms"),
+        ("Maltese", "mt"),
+        ("Myanmar", "my"),
+        ("Nepali", "ne"),
+        ("Dutch", "nl"),
+        ("Norwegian Nynorsk", "nn"),
+        ("Norwegian", "no"),
+        ("Occitan", "oc"),
+        ("Punjabi", "pa"),
+        ("Polish", "pl"),
+        ("Pashto", "ps"),
+        ("Portuguese", "pt"),
+        ("Romanian", "ro"),
+        ("Russian", "ru"),
+        ("Sanskrit", "sa"),
+        ("Sindhi", "sd"),
+        ("Sinhala", "si"),
+        ("Slovak", "sk"),
+        ("Slovenian", "sl"),
+        ("Shona", "sn"),
+        ("Somali", "so"),
+        ("Albanian", "sq"),
+        ("Serbian", "sr"),
+        ("Sundanese", "su"),
+        ("Swedish", "sv"),
+        ("Swahili", "sw"),
+        ("Tamil", "ta"),
+        ("Telugu", "te"),
+        ("Tajik", "tg"),
+        ("Thai", "th"),
+        ("Turkmen", "tk"),
+        ("Tagalog", "tl"),
+        ("Turkish", "tr"),
+        ("Tatar", "tt"),
+        ("Ukrainian", "uk"),
+        ("Urdu", "ur"),
+        ("Uzbek", "uz"),
+        ("Vietnamese", "vi"),
+        ("Yiddish", "yi"),
+        ("Yoruba", "yo"),
         ("Chinese", "zh"),
     ]
+}
+
+#[derive(Clone, Copy)]
+struct WhisperModel {
+    display_name: &'static str,
+    file_name: &'static str,
+    expected_bytes: u64,
+    description: &'static str,
+}
+
+fn whisper_model_catalog() -> &'static [WhisperModel] {
+    &[
+        WhisperModel {
+            display_name: "Whisper Tiny",
+            file_name: "ggml-tiny.bin",
+            expected_bytes: 77_691_713,
+            description: "75 MB · fastest · basic accuracy · 99 languages",
+        },
+        WhisperModel {
+            display_name: "Whisper Base",
+            file_name: "ggml-base.bin",
+            expected_bytes: 147_951_465,
+            description: "141 MB · fast · balanced for short dictation · 99 languages",
+        },
+        WhisperModel {
+            display_name: "Whisper Small",
+            file_name: "ggml-small.bin",
+            expected_bytes: 487_601_967,
+            description: "465 MB · recommended · good accuracy · 99 languages",
+        },
+        WhisperModel {
+            display_name: "Whisper Medium",
+            file_name: "ggml-medium.bin",
+            expected_bytes: 1_533_763_059,
+            description: "1.4 GB · slower · high accuracy · 6 GB+ RAM",
+        },
+        WhisperModel {
+            display_name: "Whisper Large Turbo",
+            file_name: "ggml-large-v3-turbo.bin",
+            expected_bytes: 1_624_555_275,
+            description: "1.5 GB · high accuracy · optimized decoding · 8 GB+ RAM",
+        },
+        WhisperModel {
+            display_name: "Whisper Large",
+            file_name: "ggml-large-v3.bin",
+            expected_bytes: 3_095_033_483,
+            description: "2.9 GB · slowest · highest accuracy · 10 GB+ RAM",
+        },
+    ]
+}
+
+fn managed_model_directory() -> PathBuf {
+    if let Some(directory) = std::env::var_os("XDG_DATA_HOME") {
+        return PathBuf::from(directory).join("fluidvoice/models");
+    }
+    std::env::var_os("HOME").map_or_else(
+        || PathBuf::from(".local/share/fluidvoice/models"),
+        |home| PathBuf::from(home).join(".local/share/fluidvoice/models"),
+    )
+}
+
+fn model_search_directories() -> Vec<PathBuf> {
+    vec![
+        managed_model_directory(),
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../work/models"),
+    ]
+}
+
+fn resolve_model_path(model: &WhisperModel) -> PathBuf {
+    model_search_directories()
+        .into_iter()
+        .map(|directory| directory.join(model.file_name))
+        .find(|path| model_file_valid(path, model))
+        .unwrap_or_else(|| managed_model_directory().join(model.file_name))
+}
+
+fn model_ui_lists(paths: &[PathBuf]) -> (QStringList, QStringList) {
+    let states = paths
+        .iter()
+        .zip(whisper_model_catalog())
+        .map(|(path, model)| {
+            QString::from(if model_file_valid(path, model) {
+                "Downloaded"
+            } else {
+                "Not downloaded"
+            })
+        })
+        .collect();
+    let details = whisper_model_catalog()
+        .iter()
+        .map(|model| QString::from(model.description))
+        .collect();
+    (states, details)
+}
+
+fn model_file_valid(path: &PathBuf, model: &WhisperModel) -> bool {
+    fs::metadata(path)
+        .is_ok_and(|metadata| metadata.is_file() && metadata.len() == model.expected_bytes)
+}
+
+fn download_whisper_model(
+    model: WhisperModel,
+    destination: &PathBuf,
+    cancel: &AtomicBool,
+    mut progress: impl FnMut(f32),
+) -> Result<(), String> {
+    let parent = destination
+        .parent()
+        .ok_or_else(|| "invalid model destination".to_owned())?;
+    fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    let partial = destination.with_extension("bin.part");
+    let url = format!(
+        "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/{}",
+        model.file_name
+    );
+    let response = ureq::get(&url).call().map_err(|error| error.to_string())?;
+    let mut reader = response.into_body().into_reader();
+    let mut output = fs::File::create(&partial).map_err(|error| error.to_string())?;
+    let mut buffer = vec![0_u8; 1024 * 256];
+    let mut downloaded = 0_u64;
+    loop {
+        if cancel.load(Ordering::Relaxed) {
+            drop(output);
+            fs::remove_file(&partial).ok();
+            return Err("cancelled".to_owned());
+        }
+        let count = reader
+            .read(&mut buffer)
+            .map_err(|error| error.to_string())?;
+        if count == 0 {
+            break;
+        }
+        output
+            .write_all(&buffer[..count])
+            .map_err(|error| error.to_string())?;
+        downloaded = downloaded.saturating_add(u64::try_from(count).unwrap_or_default());
+        progress((downloaded as f64 / model.expected_bytes as f64).clamp(0.0, 1.0) as f32);
+    }
+    output.sync_all().map_err(|error| error.to_string())?;
+    drop(output);
+    if downloaded != model.expected_bytes {
+        fs::remove_file(&partial).ok();
+        return Err(format!(
+            "downloaded {downloaded} bytes; expected {}",
+            model.expected_bytes
+        ));
+    }
+    fs::rename(&partial, destination).map_err(|error| error.to_string())?;
+    Ok(())
 }
 
 fn shortcut_triggers() -> &'static [(&'static str, &'static str)] {
@@ -743,10 +1122,9 @@ fn selected_language_code(controller: &FluidVoiceControllerRust) -> String {
 }
 
 fn selected_model_path(controller: &FluidVoiceControllerRust) -> Option<PathBuf> {
-    usize::try_from(controller.selected_model)
-        .ok()
-        .and_then(|index| controller.model_paths.get(index))
-        .cloned()
+    let index = usize::try_from(controller.selected_model).ok()?;
+    let path = controller.model_paths.get(index)?;
+    model_file_valid(path, whisper_model_catalog().get(index)?).then(|| path.clone())
 }
 
 fn selected_shortcut_trigger(controller: &FluidVoiceControllerRust) -> String {
@@ -759,49 +1137,6 @@ fn selected_shortcut_trigger(controller: &FluidVoiceControllerRust) -> String {
 
 fn valid_index(index: i32, length: usize) -> bool {
     usize::try_from(index).is_ok_and(|index| index < length)
-}
-
-fn discover_whisper_models() -> Vec<PathBuf> {
-    let mut directories = vec![PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../work/models")];
-    if let Some(data_home) = std::env::var_os("XDG_DATA_HOME") {
-        directories.push(PathBuf::from(data_home).join("fluidvoice/models"));
-    } else if let Some(home) = std::env::var_os("HOME") {
-        directories.push(PathBuf::from(home).join(".local/share/fluidvoice/models"));
-    }
-    let mut models = directories
-        .into_iter()
-        .filter_map(|directory| fs::read_dir(directory).ok())
-        .flatten()
-        .filter_map(Result::ok)
-        .map(|entry| entry.path())
-        .filter(|path| path.extension().is_some_and(|extension| extension == "bin"))
-        .collect::<Vec<_>>();
-    if let Some(configured) = std::env::var_os("FLUIDVOICE_WHISPER_MODEL").map(PathBuf::from) {
-        if configured.is_file() {
-            models.push(configured);
-        }
-    }
-    models.sort();
-    models.dedup();
-    models
-}
-
-fn model_display_name(path: &std::path::Path) -> String {
-    let stem = path
-        .file_stem()
-        .and_then(|value| value.to_str())
-        .unwrap_or("Whisper model")
-        .trim_start_matches("ggml-")
-        .replace(['-', '_'], " ");
-    let mut characters = stem.chars();
-    let name = characters.next().map_or_else(
-        || "Whisper".to_owned(),
-        |first| format!("{}{}", first.to_uppercase(), characters.as_str()),
-    );
-    let size = fs::metadata(path)
-        .map(|metadata| format!(" · {:.0} MB", metadata.len() as f64 / 1_048_576.0))
-        .unwrap_or_default();
-    format!("Whisper {name}{size}")
 }
 
 fn dump_asr_audio(audio: &fluidvoice_audio::MonoAudioBuffer) -> Result<(), String> {
@@ -867,7 +1202,10 @@ fn suspicious_single_word(text: &str, duration: Duration) -> bool {
 mod tests {
     use std::time::Duration;
 
-    use super::{asr_gain, meter_level, peak_db, suspicious_single_word};
+    use super::{
+        asr_gain, meter_level, peak_db, supported_languages, suspicious_single_word,
+        whisper_model_catalog,
+    };
 
     #[test]
     fn maps_audio_peak_to_logarithmic_meter() {
@@ -902,5 +1240,16 @@ mod tests {
             "you are welcome",
             Duration::from_secs(6)
         ));
+    }
+
+    #[test]
+    fn exposes_complete_whisper_language_and_model_catalogs() {
+        assert_eq!(supported_languages().len(), 100); // Auto + Whisper's 99 languages.
+        assert_eq!(whisper_model_catalog().len(), 6);
+        assert!(
+            whisper_model_catalog()
+                .iter()
+                .all(|model| model.expected_bytes > 70_000_000)
+        );
     }
 }

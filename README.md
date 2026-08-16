@@ -51,6 +51,19 @@ QMAKE=/usr/bin/qmake6 cargo run -p fluidvoice-ui
 
 The shell includes the settings surface, KDE tray menu, macOS-inspired compact recording overlay, and a Rust-backed CXX-Qt state controller. The preview button exercises QML state transitions; connecting those states to the already validated dictation pipeline is the next integration slice.
 
+### Languages and local models
+
+The Voice Engine settings expose Automatic detection plus all 99 languages
+supported by multilingual Whisper. A language does not require its own model:
+one downloaded multilingual model can be used for every listed language.
+
+FluidVoice Linux can download, validate, activate, cancel, and delete the
+official Tiny, Base, Small, Medium, Large Turbo, and Large v3 GGML artifacts
+published by [`ggml-org/whisper.cpp`](https://github.com/ggml-org/whisper.cpp).
+Managed downloads are stored under `$XDG_DATA_HOME/fluidvoice/models`, or
+`~/.local/share/fluidvoice/models` when `XDG_DATA_HOME` is unset. Files remain
+as `.part` until the exact expected artifact size has been received.
+
 On KDE Plasma Wayland, the current shortcut diagnostic creates a portal-managed binding and prints separate press/release events:
 
 ```bash
