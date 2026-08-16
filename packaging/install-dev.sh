@@ -28,8 +28,16 @@ fi
   "$destination$prefix/share/icons/hicolor/256x256/apps/io.github.davidkodar.FluidVoiceLinux.png"
 "${install_command[@]}" -Dm644 LICENSE "$destination$prefix/share/licenses/fluidvoice-linux/LICENSE"
 
-if [[ -z "$destination" ]] && command -v kbuildsycoca6 >/dev/null; then
-  kbuildsycoca6 --noincremental
+if [[ -z "$destination" ]]; then
+  # KDE gives per-user desktop entries priority. Replace the early development
+  # entry that used Icon=audio-input-microphone so it cannot shadow the
+  # correctly packaged application identity and artwork.
+  user_data_home=${XDG_DATA_HOME:-$HOME/.local/share}
+  install -Dm644 data/io.github.davidkodar.FluidVoiceLinux.desktop \
+    "$user_data_home/applications/io.github.davidkodar.FluidVoiceLinux.desktop"
+  if command -v kbuildsycoca6 >/dev/null; then
+    kbuildsycoca6 --noincremental
+  fi
 fi
 
 echo "FluidVoice Linux installed under $destination$prefix"
