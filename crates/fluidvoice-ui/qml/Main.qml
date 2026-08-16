@@ -1020,25 +1020,26 @@ ApplicationWindow {
                         ColumnLayout {
                             id: firstRunContent; anchors.fill: parent; anchors.margins: 16; spacing: 8
                             Text { text: qsTr("RECOMMENDED FIRST RUN"); color: root.tertiaryText; font.pixelSize: 11; font.weight: Font.Medium }
-                            Text { Layout.fillWidth: true; text: qsTr("1. Select and test your microphone.\n2. Download a multilingual Whisper model—Small is a good starting point for Swedish.\n3. Choose a fixed language for best short-dictation accuracy, or Automatic for mixed languages.\n4. Keep Automatic (Vulkan) selected for GPU acceleration with CPU fallback.\n5. Hold the global shortcut, speak naturally, then release to transcribe and paste."); color: root.secondaryText; font.pixelSize: 13; lineHeight: 1.25; wrapMode: Text.Wrap }
+                            Text { Layout.fillWidth: true; text: qsTr("1. Select and test your microphone.\n2. Download a multilingual Whisper model—Base is a practical starting point for English; other languages may benefit from a larger model.\n3. Choose a fixed language for best short-dictation accuracy, or Automatic for mixed languages.\n4. Keep Automatic (Vulkan) selected for GPU acceleration with CPU fallback.\n5. Hold the global shortcut, speak naturally, then release to transcribe and paste."); color: root.secondaryText; font.pixelSize: 13; lineHeight: 1.25; wrapMode: Text.Wrap }
                             Button { text: qsTr("Open Voice Engine"); onClicked: root.showSettingsSection(1) }
                         }
                     }
 
                     Text { text: qsTr("Setup checklist"); color: root.primaryText; font.pixelSize: 15; font.weight: Font.DemiBold }
+                    Text { Layout.fillWidth: true; text: qsTr("Checks reflect saved configuration. Use Test input to verify capture; Plasma may still request shortcut approval."); color: root.secondaryText; font.pixelSize: 12; wrapMode: Text.Wrap }
                     Repeater {
                         model: [
-                            { "title": qsTr("Microphone selected"), "detail": controller.selectedInput >= 0 ? controller.microphoneName : qsTr("Choose an input in Voice Engine"), "done": controller.selectedInput >= 0 },
+                            { "title": qsTr("Microphone source selected"), "detail": controller.selectedInput >= 0 ? controller.microphoneName : qsTr("Choose and test an input in Voice Engine"), "done": controller.selectedInput >= 0 },
                             { "title": qsTr("Speech model ready"), "detail": controller.modelName, "done": controller.modelStates[controller.selectedModel] === "Downloaded" },
-                            { "title": qsTr("Language and compute configured"), "detail": qsTr("%1 · %2").arg(controller.languages[controller.selectedLanguage]).arg(controller.computeBackends[controller.selectedComputeBackend]), "done": controller.modelStates[controller.selectedModel] === "Downloaded" },
-                            { "title": qsTr("Global shortcut configured"), "detail": qsTr("Hold %1 while speaking").arg(controller.shortcuts[controller.selectedShortcut]), "done": controller.selectedShortcut >= 0 },
+                            { "title": qsTr("Language and compute selected"), "detail": qsTr("%1 · %2").arg(controller.languages[controller.selectedLanguage]).arg(controller.computeBackends[controller.selectedComputeBackend]), "done": controller.selectedLanguage >= 0 && controller.selectedComputeBackend >= 0 },
+                            { "title": qsTr("Shortcut preference selected"), "detail": qsTr("Hold %1 while speaking; Plasma controls final approval").arg(controller.shortcuts[controller.selectedShortcut]), "done": controller.selectedShortcut >= 0 },
                             { "title": qsTr("First dictation completed"), "detail": controller.transcriptCount > 0 ? qsTr("%1 transcript(s) saved locally").arg(controller.transcriptCount) : qsTr("Try dictating into a text field"), "done": controller.transcriptCount > 0 }
                         ]
                         delegate: Rectangle {
                             required property var modelData; Layout.fillWidth: true; height: 72; radius: 10; color: root.panel; border.color: root.hairline
                             RowLayout { anchors.fill: parent; anchors.margins: 14; spacing: 12
-                                Rectangle { width: 26; height: 26; radius: 13; color: modelData.done ? "#234b3b" : root.panelRaised; border.color: modelData.done ? "#39755a" : root.hairline; Text { anchors.centerIn: parent; text: modelData.done ? "✓" : "·"; color: modelData.done ? "#70d59b" : root.secondaryText; font.pixelSize: 13 } }
-                                ColumnLayout { Layout.fillWidth: true; spacing: 2; Text { text: modelData.title; color: root.primaryText; font.pixelSize: 14; font.weight: Font.Medium } Text { text: modelData.detail; color: root.secondaryText; font.pixelSize: 12 } }
+                                Rectangle { Layout.preferredWidth: 26; Layout.minimumWidth: 26; Layout.maximumWidth: 26; Layout.preferredHeight: 26; radius: 13; color: modelData.done ? "#234b3b" : root.panelRaised; border.color: modelData.done ? "#39755a" : root.hairline; Text { anchors.centerIn: parent; text: modelData.done ? "✓" : "·"; color: modelData.done ? "#70d59b" : root.secondaryText; font.pixelSize: 13 } }
+                                ColumnLayout { Layout.fillWidth: true; spacing: 2; Text { Layout.fillWidth: true; text: modelData.title; color: root.primaryText; font.pixelSize: 14; font.weight: Font.Medium } Text { Layout.fillWidth: true; text: modelData.detail; color: root.secondaryText; font.pixelSize: 12; elide: Text.ElideRight } }
                             }
                         }
                     }

@@ -69,8 +69,9 @@ QMAKE=/usr/bin/qmake6 cargo run -p fluidvoice-ui
 
 1. Open **Voice Engine** and select the correct microphone.
 2. Press **Test input** and confirm the meter follows your voice.
-3. Download and activate a Whisper model. Small is a useful starting point for
-   Swedish; larger models improve accuracy at the cost of memory and latency.
+3. Download and activate a Whisper model. Base is a practical starting point
+   for English; other languages may benefit from a larger model. Accuracy,
+   memory use, and latency vary by language and hardware.
 4. Select a fixed language for reliable short dictation, or use Automatic for
    mixed-language speech.
 5. Leave compute on **Automatic (Vulkan)** for GPU acceleration with safe CPU
