@@ -14,6 +14,8 @@ All notable changes to FluidVoice Linux are documented here. The project uses
   fully-local privacy indicator, and loopback-only enforcement for local presets.
 - Added a persistent local-provider privacy lock, enabled by default, plus
   bounded provider responses and retries for transient failures.
+- Enriched history with raw and final text, source, AI provider/model/status,
+  processing latency, backward-compatible parsing, and JSON/CSV export.
 - Broader file-format support beyond 16-bit PCM WAV.
 - Added searchable history cards with relative and full local timestamps and word counts.
 - Expanded local statistics with today's activity, estimated time saved, streaks,

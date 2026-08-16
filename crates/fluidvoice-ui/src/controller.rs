@@ -133,6 +133,10 @@ pub mod ffi {
         fn clear_history(self: Pin<&mut Self>);
 
         #[qinvokable]
+        #[cxx_name = "exportHistory"]
+        fn export_history(self: Pin<&mut Self>, path: &QString, format: &QString);
+
+        #[qinvokable]
         #[cxx_name = "updateCommandModeEnabled"]
         fn update_command_mode_enabled(self: Pin<&mut Self>, enabled: bool);
 
@@ -373,11 +377,7 @@ impl Default for FluidVoiceControllerRust {
         let ai_key_configured = provider.local || !ai::load_api_key(provider_key).is_empty();
         let dictated_word_count = history
             .iter()
-            .map(|entry| {
-                entry
-                    .split_once('\t')
-                    .map_or(entry.as_str(), |(_, text)| text)
-            })
+            .map(|entry| history_field(entry, 1).unwrap_or(entry))
             .map(|text| text.split_whitespace().count())
             .sum::<usize>();
         Self {
@@ -1074,6 +1074,19 @@ impl ffi::FluidVoiceController {
             .set_status_text(QString::from("History cleared"));
     }
 
+    pub fn export_history(mut self: Pin<&mut Self>, path: &QString, format: &QString) {
+        let path = PathBuf::from(decode_file_url(&path.to_string()));
+        let history = load_lines(&history_path());
+        match write_history_export(&path, &format.to_string(), &history) {
+            Ok(()) => self
+                .as_mut()
+                .set_status_text(QString::from("History export complete")),
+            Err(error) => self
+                .as_mut()
+                .set_status_text(QString::from(&format!("History export failed: {error}"))),
+        }
+    }
+
     pub fn transcribe_file(mut self: Pin<&mut Self>, path: &QString) {
         if *self.as_ref().transcribing() || *self.as_ref().recording() {
             return;
@@ -1094,26 +1107,49 @@ impl ffi::FluidVoiceController {
             .set_file_transcription_status(QString::from("Transcribing locally…"));
         std::thread::spawn(move || {
             let result = transcribe_wav_file(&path, &model, language, use_gpu).map(|text| {
+                let raw_text = text.clone();
+                let started = Instant::now();
                 if ai_config.enabled {
                     match ai::enhance(&ai_config, &text) {
-                        Ok(enhanced) => (enhanced, None),
-                        Err(error) => (text, Some(error)),
+                        Ok(enhanced) => (enhanced, raw_text, None, started.elapsed().as_millis()),
+                        Err(error) => (text, raw_text, Some(error), started.elapsed().as_millis()),
                     }
                 } else {
-                    (text, None)
+                    (text, raw_text, None, 0)
                 }
             });
             qt_thread
                 .queue(move |mut controller| {
                     controller.as_mut().set_transcribing(false);
                     match result {
-                        Ok((text, ai_error)) => {
+                        Ok((text, raw_text, ai_error, ai_duration_ms)) => {
                             let processed = process_transcript(
                                 &text,
                                 controller.as_ref().rust().command_mode_enabled,
                                 &load_lines(&dictionary_path()),
                             );
-                            record_history(controller.as_mut(), &processed);
+                            let provider = ai_provider_name(&ai_config);
+                            let ai_status = if ai_config.enabled {
+                                if ai_error.is_some() {
+                                    "fallback"
+                                } else {
+                                    "enhanced"
+                                }
+                            } else {
+                                "disabled"
+                            };
+                            record_history(
+                                controller.as_mut(),
+                                &processed,
+                                &HistoryContext {
+                                    raw_text: &raw_text,
+                                    provider,
+                                    model: &ai_config.model,
+                                    ai_status,
+                                    ai_duration_ms,
+                                    source: "file",
+                                },
+                            );
                             controller
                                 .as_mut()
                                 .set_transcript_text(QString::from(&processed));
@@ -1324,6 +1360,7 @@ impl ffi::FluidVoiceController {
                     }
                     Ok(first)
                 });
+            let enhancement_started = Instant::now();
             let enhancement = transcription.as_ref().ok().and_then(|transcript| {
                 if ai_config.enabled {
                     Some(ai::enhance(&ai_config, &transcript.text))
@@ -1331,6 +1368,11 @@ impl ffi::FluidVoiceController {
                     None
                 }
             });
+            let ai_duration_ms = if enhancement.is_some() {
+                enhancement_started.elapsed().as_millis()
+            } else {
+                0
+            };
             qt_thread
                 .queue(move |mut controller| {
                     controller.as_mut().set_transcribing(false);
@@ -1374,7 +1416,23 @@ impl ffi::FluidVoiceController {
                                     sender.send(DesktopCommand::Paste).ok();
                                 }
                             }
-                            record_history(controller.as_mut(), &processed);
+                            let ai_status = if ai_config.enabled {
+                                if ai_error.is_some() { "fallback" } else { "enhanced" }
+                            } else {
+                                "disabled"
+                            };
+                            record_history(
+                                controller.as_mut(),
+                                &processed,
+                                &HistoryContext {
+                                    raw_text: &transcript.text,
+                                    provider: ai_provider_name(&ai_config),
+                                    model: &ai_config.model,
+                                    ai_status,
+                                    ai_duration_ms,
+                                    source: "dictation",
+                                },
+                            );
                             controller.as_mut().set_transcript_text(QString::from(&processed));
                             controller.set_status_text(QString::from(if let Some(error) = ai_error {
                                 format!("AI enhancement failed · raw transcript delivered · {error}")
@@ -1819,24 +1877,42 @@ fn replace_ascii_case_insensitive(text: &str, needle: &str, replacement: &str) -
     result
 }
 
-fn record_history(mut controller: Pin<&mut ffi::FluidVoiceController>, text: &str) {
+struct HistoryContext<'a> {
+    raw_text: &'a str,
+    provider: &'a str,
+    model: &'a str,
+    ai_status: &'a str,
+    ai_duration_ms: u128,
+    source: &'a str,
+}
+
+fn record_history(
+    mut controller: Pin<&mut ffi::FluidVoiceController>,
+    text: &str,
+    context: &HistoryContext<'_>,
+) {
     use std::time::{SystemTime, UNIX_EPOCH};
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |duration| duration.as_secs());
     let mut history = load_lines(&history_path());
-    history.push(format!("{timestamp}\t{}", text.replace(['\n', '\t'], " ")));
+    history.push(format!(
+        "{timestamp}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+        history_value(text),
+        history_value(context.raw_text),
+        history_value(context.provider),
+        history_value(context.model),
+        history_value(context.ai_status),
+        context.ai_duration_ms,
+        history_value(context.source)
+    ));
     if history.len() > 500 {
         history.drain(..history.len() - 500);
     }
     save_lines(&history_path(), &history).ok();
     let word_count = history
         .iter()
-        .map(|entry| {
-            entry
-                .split_once('\t')
-                .map_or(entry.as_str(), |(_, value)| value)
-        })
+        .map(|entry| history_field(entry, 1).unwrap_or(entry))
         .map(|value| value.split_whitespace().count())
         .sum::<usize>();
     controller
@@ -1848,6 +1924,66 @@ fn record_history(mut controller: Pin<&mut ffi::FluidVoiceController>, text: &st
     controller
         .as_mut()
         .set_dictated_word_count(i32::try_from(word_count).unwrap_or(i32::MAX));
+}
+
+fn history_value(value: &str) -> String {
+    value.replace(['\n', '\r', '\t'], " ")
+}
+
+fn history_field(entry: &str, index: usize) -> Option<&str> {
+    entry.split('\t').nth(index)
+}
+
+fn ai_provider_name(config: &AiConfig) -> &str {
+    if config.enabled { &config.provider } else { "" }
+}
+
+fn write_history_export(path: &PathBuf, format: &str, history: &[String]) -> Result<(), String> {
+    let records = history
+        .iter()
+        .map(|entry| {
+            serde_json::json!({
+                "timestamp": history_field(entry, 0).and_then(|value| value.parse::<u64>().ok()).unwrap_or(0),
+                "text": history_field(entry, 1).unwrap_or(entry),
+                "raw_text": history_field(entry, 2).unwrap_or_else(|| history_field(entry, 1).unwrap_or(entry)),
+                "ai_provider": history_field(entry, 3).unwrap_or(""),
+                "ai_model": history_field(entry, 4).unwrap_or(""),
+                "ai_status": history_field(entry, 5).unwrap_or("not_recorded"),
+                "ai_duration_ms": history_field(entry, 6).and_then(|value| value.parse::<u128>().ok()).unwrap_or(0),
+                "source": history_field(entry, 7).unwrap_or("dictation"),
+            })
+        })
+        .collect::<Vec<_>>();
+    let contents = if format.eq_ignore_ascii_case("csv") {
+        let mut output =
+            "timestamp,text,raw_text,ai_provider,ai_model,ai_status,ai_duration_ms,source\n"
+                .to_owned();
+        for record in &records {
+            let fields = [
+                record["timestamp"].to_string(),
+                record["text"].as_str().unwrap_or_default().to_owned(),
+                record["raw_text"].as_str().unwrap_or_default().to_owned(),
+                record["ai_provider"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_owned(),
+                record["ai_model"].as_str().unwrap_or_default().to_owned(),
+                record["ai_status"].as_str().unwrap_or_default().to_owned(),
+                record["ai_duration_ms"].to_string(),
+                record["source"].as_str().unwrap_or_default().to_owned(),
+            ];
+            output.push_str(
+                &fields
+                    .map(|field| format!("\"{}\"", field.replace('"', "\"\"")))
+                    .join(","),
+            );
+            output.push('\n');
+        }
+        output
+    } else {
+        serde_json::to_string_pretty(&records).map_err(|error| error.to_string())?
+    };
+    fs::write(path, contents).map_err(|error| error.to_string())
 }
 
 fn decode_file_url(value: &str) -> String {
@@ -2265,11 +2401,11 @@ fn suspicious_single_word(text: &str, duration: Duration) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use std::time::Duration;
+    use std::{fs, time::Duration};
 
     use super::{
         asr_gain, decode_file_url, meter_level, peak_db, process_transcript, supported_languages,
-        suspicious_single_word, whisper_model_catalog,
+        suspicious_single_word, whisper_model_catalog, write_history_export,
     };
 
     #[test]
@@ -2278,6 +2414,26 @@ mod tests {
         assert!((meter_level(0.01) - 1.0 / 3.0).abs() < 0.001);
         assert_eq!(meter_level(1.0), 1.0);
         assert_eq!(meter_level(f32::NAN), 0.0);
+    }
+
+    #[test]
+    fn exports_enriched_and_legacy_history_as_json() {
+        let path = std::env::temp_dir().join(format!(
+            "fluidvoice-history-export-{}.json",
+            std::process::id()
+        ));
+        let history = [
+            "100\tfinal\traw\tollama\tqwen\tenhanced\t42\tdictation".to_owned(),
+            "50\tlegacy text".to_owned(),
+        ];
+        write_history_export(&path, "json", &history).expect("write history export");
+        let value: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(&path).expect("read history export"))
+                .expect("parse history export");
+        assert_eq!(value[0]["raw_text"], "raw");
+        assert_eq!(value[0]["ai_provider"], "ollama");
+        assert_eq!(value[1]["raw_text"], "legacy text");
+        fs::remove_file(path).expect("remove test export");
     }
 
     #[test]

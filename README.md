@@ -110,7 +110,7 @@ usable but does not yet match the depth of the current macOS implementation.
 | AI Enhancement | Partial | Available | Linux supports configurable standard and local providers with a cleanup prompt and safe raw-text fallback; streaming enhancement and per-app prompts are not yet implemented. |
 | Fluid Intelligence / Fluid-1 | Missing | Available | Fluid-1 weights, runtime, and training code are separately maintained and not available in the GPL repository. |
 | File transcription | Partial | Available | Linux currently accepts 16-bit PCM WAV; broader formats and meeting workflows are planned. |
-| Transcript history | Partial | Available | Linux provides search, local date/time, relative time, and word counts; app/window metadata, per-entry actions, audio retention, ZIP export, and reports are missing. |
+| Transcript history | Partial | Available | Linux provides search, timestamps, raw/final text, AI provider/model/status/latency metadata, source labels, word counts, and JSON/CSV export; app/window metadata, audio retention, and reports are still missing. |
 | Usage statistics | Partial | Available | Linux provides today/all-time totals, estimated time saved, streaks, averages, and a seven-day chart; editable typing speed, 30-day charts, milestones, insights, and records are still missing. |
 | Per-application configuration | Missing | Available | No app-specific prompt or behavior profiles yet. |
 | Audio recording history | Missing | Available | Linux does not retain microphone audio after transcription. |
@@ -132,7 +132,8 @@ User data follows XDG conventions:
 
 - Models: `$XDG_DATA_HOME/fluidvoice/models` or `~/.local/share/fluidvoice/models`.
 - Dictionary: `$XDG_DATA_HOME/fluidvoice/dictionary.txt`.
-- History: `$XDG_DATA_HOME/fluidvoice/history.tsv`.
+- History: `$XDG_DATA_HOME/fluidvoice/history.tsv` (legacy entries are migrated
+  compatibly as new enriched entries are appended).
 - Settings: `$XDG_CONFIG_HOME/fluidvoice/settings.conf` or `~/.config/fluidvoice/settings.conf`.
 
 Audio is processed locally and is not retained by the normal dictation flow.

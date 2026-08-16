@@ -52,8 +52,25 @@ ApplicationWindow {
         return isFinite(seconds) ? seconds : 0
     }
     function historyText(entry) {
-        var separator = entry.indexOf("\t")
-        return separator >= 0 ? entry.substring(separator + 1) : entry
+        var fields = entry.split("\t")
+        return fields.length > 1 ? fields[1] : entry
+    }
+    function historyRawText(entry) {
+        var fields = entry.split("\t")
+        return fields.length > 2 ? fields[2] : historyText(entry)
+    }
+    function historyAiSummary(entry) {
+        var fields = entry.split("\t")
+        if (fields.length < 6 || fields[5] === "disabled" || fields[5] === "not_recorded")
+            return qsTr("Local transcription")
+        var provider = fields[3] || qsTr("AI")
+        var model = fields[4] ? " · " + fields[4] : ""
+        var latency = fields.length > 6 && Number(fields[6]) > 0 ? " · " + fields[6] + " ms" : ""
+        return provider + model + " · " + fields[5] + latency
+    }
+    function historySource(entry) {
+        var fields = entry.split("\t")
+        return fields.length > 7 && fields[7] === "file" ? qsTr("Audio file") : qsTr("Dictation")
     }
     function historyWords(entry) {
         var text = historyText(entry).trim()
@@ -223,6 +240,24 @@ ApplicationWindow {
         title: qsTr("Choose an audio file")
         nameFilters: [qsTr("PCM WAV audio (*.wav)")]
         onAccepted: controller.transcribeFile(selectedFile.toString())
+    }
+
+    FileDialog {
+        id: historyJsonDialog
+        title: qsTr("Export history as JSON")
+        fileMode: FileDialog.SaveFile
+        defaultSuffix: "json"
+        nameFilters: [qsTr("JSON files (*.json)")]
+        onAccepted: controller.exportHistory(selectedFile.toString(), "json")
+    }
+
+    FileDialog {
+        id: historyCsvDialog
+        title: qsTr("Export history as CSV")
+        fileMode: FileDialog.SaveFile
+        defaultSuffix: "csv"
+        nameFilters: [qsTr("CSV files (*.csv)")]
+        onAccepted: controller.exportHistory(selectedFile.toString(), "csv")
     }
 
     Component.onCompleted: {
@@ -1157,6 +1192,8 @@ ApplicationWindow {
                         Layout.fillWidth: true
                         Text { text: qsTr("History"); color: root.primaryText; font.pixelSize: 22; font.weight: Font.Bold }
                         Item { Layout.fillWidth: true }
+                        Button { text: qsTr("Export JSON"); enabled: controller.historyEntries.length > 0; onClicked: historyJsonDialog.open() }
+                        Button { text: qsTr("Export CSV"); enabled: controller.historyEntries.length > 0; onClicked: historyCsvDialog.open() }
                         Button { text: qsTr("Clear history"); enabled: controller.historyEntries.length > 0; onClicked: controller.clearHistory() }
                     }
                     Text { text: root.destinationDescriptions[6]; color: root.secondaryText; font.pixelSize: 14 }
@@ -1188,6 +1225,8 @@ ApplicationWindow {
                                     Text { text: root.historyRelativeTime(modelData); color: root.tertiaryText; font.pixelSize: 10 }
                                 }
                                 Text { Layout.fillWidth: true; text: root.historyText(modelData); color: root.primaryText; font.pixelSize: 13; wrapMode: Text.Wrap }
+                                Text { visible: root.historyRawText(modelData) !== root.historyText(modelData); Layout.fillWidth: true; text: qsTr("Raw: %1").arg(root.historyRawText(modelData)); color: root.secondaryText; font.pixelSize: 11; wrapMode: Text.Wrap }
+                                Text { Layout.fillWidth: true; text: root.historySource(modelData) + " · " + root.historyAiSummary(modelData); color: root.tertiaryText; font.pixelSize: 10; elide: Text.ElideRight }
                                 RowLayout {
                                     Layout.fillWidth: true
                                     Text { text: root.historyDate(modelData); color: root.secondaryText; font.pixelSize: 11 }
