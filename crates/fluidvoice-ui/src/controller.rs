@@ -50,6 +50,10 @@ pub mod ffi {
         )]
         #[qproperty(QStringList, compute_backends, cxx_name = "computeBackends")]
         #[qproperty(i32, selected_compute_backend, cxx_name = "selectedComputeBackend")]
+        #[qproperty(QStringList, theme_options, cxx_name = "themeOptions")]
+        #[qproperty(i32, selected_theme, cxx_name = "selectedTheme")]
+        #[qproperty(QStringList, accent_options, cxx_name = "accentOptions")]
+        #[qproperty(i32, selected_accent, cxx_name = "selectedAccent")]
         type FluidVoiceController = super::FluidVoiceControllerRust;
 
         #[qinvokable]
@@ -127,6 +131,14 @@ pub mod ffi {
         #[qinvokable]
         #[cxx_name = "selectComputeBackend"]
         fn select_compute_backend(self: Pin<&mut Self>, index: i32);
+
+        #[qinvokable]
+        #[cxx_name = "selectTheme"]
+        fn select_theme(self: Pin<&mut Self>, index: i32);
+
+        #[qinvokable]
+        #[cxx_name = "selectAccent"]
+        fn select_accent(self: Pin<&mut Self>, index: i32);
     }
 
     impl cxx_qt::Threading for FluidVoiceController {}
@@ -196,6 +208,10 @@ pub struct FluidVoiceControllerRust {
     file_transcription_status: QString,
     compute_backends: QStringList,
     selected_compute_backend: i32,
+    theme_options: QStringList,
+    selected_theme: i32,
+    accent_options: QStringList,
+    selected_accent: i32,
 }
 
 impl Default for FluidVoiceControllerRust {
@@ -312,6 +328,16 @@ impl Default for FluidVoiceControllerRust {
                 .map(QString::from)
                 .collect(),
             selected_compute_backend: preferences.compute_backend.clamp(0, 2),
+            theme_options: ["System", "FluidVoice Dark", "FluidVoice Light"]
+                .into_iter()
+                .map(QString::from)
+                .collect(),
+            selected_theme: preferences.theme.clamp(0, 2),
+            accent_options: ["KDE system accent", "FluidVoice Cyan", "Green", "Purple"]
+                .into_iter()
+                .map(QString::from)
+                .collect(),
+            selected_accent: preferences.accent.clamp(0, 3),
         }
     }
 }
@@ -663,6 +689,22 @@ impl ffi::FluidVoiceController {
             1 => "Vulkan GPU preferred; CPU fallback remains available",
             _ => "Automatic Vulkan acceleration selected",
         }));
+    }
+
+    pub fn select_theme(mut self: Pin<&mut Self>, index: i32) {
+        if !(0..=2).contains(&index) {
+            return;
+        }
+        self.as_mut().set_selected_theme(index);
+        self.as_ref().rust().save_preferences();
+    }
+
+    pub fn select_accent(mut self: Pin<&mut Self>, index: i32) {
+        if !(0..=3).contains(&index) {
+            return;
+        }
+        self.as_mut().set_selected_accent(index);
+        self.as_ref().rust().save_preferences();
     }
 
     pub fn add_dictionary_term(mut self: Pin<&mut Self>, term: &QString) {
@@ -1050,6 +1092,8 @@ impl FluidVoiceControllerRust {
             overlay_enabled: self.overlay_enabled,
             command_mode_enabled: self.command_mode_enabled,
             compute_backend: self.selected_compute_backend,
+            theme: self.selected_theme,
+            accent: self.selected_accent,
         };
         if let Err(error) = preferences.save() {
             eprintln!("Failed to save preferences: {error}");
@@ -1066,6 +1110,8 @@ struct Preferences {
     overlay_enabled: bool,
     command_mode_enabled: bool,
     compute_backend: i32,
+    theme: i32,
+    accent: i32,
 }
 
 impl Default for Preferences {
@@ -1079,6 +1125,8 @@ impl Default for Preferences {
             overlay_enabled: true,
             command_mode_enabled: false,
             compute_backend: 0,
+            theme: 0,
+            accent: 0,
         }
     }
 }
@@ -1106,6 +1154,10 @@ impl Preferences {
                 preferences.command_mode_enabled = value == "true";
             } else if let Some(value) = line.strip_prefix("compute_backend=") {
                 preferences.compute_backend = value.parse().unwrap_or(0);
+            } else if let Some(value) = line.strip_prefix("theme=") {
+                preferences.theme = value.parse().unwrap_or(0);
+            } else if let Some(value) = line.strip_prefix("accent=") {
+                preferences.accent = value.parse().unwrap_or(0);
             }
         }
         preferences
@@ -1120,7 +1172,7 @@ impl Preferences {
         fs::write(
             path,
             format!(
-                "language={}\nmodel={}\nshortcut={}\ninput={}\ngain_db={}\noverlay_enabled={}\ncommand_mode_enabled={}\ncompute_backend={}\n",
+                "language={}\nmodel={}\nshortcut={}\ninput={}\ngain_db={}\noverlay_enabled={}\ncommand_mode_enabled={}\ncompute_backend={}\ntheme={}\naccent={}\n",
                 self.language,
                 self.model.display(),
                 self.shortcut,
@@ -1128,7 +1180,9 @@ impl Preferences {
                 self.gain_db,
                 self.overlay_enabled,
                 self.command_mode_enabled,
-                self.compute_backend
+                self.compute_backend,
+                self.theme,
+                self.accent
             ),
         )
         .map_err(|error| error.to_string())

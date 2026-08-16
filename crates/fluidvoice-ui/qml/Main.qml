@@ -13,7 +13,7 @@ ApplicationWindow {
     minimumHeight: 500
     visible: true
     title: qsTr("FluidVoice")
-    color: "#121212"
+    color: root.windowBackground
     property int settingsSection: 0
     readonly property var destinationTitles: [
         qsTr("Settings"), qsTr("Voice Engine"), qsTr("AI Enhancement"),
@@ -44,16 +44,34 @@ ApplicationWindow {
         root.hide()
     }
 
-    // Mirrors the current FluidVoice dark theme tokens. Qt cannot use SwiftUI's
-    // NSVisualEffect materials, so these are deliberately restrained opaque
-    // equivalents that remain predictable under Plasma compositing.
-    readonly property color accent: "#3ac8c6"
-    readonly property color panel: "#151515"
-    readonly property color panelRaised: "#1c1c1c"
-    readonly property color primaryText: "#f2f2f2"
-    readonly property color secondaryText: "#a8a8ad"
-    readonly property color tertiaryText: "#737379"
-    readonly property color hairline: "#2b2b2e"
+    // System mode follows Plasma's active palette. The explicit FluidVoice
+    // themes retain upstream visual identity for users who prefer it.
+    readonly property bool darkTheme: controller.selectedTheme === 1
+                                      || (controller.selectedTheme === 0
+                                          && root.palette.window.hslLightness < 0.5)
+    readonly property color accent: controller.selectedAccent === 0 ? root.palette.highlight
+                                    : controller.selectedAccent === 1 ? "#3ac8c6"
+                                    : controller.selectedAccent === 2 ? "#55c98b"
+                                    : "#9b87f5"
+    readonly property color windowBackground: controller.selectedTheme === 0 ? root.palette.window
+                                              : darkTheme ? "#121212" : "#f4f4f5"
+    readonly property color contentBackground: controller.selectedTheme === 0 ? root.palette.base
+                                               : darkTheme ? "#171717" : "#fafafa"
+    readonly property color sidebarBackground: controller.selectedTheme === 0 ? root.palette.alternateBase
+                                               : darkTheme ? "#0f0f0f" : "#eeeeef"
+    readonly property color panel: controller.selectedTheme === 0 ? root.palette.base
+                                   : darkTheme ? "#151515" : "#ffffff"
+    readonly property color panelRaised: controller.selectedTheme === 0 ? root.palette.button
+                                         : darkTheme ? "#1c1c1c" : "#e8e8eb"
+    readonly property color primaryText: controller.selectedTheme === 0 ? root.palette.text
+                                         : darkTheme ? "#f2f2f2" : "#202024"
+    readonly property color secondaryText: controller.selectedTheme === 0 ? root.palette.placeholderText
+                                           : darkTheme ? "#a8a8ad" : "#616168"
+    readonly property color tertiaryText: darkTheme ? "#737379" : "#7a7a82"
+    readonly property color hairline: controller.selectedTheme === 0 ? root.palette.mid
+                                      : darkTheme ? "#2b2b2e" : "#d7d7da"
+    readonly property color selectionSurface: Qt.rgba(root.accent.r, root.accent.g, root.accent.b,
+                                                       darkTheme ? 0.18 : 0.12)
 
     FluidVoiceController {
         id: controller
@@ -74,14 +92,14 @@ ApplicationWindow {
     background: Rectangle {
         color: root.color
         gradient: Gradient {
-            GradientStop { position: 0.0; color: "#171717" }
-            GradientStop { position: 1.0; color: "#121212" }
+            GradientStop { position: 0.0; color: root.contentBackground }
+            GradientStop { position: 1.0; color: root.windowBackground }
         }
     }
 
     header: Rectangle {
         height: 44
-        color: "#0f0f0f"
+        color: root.sidebarBackground
         border.color: root.hairline
         border.width: 1
 
@@ -104,8 +122,8 @@ ApplicationWindow {
                 implicitWidth: statusRow.implicitWidth + 24
                 implicitHeight: 28
                 radius: 14
-                color: controller.recording ? "#173334" : "#1b1b1d"
-                border.color: controller.recording ? "#3f7475" : root.hairline
+                color: controller.recording ? root.selectionSurface : root.panelRaised
+                border.color: controller.recording ? root.accent : root.hairline
 
                 Row {
                     id: statusRow
@@ -137,7 +155,7 @@ ApplicationWindow {
         Rectangle {
             Layout.preferredWidth: 244
             Layout.fillHeight: true
-            color: "#0f0f0f"
+            color: root.sidebarBackground
             border.color: root.hairline
 
             ColumnLayout {
@@ -174,7 +192,7 @@ ApplicationWindow {
                         Layout.topMargin: isHeader && index > 0 ? 9 : 0
                         height: isHeader ? 22 : 34
                         radius: 6
-                        color: !isHeader && modelData.page === root.settingsSection ? "#272729" : "transparent"
+                        color: !isHeader && modelData.page === root.settingsSection ? root.selectionSurface : "transparent"
 
                         Text {
                             visible: parent.isHeader
@@ -282,8 +300,8 @@ ApplicationWindow {
                                 implicitWidth: backgroundStatus.implicitWidth + 18
                                 implicitHeight: 26
                                 radius: 13
-                                color: "#173334"
-                                border.color: "#3f7475"
+                                color: root.selectionSurface
+                                border.color: root.accent
                                 Text { id: backgroundStatus; anchors.centerIn: parent; text: qsTr("Active"); color: root.accent; font.pixelSize: 11; font.weight: Font.Medium }
                             }
                         }
@@ -428,8 +446,8 @@ ApplicationWindow {
                                     Layout.fillWidth: true
                                     implicitHeight: 72
                                     radius: 10
-                                    color: index === controller.selectedModel ? "#18292a" : "#19191b"
-                                    border.color: index === controller.selectedModel ? "#487778" : root.hairline
+                                    color: index === controller.selectedModel ? root.selectionSurface : root.panelRaised
+                                    border.color: index === controller.selectedModel ? root.accent : root.hairline
 
                                     Item {
                                         anchors.fill: parent
@@ -441,7 +459,7 @@ ApplicationWindow {
                                             width: 8
                                             height: 8
                                             radius: 4
-                                            color: index === controller.selectedModel ? root.accent : "#55555a"
+                                            color: index === controller.selectedModel ? root.accent : root.tertiaryText
                                         }
 
                                         Item {
@@ -627,7 +645,7 @@ ApplicationWindow {
                     height: 102
                     radius: 16
                     color: root.panelRaised
-                    border.color: "#315152"
+                    border.color: root.accent
 
                     RowLayout {
                         anchors.fill: parent
@@ -637,7 +655,7 @@ ApplicationWindow {
                             width: 48
                             height: 48
                             radius: 12
-                            color: "#193536"
+                            color: root.selectionSurface
                             Text { anchors.centerIn: parent; text: "⌁"; color: root.accent; font.pixelSize: 27 }
                         }
                         ColumnLayout {
@@ -656,7 +674,7 @@ ApplicationWindow {
                                 Layout.maximumWidth: 240
                                 height: 6
                                 radius: 3
-                                color: "#32333d"
+                                color: root.hairline
 
                                 Rectangle {
                                     width: parent.width * controller.audioLevel
@@ -716,7 +734,7 @@ ApplicationWindow {
                 Rectangle {
                     visible: root.settingsSection === 0
                     Layout.fillWidth: true
-                    height: 158
+                    height: 174
                     radius: 16
                     color: root.panel
                     border.color: root.hairline
@@ -732,9 +750,14 @@ ApplicationWindow {
                                 Layout.fillWidth: true
                                 spacing: 2
                                 Text { text: qsTr("Theme"); color: root.primaryText; font.pixelSize: 14; font.weight: Font.Medium }
-                                Text { text: qsTr("Dark appearance optimized for Plasma and the upstream FluidVoice design."); color: root.secondaryText; font.pixelSize: 13 }
+                                Text { text: qsTr("Follow Plasma or use an explicit FluidVoice appearance."); color: root.secondaryText; font.pixelSize: 13 }
                             }
-                            Text { text: qsTr("Dark"); color: root.secondaryText; font.pixelSize: 13 }
+                            ComboBox {
+                                Layout.preferredWidth: 190
+                                model: controller.themeOptions
+                                currentIndex: controller.selectedTheme
+                                onActivated: function(index) { controller.selectTheme(index) }
+                            }
                         }
                         Rectangle { Layout.fillWidth: true; height: 1; color: root.hairline }
                         RowLayout {
@@ -743,10 +766,15 @@ ApplicationWindow {
                                 Layout.fillWidth: true
                                 spacing: 2
                                 Text { text: qsTr("Accent color"); color: root.primaryText; font.pixelSize: 14; font.weight: Font.Medium }
-                                Text { text: qsTr("Uses the current FluidVoice default accent."); color: root.secondaryText; font.pixelSize: 13 }
+                                Text { text: qsTr("Use Plasma's accent or a FluidVoice color."); color: root.secondaryText; font.pixelSize: 13 }
                             }
                             Rectangle { width: 18; height: 18; radius: 9; color: root.accent; border.color: "#66ffffff" }
-                            Text { text: qsTr("Cyan"); color: root.secondaryText; font.pixelSize: 13 }
+                            ComboBox {
+                                Layout.preferredWidth: 190
+                                model: controller.accentOptions
+                                currentIndex: controller.selectedAccent
+                                onActivated: function(index) { controller.selectAccent(index) }
+                            }
                         }
                     }
                 }
