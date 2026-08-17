@@ -161,8 +161,33 @@ impl PipeWireCapture {
         maximum_duration: Duration,
         target: Option<&str>,
         stop_token: &CaptureStopToken,
+        report_level: impl FnMut(f32) + 'static,
+        report_preview: impl FnMut(AudioBuffer) + 'static,
+    ) -> Result<AudioBuffer, AudioCaptureError> {
+        Self::capture_with_streaming_preview(
+            maximum_duration,
+            target,
+            stop_token,
+            report_level,
+            report_preview,
+            |_| {},
+        )
+    }
+
+    /// Captures audio while additionally reporting every newly received chunk.
+    /// The chunk callback is intended for realtime speech engines; preview
+    /// snapshots remain bounded and suitable for slower batch decoders.
+    ///
+    /// # Errors
+    /// Returns an error for invalid durations, `PipeWire` failures, or empty audio.
+    #[allow(clippy::too_many_lines)]
+    pub fn capture_with_streaming_preview(
+        maximum_duration: Duration,
+        target: Option<&str>,
+        stop_token: &CaptureStopToken,
         mut report_level: impl FnMut(f32) + 'static,
         mut report_preview: impl FnMut(AudioBuffer) + 'static,
+        mut report_stream_chunk: impl FnMut(AudioBuffer) + 'static,
     ) -> Result<AudioBuffer, AudioCaptureError> {
         validate_duration(maximum_duration)?;
         let capacity = capture_capacity(maximum_duration)?;
@@ -215,8 +240,27 @@ impl PipeWireCapture {
                 let offset = usize::try_from(chunk.offset()).unwrap_or(usize::MAX);
                 let size = usize::try_from(chunk.size()).unwrap_or(usize::MAX);
                 if let Some(bytes) = data.data() {
+                    let before = sample_output.borrow().samples.len();
                     let peak = sample_output.borrow_mut().append_chunk(bytes, offset, size);
                     report_level(peak);
+                    let output = sample_output.borrow();
+                    let channels = usize::try_from(output.channels).unwrap_or(1);
+                    let after = output.samples.len();
+                    if output.sample_rate > 0 && after > before {
+                        let start = before - before % channels;
+                        let complete = after - after % channels;
+                        if complete > start
+                            && let Ok(chunk) = AudioBuffer::new(
+                                output.samples[start..complete].to_vec(),
+                                output.sample_rate,
+                                output.channels,
+                                output.truncated,
+                            )
+                        {
+                            report_stream_chunk(chunk);
+                        }
+                    }
+                    drop(output);
                     // FluidVoice's non-native streaming engines refresh near
                     // 0.6 seconds. Slow models naturally coalesce updates via
                     // the bounded channel in the UI layer.

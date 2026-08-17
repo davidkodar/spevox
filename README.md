@@ -118,7 +118,7 @@ usable but does not yet match the depth of the current macOS implementation.
 | --- | --- | --- | --- |
 | Global hold-to-dictate | Available | Available | Linux uses the XDG Global Shortcuts portal. |
 | Direct typing into applications | Partial | Available | Linux uses Wayland portal/clipboard delivery; application support can vary. |
-| Live transcript overlay | Available | Available | Linux provides compact/standard/expanded layouts, placement, opacity, text visibility, streamed AI retry, copy, raw recovery, and undo; previews use periodic local Whisper rather than the newest Parakeet streaming path. |
+| Live transcript overlay | Available | Available | Linux provides compact/standard/expanded layouts, placement, opacity, text visibility, streamed AI retry, copy, raw recovery, and undo. Managed native engines stream lossless PCM16 to NeMo's realtime endpoint for true partial results; built-in Whisper retains bounded periodic previews. |
 | Whisper models | Available | Available | Linux supports all six listed multilingual GGML sizes. |
 | Parakeet, Nemotron, Cohere, Apple Speech | Partial | Available | Linux provides one-click managed Parakeet TDT v3, Nemotron 3.5 multilingual, Nemotron Streaming English, and Parakeet CTC 1.1B engines through native NeMo-Speech.cpp, plus a custom loopback ASR bridge. CoreML-only Cohere/Parakeet Flash and Apple Speech are not Linux runtimes. |
 | Vulkan GPU acceleration | Available | Not applicable | Linux supports cross-vendor Vulkan with CPU fallback. |
@@ -177,6 +177,10 @@ the runtime from source requires Git, CMake 3.26+, Ninja, and a C++17 compiler.
 Its pinned private SentencePiece dependency is built automatically. Automatic
 compute tries Vulkan first and installs CPU instead when the Vulkan development
 packages are incomplete; “Vulkan only” remains available for strict GPU use.
+During capture, native engines receive every audio chunk through the managed
+loopback WebSocket and publish model-native partial text in the overlay. Cold
+starts queue audio without blocking PipeWire; release still performs the normal
+verified final transcription and preserves Whisper fallback.
 
 User data follows XDG conventions:
 

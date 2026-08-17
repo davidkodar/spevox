@@ -5,6 +5,10 @@ All notable changes to FluidVoice Linux are documented here. The project uses
 
 ## 0.4.0 - 2026-08-16
 
+- Added true realtime native-engine previews through NeMo-Speech.cpp's
+  loopback WebSocket protocol, including lossless incremental PCM16 capture,
+  cold-start buffering, cumulative partials, final-event reconciliation,
+  cancellation-safe commit, locale/gain handling, and final Whisper fallback.
 - Clarified in the native-engine interface that Vulkan acceleration works
   across AMD, Intel, and NVIDIA GPUs without requiring CUDA or NVIDIA hardware.
 - Added a verified native speech catalog with one-click installation for

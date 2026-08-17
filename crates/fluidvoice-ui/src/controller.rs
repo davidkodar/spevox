@@ -3090,15 +3090,52 @@ impl ffi::FluidVoiceController {
             let mut last_level_report: Option<Instant> = None;
             let (preview_sender, preview_receiver) =
                 std::sync::mpsc::sync_channel::<AudioBuffer>(1);
+            // Never block PipeWire while the native server performs a cold
+            // start. The capture itself is capped at two minutes, so this
+            // startup queue remains naturally bounded by the recording limit.
+            let (stream_sender, stream_receiver) = std::sync::mpsc::channel::<AudioBuffer>();
             let preview_model = model.clone();
             let preview_language = language.clone();
+            let stream_thread = qt_thread.clone();
+            let stream_supervisor = Arc::clone(&parakeet_supervisor);
+            let stream_language = native_model
+                .map(|model| native_language_for_model(model, &language))
+                .unwrap_or_default();
+            let native_preview_worker = native_model.map(|native_model| {
+                std::thread::spawn(move || {
+                    let ready = stream_supervisor
+                        .lock()
+                        .map_err(|_| "Native speech supervisor lock was poisoned".to_owned())
+                        .and_then(|mut supervisor| {
+                            supervisor.ensure_ready(parakeet_backend, native_model)
+                        });
+                    if ready.is_err() {
+                        return;
+                    }
+                    parakeet::stream_transcript(
+                        &stream_receiver,
+                        stream_language,
+                        gain,
+                        move |text| {
+                            stream_thread
+                                .queue(move |mut controller| {
+                                    if *controller.as_ref().recording() {
+                                        controller
+                                            .as_mut()
+                                            .set_live_transcript(QString::from(&text));
+                                    }
+                                })
+                                .ok();
+                        },
+                    )
+                    .ok();
+                })
+            });
             let preview_worker = std::thread::spawn(move || {
-                // Parakeet's managed HTTP helper currently receives the final
-                // buffer after release. Keep the established embedded Whisper
-                // preview active for both built-in Whisper and Parakeet so the
-                // overlay still types while the user speaks. Only the fully
-                // custom server remains final-result-only.
-                if speech_engine == 5 {
+                // Native engines receive lossless PCM chunks through NeMo's
+                // realtime WebSocket. Whisper keeps its bounded periodic
+                // snapshots; a custom server remains final-result-only.
+                if speech_engine != 0 {
                     return;
                 }
                 let Some(model) = preview_model else { return };
@@ -3139,7 +3176,7 @@ impl ffi::FluidVoiceController {
                         .ok();
                 }
             });
-            let result = PipeWireCapture::capture_with_preview(
+            let result = PipeWireCapture::capture_with_streaming_preview(
                 Duration::from_mins(2),
                 capture_target.as_deref(),
                 &stop_token,
@@ -3162,6 +3199,11 @@ impl ffi::FluidVoiceController {
                 },
                 move |audio| {
                     preview_sender.try_send(audio).ok();
+                },
+                move |audio| {
+                    if native_model.is_some() {
+                        stream_sender.send(audio).ok();
+                    }
                 },
             );
 
@@ -3198,6 +3240,9 @@ impl ffi::FluidVoiceController {
                 })
                 .ok();
             preview_worker.join().ok();
+            if let Some(worker) = native_preview_worker {
+                worker.join().ok();
+            }
 
             let mono = audio.to_asr_mono().trim_silence();
             let combined_gain = asr_gain(mono.peak(), gain);

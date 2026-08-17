@@ -9,9 +9,13 @@ use std::{
 };
 
 use sha2::{Digest, Sha256};
+use tungstenite::{Message, connect, stream::MaybeTlsStream};
+
+use fluidvoice_audio::AudioBuffer;
 
 pub const RUNTIME_REVISION: &str = "9bc876635af36df537d9bc6d3f57ad1b76e4f74a";
 pub const ENDPOINT: &str = "http://127.0.0.1:8179";
+const REALTIME_ENDPOINT: &str = "ws://127.0.0.1:8179/v1/realtime";
 
 const SOURCE_URL: &str = "https://github.com/NVIDIA/NeMo-Speech.cpp.git";
 
@@ -132,6 +136,124 @@ pub fn model_installed(model: Model) -> bool {
     fs::metadata(&path).is_ok_and(|metadata| metadata.is_file() && metadata.len() == model.bytes)
         && fs::read_to_string(verification_path(&path))
             .is_ok_and(|digest| digest.trim() == model.sha256)
+}
+
+/// Streams captured audio chunks to the managed `NeMo` server and publishes
+/// cumulative partial text until the sender is dropped.
+pub fn stream_transcript(
+    receiver: &std::sync::mpsc::Receiver<AudioBuffer>,
+    language: String,
+    gain: f32,
+    mut publish: impl FnMut(String),
+) -> Result<(), String> {
+    let (mut socket, _) = connect(REALTIME_ENDPOINT)
+        .map_err(|error| format!("could not connect realtime transcription: {error}"))?;
+    if let MaybeTlsStream::Plain(stream) = socket.get_mut() {
+        stream
+            .set_read_timeout(Some(Duration::from_millis(10)))
+            .map_err(|error| error.to_string())?;
+    }
+    let mut session = serde_json::json!({
+        "type": "session.update",
+        "session": {
+            "sample_rate": 16_000,
+            "automatic_punctuation": true
+        }
+    });
+    if !language.is_empty() {
+        session["session"]["language"] = serde_json::Value::String(language);
+    }
+    socket
+        .send(Message::Text(session.to_string().into()))
+        .map_err(|error| format!("could not configure realtime transcription: {error}"))?;
+
+    let mut accumulated = String::new();
+    while let Ok(chunk) = receiver.recv() {
+        let mono = chunk.to_asr_mono().amplified(gain);
+        let mut pcm = Vec::with_capacity(mono.samples().len() * 2);
+        for sample in mono.samples() {
+            #[allow(clippy::cast_possible_truncation)]
+            let value = (sample.clamp(-1.0, 1.0) * f32::from(i16::MAX)).round() as i16;
+            pcm.extend_from_slice(&value.to_le_bytes());
+        }
+        socket
+            .send(Message::Binary(pcm.into()))
+            .map_err(|error| format!("could not send realtime audio: {error}"))?;
+        drain_realtime_events(&mut socket, &mut accumulated, &mut publish)?;
+    }
+    socket
+        .send(Message::Text(
+            r#"{"type":"input_audio_buffer.commit"}"#.into(),
+        ))
+        .map_err(|error| format!("could not finish realtime transcription: {error}"))?;
+    for _ in 0..100 {
+        drain_realtime_events(&mut socket, &mut accumulated, &mut publish)?;
+        thread::sleep(Duration::from_millis(10));
+    }
+    Ok(())
+}
+
+fn drain_realtime_events(
+    socket: &mut tungstenite::WebSocket<MaybeTlsStream<std::net::TcpStream>>,
+    accumulated: &mut String,
+    publish: &mut impl FnMut(String),
+) -> Result<(), String> {
+    loop {
+        match socket.read() {
+            Ok(Message::Text(text)) => {
+                let event: serde_json::Value = serde_json::from_str(&text)
+                    .map_err(|error| format!("invalid realtime response: {error}"))?;
+                if let Some(text) = apply_realtime_event(&event, accumulated)? {
+                    publish(text);
+                }
+            }
+            Ok(Message::Close(_)) => return Ok(()),
+            Ok(_) => {}
+            Err(tungstenite::Error::Io(error))
+                if matches!(
+                    error.kind(),
+                    std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+                ) =>
+            {
+                return Ok(());
+            }
+            Err(error) => return Err(format!("realtime transcription failed: {error}")),
+        }
+    }
+}
+
+fn apply_realtime_event(
+    event: &serde_json::Value,
+    accumulated: &mut String,
+) -> Result<Option<String>, String> {
+    match event
+        .get("type")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("")
+    {
+        "conversation.item.input_audio_transcription.delta" => {
+            if let Some(delta) = event.get("delta").and_then(serde_json::Value::as_str) {
+                accumulated.push_str(delta);
+                Ok(Some(accumulated.clone()))
+            } else {
+                Ok(None)
+            }
+        }
+        "conversation.item.input_audio_transcription.completed" => {
+            if let Some(text) = event.get("transcript").and_then(serde_json::Value::as_str) {
+                text.clone_into(accumulated);
+                Ok(Some(accumulated.clone()))
+            } else {
+                Ok(None)
+            }
+        }
+        "error" => Err(event
+            .pointer("/error/message")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("unknown realtime transcription error")
+            .to_owned()),
+        _ => Ok(None),
+    }
 }
 
 pub fn install_runtime(backend: Backend) -> Result<(), String> {
@@ -454,5 +576,50 @@ mod tests {
                 .chars()
                 .all(|character| character.is_ascii_hexdigit())
         );
+    }
+
+    #[test]
+    fn accumulates_realtime_deltas_and_accepts_authoritative_final_text() {
+        let mut text = String::new();
+        let first = apply_realtime_event(
+            &serde_json::json!({
+                "type": "conversation.item.input_audio_transcription.delta",
+                "delta": "hello "
+            }),
+            &mut text,
+        )
+        .expect("delta");
+        assert_eq!(first.as_deref(), Some("hello "));
+        let final_text = apply_realtime_event(
+            &serde_json::json!({
+                "type": "conversation.item.input_audio_transcription.completed",
+                "transcript": "Hello world."
+            }),
+            &mut text,
+        )
+        .expect("completed");
+        assert_eq!(final_text.as_deref(), Some("Hello world."));
+        assert_eq!(text, "Hello world.");
+    }
+
+    #[test]
+    fn surfaces_realtime_server_errors() {
+        let error = apply_realtime_event(
+            &serde_json::json!({"type": "error", "error": {"message": "bad locale"}}),
+            &mut String::new(),
+        )
+        .expect_err("server error");
+        assert_eq!(error, "bad locale");
+    }
+
+    #[test]
+    #[ignore = "requires a managed NeMo server on 127.0.0.1:8179"]
+    fn realtime_endpoint_accepts_pcm_and_commit() {
+        let (sender, receiver) = std::sync::mpsc::channel();
+        sender
+            .send(AudioBuffer::new(vec![0.0; 3_200], 16_000, 1, false).expect("audio"))
+            .expect("send audio");
+        drop(sender);
+        stream_transcript(&receiver, "sv-SE".to_owned(), 1.0, |_| {}).expect("realtime session");
     }
 }
