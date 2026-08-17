@@ -27,6 +27,12 @@ crates/fluidvoice-delivery/ consented input and clipboard recovery
 crates/fluidvoice-ui/       CXX-Qt bridge, Qt Quick tray, overlay, settings
 ```
 
+Within `fluidvoice-ui`, the CXX-Qt controller is limited to Qt-facing state and
+workflow composition. Pure Rust responsibilities live in focused source
+boundaries for settings and profiles, private storage, dictionary processing,
+history, meeting transcription, speech-model catalogs, update checks, speech
+runtime helpers, and the bounded Whisper context cache.
+
 The UI controller also coordinates provider streaming, application/workflow
 prompt profiles, selected-text rewriting, allowlisted Command Mode actions,
 audio-file decoding, update checks, and release-facing status. These remain

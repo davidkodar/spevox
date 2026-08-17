@@ -5,6 +5,12 @@ All notable changes to FluidVoice Linux are documented here. The project uses
 
 ## 0.4.0 - 2026-08-16
 
+- Decomposed the oversized Qt controller into dedicated settings/profile,
+  storage, dictionary, history, meeting, model-catalog, update, speech-runtime,
+  and Whisper-cache source boundaries. The extraction preserves the existing
+  CXX-Qt API while making pure Rust behavior independently reviewable; update
+  comparison now also orders numeric prereleases correctly, and local AI test
+  servers consume complete requests to eliminate flaky reset failures.
 - Closed the remaining audit performance and architecture gaps: Whisper live
   preview and final decoding now reuse one bounded cached model context,
   inference thread counts follow available hardware, keyring access no longer

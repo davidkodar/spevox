@@ -424,6 +424,33 @@ mod tests {
 
     use super::*;
 
+    fn read_complete_request(stream: &mut std::net::TcpStream) {
+        let mut request = Vec::new();
+        let mut chunk = [0_u8; 2048];
+        loop {
+            let count = stream.read(&mut chunk).expect("read request");
+            if count == 0 {
+                return;
+            }
+            request.extend_from_slice(&chunk[..count]);
+            let Some(header_end) = request.windows(4).position(|bytes| bytes == b"\r\n\r\n") else {
+                continue;
+            };
+            let headers = String::from_utf8_lossy(&request[..header_end]);
+            let content_length = headers
+                .lines()
+                .find_map(|line| {
+                    line.to_ascii_lowercase()
+                        .strip_prefix("content-length:")
+                        .and_then(|value| value.trim().parse::<usize>().ok())
+                })
+                .unwrap_or(0);
+            if request.len() >= header_end + 4 + content_length {
+                return;
+            }
+        }
+    }
+
     #[test]
     fn builds_openai_chat_endpoint_once() {
         assert_eq!(
@@ -536,8 +563,7 @@ mod tests {
         let server = std::thread::spawn(move || {
             for attempt in 0..3 {
                 let (mut stream, _) = listener.accept().expect("accept local request");
-                let mut request = [0_u8; 2048];
-                let _count = stream.read(&mut request).expect("read request");
+                read_complete_request(&mut stream);
                 let (status, body) = if attempt < 2 {
                     ("500 Internal Server Error", "{}")
                 } else {
@@ -577,8 +603,7 @@ mod tests {
         let address = listener.local_addr().expect("read local server address");
         let server = std::thread::spawn(move || {
             let (mut stream, _) = listener.accept().expect("accept local request");
-            let mut request = [0_u8; 4096];
-            let _count = stream.read(&mut request).expect("read request");
+            read_complete_request(&mut stream);
             let body = "data: {\"choices\":[{\"delta\":{\"content\":\"clean \"}}]}\n\ndata: {\"choices\":[{\"delta\":{\"content\":\"text\"}}]}\n\ndata: [DONE]\n\n";
             write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).expect("write stream");
         });
