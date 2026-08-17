@@ -309,6 +309,9 @@ vulkaninfo --summary
 
 ## Development and diagnostics
 
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the branch model, change workflow,
+release process, and security expectations.
+
 Run the test suite and formatting checks with:
 
 ```bash
