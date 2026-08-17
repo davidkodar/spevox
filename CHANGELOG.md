@@ -5,6 +5,13 @@ All notable changes to Spevox are documented here. The project uses
 
 ## 0.6.0 - 2026-08-17
 
+- Pre-publication review fixes: corrected the documented minimum Rust version
+  to 1.91 and pinned it in the workspace; added whisper.cpp/ggml and Qt notices
+  to the third-party documentation; the update check now sees prereleases;
+  persisted state loads independently of one-time model verification; the Arch
+  `PKGBUILD` remaps the Cargo home path out of release binaries; `cargo deny`
+  accepts workspace path dependencies; KWin script metadata uses the installed
+  icon name and project license.
 - Renamed the independent Linux application from its former development name
   to **Spevox**, with the new `io.github.davidkodar.Spevox` desktop identity,
   `spevox` executable, package names, and repository links.

@@ -13,6 +13,8 @@ resolver = "3"
 version = "0.6.0"
 edition = "2024"
 license = "GPL-3.0-only"
+repository = "https://github.com/davidkodar/spevox"
+rust-version = "1.91"
 publish = false
 
 [workspace.lints.rust]

@@ -13,7 +13,7 @@ fi
 
 cd "$project_dir"
 if ! command -v cargo >/dev/null; then
-  echo "Cargo was not found. Install Rust 1.85 or newer and run this script without sudo." >&2
+  echo "Cargo was not found. Install Rust 1.91 or newer and run this script without sudo." >&2
   exit 2
 fi
 if [[ ! -f /usr/include/vulkan/vulkan.h ]]; then

@@ -7,7 +7,7 @@ pub(crate) fn check_latest_release(current: &str) -> String {
         .build()
         .new_agent();
     let response = agent
-        .get("https://api.github.com/repos/davidkodar/spevox/releases/latest")
+        .get("https://api.github.com/repos/davidkodar/spevox/releases?per_page=10")
         .header("user-agent", "Spevox-Linux")
         .call();
     let mut response = match response {
@@ -25,7 +25,16 @@ pub(crate) fn check_latest_release(current: &str) -> String {
         Ok(value) => value,
         Err(error) => return format!("Release feed returned invalid data: {error}"),
     };
-    let Some(tag) = value.get("tag_name").and_then(serde_json::Value::as_str) else {
+    // The list is newest-first; prereleases count because early Spevox
+    // versions are published that way. Drafts are never visible unauthenticated.
+    let Some(tag) = value.as_array().and_then(|releases| {
+        releases
+            .iter()
+            .filter(|release| {
+                release.get("draft").and_then(serde_json::Value::as_bool) != Some(true)
+            })
+            .find_map(|release| release.get("tag_name").and_then(serde_json::Value::as_str))
+    }) else {
         return "Release feed did not include a version tag.".to_owned();
     };
     let latest = tag.trim_start_matches('v');

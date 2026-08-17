@@ -8,9 +8,9 @@
       }
     ],
     "Description": "Opt-in active-application bridge for Spevox profiles",
-    "Icon": "io.github.davidkodar.Spevox",
+    "Icon": "spevox-app",
     "Id": "spevoxprofiles",
-    "License": "GPL-3.0-or-later",
+    "License": "GPL-3.0-only",
     "Name": "Spevox Application Profiles"
   },
   "X-Plasma-API": "javascript"

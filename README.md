@@ -49,14 +49,14 @@ See [CHANGELOG.md](CHANGELOG.md) for release-by-release details.
 
 The application currently requires:
 
-- Rust 1.85 or newer with Cargo and rustfmt.
+- Rust 1.91 or newer with Cargo and rustfmt.
 - Qt 6 Core, GUI, QML, Quick, Quick Controls 2, Network, Widgets, and `qmake6`.
 - PipeWire development libraries.
 - Vulkan loader, shader compiler, and development headers.
 - `secret-tool` (from libsecret) when storing API keys for cloud AI providers.
 - FFmpeg for broad audio-file transcription (16-bit PCM WAV retains a built-in fallback).
 
-Install the build packages for your distribution, then install Rust 1.85 or
+Install the build packages for your distribution, then install Rust 1.91 or
 newer through [rustup](https://rustup.rs/) if your distribution ships an older
 toolchain.
 
@@ -118,9 +118,16 @@ need portal-native implementations before the sandboxed package is supported.
 
 Initial packages are distributed through GitHub Releases rather than the AUR.
 The prebuilt x86_64 archive targets Arch-family systems. Fedora, Ubuntu, Debian,
-and other distributions should build from source for now. A standalone
-`PKGBUILD` is also provided for clean Arch builds. The archive installer checks
-its required libraries before installing anything.
+and other distributions should build from source for now. Each release also
+ships a rendered `PKGBUILD` for clean Arch builds. To install a release archive:
+
+```bash
+tar xzf spevox-<version>-x86_64.tar.gz
+cd spevox-<version>
+./packaging/install.sh
+```
+
+The archive installer checks its required libraries before installing anything.
 
 ### 3. Configure dictation
 
@@ -245,7 +252,8 @@ User data follows XDG conventions:
 - Dictionary: `$XDG_DATA_HOME/spevox/dictionary.txt`.
 - History: `$XDG_DATA_HOME/spevox/history.tsv` (legacy entries are migrated
   compatibly as new enriched entries are appended).
-- Settings: `$XDG_CONFIG_HOME/spevox/settings.conf` or `~/.config/spevox/settings.conf`.
+- Settings: `$XDG_CONFIG_HOME/spevox/settings.conf` or `~/.config/spevox/settings.conf`
+  (created on the first settings change).
 - Application profiles: `$XDG_DATA_HOME/spevox/ai-profiles.json`.
 - Command history: `$XDG_DATA_HOME/spevox/command-history.tsv`.
 - Local API token: `$XDG_CONFIG_HOME/spevox/local-api.token` (mode `0600`).
@@ -356,8 +364,8 @@ desktop entry, icon, AppStream metadata, and GPL license are installed by
 build, or `packaging/uninstall.sh` to remove application files without deleting
 models, settings, history, or other user data.
 
-Tagged releases are built by GitHub Actions as versioned `x86_64.tar.gz`
-archives with SHA-256 checksum files. `packaging/package-tarball.sh` reproduces
+Releases are built by a manually dispatched GitHub Actions workflow from a
+tagged commit as versioned `x86_64.tar.gz` archives with SHA-256 checksum files. `packaging/package-tarball.sh` reproduces
 that artifact locally. The in-app update check reads public GitHub Releases;
 releases are never installed silently.
 

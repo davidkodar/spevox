@@ -1030,15 +1030,21 @@ impl ffi::SpevoxController {
         let (desktop_sender, mut desktop_receiver) = mpsc::unbounded_channel();
         self.as_mut().rust_mut().get_mut().desktop_sender = Some(desktop_sender);
         let qt_thread = self.qt_thread();
+        // Load persisted state on its own worker so slow one-time model
+        // hashing cannot delay it (profiles saved before the snapshot lands
+        // would otherwise overwrite the on-disk list).
+        let snapshot_thread = qt_thread.clone();
+        std::thread::spawn(move || {
+            let snapshot = load_startup_snapshot();
+            snapshot_thread
+                .queue(move |controller| apply_startup_snapshot(controller, snapshot))
+                .ok();
+        });
         let model_thread = qt_thread.clone();
         std::thread::spawn(move || {
             verify_unmarked_whisper_models();
-            let snapshot = load_startup_snapshot();
             model_thread
-                .queue(move |mut controller| {
-                    controller.as_mut().refresh_model_catalog();
-                    apply_startup_snapshot(controller.as_mut(), snapshot);
-                })
+                .queue(|mut controller| controller.as_mut().refresh_model_catalog())
                 .ok();
         });
         let key_provider = ai_provider(*self.as_ref().selected_ai_provider());
