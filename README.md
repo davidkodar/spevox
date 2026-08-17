@@ -5,7 +5,7 @@ Native, local-first voice dictation for KDE Plasma on Wayland.
 > [!IMPORTANT]
 > This is an unofficial Linux port inspired by
 > [FluidVoice for macOS](https://github.com/altic-dev/FluidVoice). It is not
-> sponsored or endorsed by Altic or the upstream maintainers. Development is
+> sponsored or endorsed by Altic or the upstream maintainers. Development
 > version 0.5.0 remains a private preview and is not yet
 > packaged for general distribution.
 
@@ -99,6 +99,13 @@ download with `cosign verify-blob --certificate-identity-regexp
 developer preview and is not published as a release artifact: host KWin
 integration, keyring access, native-runtime setup, and desktop actions still
 need portal-native implementations before the sandboxed package is supported.
+
+Initial packages are distributed through GitHub Releases rather than the AUR.
+The release page provides a prebuilt x86_64 archive for supported Arch-family
+systems and a standalone `PKGBUILD` for users who prefer a clean local source
+build. The archive installer verifies linked runtime libraries before copying
+files and stops with a dependency error instead of installing a binary that
+cannot launch.
 
 ### 3. Configure dictation
 

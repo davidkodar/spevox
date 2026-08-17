@@ -10,6 +10,8 @@ files=(
   "$destination$prefix/share/icons/hicolor/256x256/apps/io.github.davidkodar.FluidVoiceLinux.png"
   "$destination$prefix/share/icons/hicolor/512x512/apps/io.github.davidkodar.FluidVoiceLinux.png"
   "$destination$prefix/share/licenses/fluidvoice-linux/LICENSE"
+  "$destination$prefix/share/doc/fluidvoice-linux/README.md"
+  "$destination$prefix/share/doc/fluidvoice-linux/THIRD_PARTY_NOTICES.md"
   "$destination$prefix/share/kwin/scripts/fluidvoiceprofiles/metadata.json"
   "$destination$prefix/share/kwin/scripts/fluidvoiceprofiles/contents/code/main.js"
 )
