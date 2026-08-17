@@ -2805,6 +2805,9 @@ impl ffi::FluidVoiceController {
         let qt_thread = self.qt_thread();
         std::thread::spawn(move || {
             let progress_thread = qt_thread.clone();
+            let mut last_progress = Instant::now()
+                .checked_sub(Duration::from_secs(1))
+                .unwrap_or_else(Instant::now);
             let runtime_result = if parakeet::runtime_installed(backend) {
                 Ok((backend, false))
             } else {
@@ -2828,6 +2831,10 @@ impl ffi::FluidVoiceController {
             };
             let result = runtime_result.and_then(|_| {
                 parakeet::download_model(model, &cancel, move |progress| {
+                    if progress < 1.0 && last_progress.elapsed() < Duration::from_millis(50) {
+                        return;
+                    }
+                    last_progress = Instant::now();
                     progress_thread
                         .queue(move |mut controller| {
                             controller.as_mut().set_parakeet_download_progress(progress);
@@ -2942,6 +2949,9 @@ impl ffi::FluidVoiceController {
         let qt_thread = self.qt_thread();
         std::thread::spawn(move || {
             let progress_thread = qt_thread.clone();
+            let mut last_progress = Instant::now()
+                .checked_sub(Duration::from_secs(1))
+                .unwrap_or_else(Instant::now);
             let runtime_result = if parakeet::runtime_installed(backend) {
                 Ok(backend)
             } else {
@@ -2968,6 +2978,10 @@ impl ffi::FluidVoiceController {
                     Ok(installed_backend)
                 } else {
                     parakeet::download_model(parakeet::SORTFORMER_V2, &cancel, move |progress| {
+                        if progress < 1.0 && last_progress.elapsed() < Duration::from_millis(50) {
+                            return;
+                        }
+                        last_progress = Instant::now();
                         progress_thread
                             .queue(move |mut controller| {
                                 controller

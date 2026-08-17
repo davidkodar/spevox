@@ -216,7 +216,6 @@ impl PipeWireCapture {
         mut report_stream_chunk: impl FnMut(AudioBuffer) + 'static,
     ) -> Result<AudioBuffer, AudioCaptureError> {
         validate_duration(maximum_duration)?;
-        let capacity = capture_capacity(maximum_duration)?;
         pw::init();
         let main_loop = pw::main_loop::MainLoopRc::new(None).map_err(AudioCaptureError::pw)?;
         let context =
@@ -235,12 +234,25 @@ impl PipeWireCapture {
         }
         let stream = pw::stream::StreamBox::new(&core, "fluidvoice-linux-capture", props)
             .map_err(AudioCaptureError::pw)?;
-        let captured = Rc::new(RefCell::new(CapturedSamples::new(capacity)));
+        // No sample is accepted until PipeWire has supplied a supported format
+        // and `configure` has derived the exact duration bound from it.
+        let captured = Rc::new(RefCell::new(CapturedSamples::new(0)));
         let format_output = Rc::clone(&captured);
         let sample_output = Rc::clone(&captured);
         let capture_error = Rc::new(RefCell::new(None::<String>));
         let stream_error = Rc::clone(&capture_error);
         let error_loop = main_loop.clone();
+        let core_error = Rc::clone(&capture_error);
+        let core_error_loop = main_loop.clone();
+        let _core_listener = core
+            .add_listener_local()
+            .error(move |_, _, _, message| {
+                *core_error.borrow_mut() = Some(message.to_owned());
+                core_error_loop.quit();
+            })
+            .register();
+        let format_error = Rc::clone(&capture_error);
+        let format_error_loop = main_loop.clone();
         let mut last_preview = Instant::now();
         let _listener = stream
             .add_local_listener_with_user_data(CaptureData::default())
@@ -260,8 +272,14 @@ impl PipeWireCapture {
                 }
                 if data.format.parse(param).is_ok() {
                     let mut output = format_output.borrow_mut();
-                    output.sample_rate = data.format.rate();
-                    output.channels = data.format.channels();
+                    if let Err(error) = output.configure(
+                        maximum_duration,
+                        data.format.rate(),
+                        data.format.channels(),
+                    ) {
+                        *format_error.borrow_mut() = Some(error.to_string());
+                        format_error_loop.quit();
+                    }
                 }
             })
             .process(move |stream, _| {
@@ -414,17 +432,41 @@ struct CapturedSamples {
 
 impl CapturedSamples {
     fn new(capacity: usize) -> Self {
-        // Reserve a modest working set and let the vector grow only when the
-        // negotiated format requires it. The previous worst-case reservation
-        // could request hundreds of MiB before PipeWire supplied a format.
-        let initial_capacity = capacity.min(48_000 * 2 * PREVIEW_WINDOW_SECONDS);
         Self {
-            samples: Vec::with_capacity(initial_capacity),
+            // PipeWire supplies the actual rate and channel count later. Wait
+            // for that negotiation before reserving any sample storage.
+            samples: Vec::new(),
             maximum_samples: capacity,
             sample_rate: 0,
             channels: 0,
             truncated: false,
         }
+    }
+
+    fn configure(
+        &mut self,
+        duration: Duration,
+        sample_rate: u32,
+        channels: u32,
+    ) -> Result<(), AudioCaptureError> {
+        let maximum_samples =
+            capture_capacity(duration, u128::from(sample_rate), u128::from(channels))?;
+        let preview_samples = usize::try_from(sample_rate)
+            .unwrap_or_default()
+            .saturating_mul(usize::try_from(channels).unwrap_or_default())
+            .saturating_mul(PREVIEW_WINDOW_SECONDS)
+            .min(maximum_samples);
+        if preview_samples > self.samples.capacity() {
+            self.samples
+                .try_reserve(preview_samples - self.samples.capacity())
+                .map_err(|error| {
+                    AudioCaptureError::new(format!("could not reserve capture buffer: {error}"))
+                })?;
+        }
+        self.maximum_samples = maximum_samples;
+        self.sample_rate = sample_rate;
+        self.channels = channels;
+        Ok(())
     }
 
     fn append(&mut self, bytes: &[u8]) -> f32 {
@@ -481,11 +523,21 @@ fn validate_duration(duration: Duration) -> Result<(), AudioCaptureError> {
     Ok(())
 }
 
-fn capture_capacity(duration: Duration) -> Result<usize, AudioCaptureError> {
+fn capture_capacity(
+    duration: Duration,
+    sample_rate: u128,
+    channels: u128,
+) -> Result<usize, AudioCaptureError> {
+    if sample_rate == 0 || channels == 0 || sample_rate > MAX_SAMPLE_RATE || channels > MAX_CHANNELS
+    {
+        return Err(AudioCaptureError::new(
+            "negotiated audio format exceeds the supported capture limits",
+        ));
+    }
     let samples = duration
         .as_nanos()
-        .saturating_mul(MAX_SAMPLE_RATE)
-        .saturating_mul(MAX_CHANNELS)
+        .saturating_mul(sample_rate)
+        .saturating_mul(channels)
         .div_ceil(1_000_000_000);
     usize::try_from(samples).map_err(|_| AudioCaptureError::new("capture is too large"))
 }
@@ -510,8 +562,12 @@ mod tests {
     }
 
     #[test]
-    fn preallocates_worst_case() {
-        assert_eq!(capture_capacity(Duration::from_secs(3)).unwrap(), 4_608_000);
+    fn derives_capture_bound_from_negotiated_format() {
+        assert_eq!(
+            capture_capacity(Duration::from_secs(3), 48_000, 2).unwrap(),
+            288_000
+        );
+        assert!(capture_capacity(Duration::from_secs(3), 384_000, 2).is_err());
     }
 
     #[test]

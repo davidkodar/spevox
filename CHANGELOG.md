@@ -23,6 +23,10 @@ All notable changes to FluidVoice Linux are documented here. The project uses
 - Replaced per-dictation history rewrites with private append-first persistence;
   storage periodically compacts from 601 entries to the newest 500 while the UI
   consistently exposes the same 500-entry window.
+- Derived PipeWire capture reservations and hard sample bounds from the
+  negotiated rate/channel format, added core-level failure reporting, and
+  limited Parakeet and Sortformer download updates to the same 50 ms UI cadence
+  as Whisper downloads.
 - Closed follow-up audit regressions in meeting-file retry, local AI proxy
   isolation, IPv6 loopback ASR, Write Mode retry semantics, cancellable Whisper
   previews, model integrity checks, local API lifecycle handling, and native
