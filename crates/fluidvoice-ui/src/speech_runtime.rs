@@ -118,6 +118,14 @@ pub(super) fn native_language_for_model(model: parakeet::Model, language: &str) 
     locale.to_owned()
 }
 
+pub(super) fn native_model_supports_language(model: parakeet::Model, language: &str) -> bool {
+    let language = language.trim();
+    language.is_empty()
+        || (model != parakeet::NEMOTRON_EN && model != parakeet::PARAKEET_CTC)
+        || language.eq_ignore_ascii_case("en")
+        || language.to_ascii_lowercase().starts_with("en-")
+}
+
 pub(super) fn effective_parakeet_backend(compute_backend: i32) -> ParakeetBackend {
     if compute_backend == 0
         && !parakeet::runtime_installed(ParakeetBackend::Vulkan)

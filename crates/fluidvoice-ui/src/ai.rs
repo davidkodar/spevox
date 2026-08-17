@@ -86,6 +86,7 @@ pub struct AiConfig {
     pub base_url: String,
     pub prompt: String,
     pub language: String,
+    pub language_name: String,
     pub api_key: String,
     pub local_only: bool,
     pub timeout_seconds: u64,
@@ -104,6 +105,7 @@ impl AiConfig {
             base_url: base_url.into(),
             prompt: DEFAULT_PROMPT.to_owned(),
             language: String::new(),
+            language_name: String::new(),
             api_key: String::new(),
             local_only: false,
             timeout_seconds: 45,
@@ -122,6 +124,11 @@ impl AiConfig {
 
     pub fn with_language(mut self, language: impl Into<String>) -> Self {
         self.language = language.into();
+        self
+    }
+
+    pub fn with_language_name(mut self, language_name: impl Into<String>) -> Self {
+        self.language_name = language_name.into();
         self
     }
 
@@ -301,13 +308,27 @@ fn effective_prompt(config: &AiConfig) -> String {
         config.prompt.trim()
     };
     let language = config.language.trim();
+    let language_name = config.language_name.trim();
+    let resolved_name = if language_name.is_empty() {
+        if language.is_empty() {
+            "Automatic detection"
+        } else {
+            language
+        }
+    } else {
+        language_name
+    };
+    let base = base
+        .replace("{{language_name}}", resolved_name)
+        .replace("{{language_code}}", language)
+        .replace("{{language}}", resolved_name);
     if language.is_empty() {
         format!(
             "{base}\n\nLanguage contract: infer the input language and keep the entire output in that language. For mixed-language dictation, preserve intentional code-switching."
         )
     } else {
         format!(
-            "{base}\n\nLanguage contract: the dictation language is ISO code {language}. Keep the output in that language and preserve intentional foreign words or technical terms."
+            "{base}\n\nLanguage contract: target_language={resolved_name} (ISO {language}). The output MUST remain in {resolved_name}. Do not translate it into English or any other language. Preserve intentional foreign words and technical terms."
         )
     }
 }
@@ -576,12 +597,21 @@ mod tests {
 
     #[test]
     fn cleanup_contract_is_language_aware_and_forbids_answering() {
-        let fixed =
-            AiConfig::new(ProviderId::Ollama, "m", "http://localhost:11434").with_language("sv");
+        let fixed = AiConfig::new(ProviderId::Ollama, "m", "http://localhost:11434")
+            .with_language("sv")
+            .with_language_name("Swedish")
+            .with_prompt("Clean {{language_name}} ({{language_code}})");
         let prompt = effective_prompt(&fixed);
-        assert!(prompt.contains("ISO code sv"));
-        assert!(prompt.contains("never an answer"));
-        assert!(prompt.contains("never invent"));
+        assert!(prompt.contains("Clean Swedish (sv)"));
+        assert!(prompt.contains("target_language=Swedish (ISO sv)"));
+        assert!(prompt.contains("MUST remain in Swedish"));
+
+        let default_fixed = AiConfig::new(ProviderId::Ollama, "m", "http://localhost:11434")
+            .with_language("de")
+            .with_language_name("German");
+        let default_prompt = effective_prompt(&default_fixed);
+        assert!(default_prompt.contains("never an answer"));
+        assert!(default_prompt.contains("never invent"));
 
         let automatic = AiConfig::new(ProviderId::Ollama, "m", "http://localhost:11434");
         assert!(effective_prompt(&automatic).contains("infer the input language"));

@@ -3628,6 +3628,11 @@ impl FluidVoiceControllerRust {
                 || self.ai_prompt.to_string(),
                 |profile| profile.prompt.clone(),
             );
+        let language_code = selected_language_code(self);
+        let language_name = supported_languages()
+            .iter()
+            .find_map(|(name, code)| (*code == language_code).then_some(*name))
+            .unwrap_or("Automatic detection");
         AiConfig::new(
             provider.id,
             self.ai_model.to_string(),
@@ -3635,7 +3640,8 @@ impl FluidVoiceControllerRust {
         )
         .with_enabled(self.ai_enabled)
         .with_prompt(prompt)
-        .with_language(selected_language_code(self))
+        .with_language(language_code)
+        .with_language_name(language_name)
         .with_api_key(self.ai_api_key.clone())
         .with_local_only(self.ai_local_only)
     }
@@ -3939,9 +3945,9 @@ pub(crate) use speech_runtime::progress_ratio;
 use speech_runtime::{
     asr_gain, compute_backend_summary, display_ratio, dump_asr_audio, effective_parakeet_backend,
     install_native_runtime, language_display_name, meter_level, native_language_for_model,
-    native_model_for_engine, parakeet_runtime_available, peak_db, prepare_native_model,
-    selected_language_code, selected_model_path, selected_shortcut_trigger, shortcut_triggers,
-    suspicious_single_word, valid_index,
+    native_model_for_engine, native_model_supports_language, parakeet_runtime_available, peak_db,
+    prepare_native_model, selected_language_code, selected_model_path, selected_shortcut_trigger,
+    shortcut_triggers, suspicious_single_word, valid_index,
 };
 
 fn apply_history_update(
@@ -4039,7 +4045,7 @@ fn apply_dictation_completion(
             controller.set_status_text(QString::from(if let Some(error) = completed.ai_error {
                 format!("AI enhancement failed · raw transcript delivered · {error}")
             } else if let Some(error) = context.native_fallback_error.as_deref() {
-                format!("Native speech engine failed · Whisper fallback delivered · {error}")
+                format!("Native speech engine unavailable · Whisper fallback delivered · {error}")
             } else if delivery_succeeded {
                 format!(
                     "Dictated {:.1}s · {} · pasted or copied",
@@ -4288,11 +4294,12 @@ mod tests {
         AiProfile, DesktopAction, DictionaryEntry, MeetingSegment, WriteModeJob,
         ai_provider_catalog, asr_gain, assign_speakers, decode_audio_file, decode_file_url,
         history_clipboard_text, meeting_speaker_names, meter_level, native_language_for_model,
-        native_model_for_engine, parse_csv_record, parse_desktop_action, peak_db,
-        preprocess_for_cleanup, process_transcript, profile_matches_application,
-        read_dictionary_import, rename_latest_file_history_speaker_entries, supported_languages,
-        suspicious_single_word, timestamp_srt, valid_ollama_model_name, whisper_model_catalog,
-        write_dictionary_csv, write_history_export, write_meeting_export,
+        native_model_for_engine, native_model_supports_language, parse_csv_record,
+        parse_desktop_action, peak_db, preprocess_for_cleanup, process_transcript,
+        profile_matches_application, read_dictionary_import,
+        rename_latest_file_history_speaker_entries, supported_languages, suspicious_single_word,
+        timestamp_srt, valid_ollama_model_name, whisper_model_catalog, write_dictionary_csv,
+        write_history_export, write_meeting_export,
     };
     use crate::parakeet;
 
@@ -4358,6 +4365,13 @@ mod tests {
             "en-US"
         );
         assert_eq!(native_language_for_model(parakeet::PARAKEET_V3, "sv"), "sv");
+        assert!(!native_model_supports_language(parakeet::NEMOTRON_EN, "sv"));
+        assert!(!native_model_supports_language(
+            parakeet::PARAKEET_CTC,
+            "de"
+        ));
+        assert!(native_model_supports_language(parakeet::NEMOTRON_EN, "en"));
+        assert!(native_model_supports_language(parakeet::NEMOTRON_EN, ""));
     }
 
     #[test]

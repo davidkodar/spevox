@@ -22,8 +22,8 @@ use crate::{
 
 use super::{
     DesktopCommand, HistoryContext, HistoryUpdate, ParakeetBackend, ai_provider_name, asr_gain,
-    audio_history_summary, language_display_name, native_language_for_model, process_transcript,
-    record_history, suspicious_single_word,
+    audio_history_summary, language_display_name, native_language_for_model,
+    native_model_supports_language, process_transcript, record_history, suspicious_single_word,
 };
 
 pub(super) struct CompletedDictation {
@@ -381,6 +381,16 @@ pub(super) fn transcribe_final(
             native_fallback_error: None,
         };
     };
+
+    if !native_model_supports_language(native_model, request.language) {
+        return FinalAsrResult {
+            transcription: whisper_transcription(),
+            native_fallback_error: Some(format!(
+                "{} is English-only; used multilingual Whisper for fixed language {}",
+                native_model.name, request.language
+            )),
+        };
+    }
 
     let native_language = native_language_for_model(native_model, request.language);
     let primary = request

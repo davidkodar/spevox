@@ -1187,6 +1187,16 @@ ApplicationWindow {
                                     font.pixelSize: 11
                                     wrapMode: Text.Wrap
                                 }
+                                Text {
+                                    visible: (controller.selectedSpeechEngine === 3 || controller.selectedSpeechEngine === 4)
+                                             && controller.selectedLanguage !== 0
+                                             && controller.languages[controller.selectedLanguage] !== "English"
+                                    Layout.fillWidth: true
+                                    text: qsTr("This engine recognizes English only. With a fixed non-English language, FluidVoice uses the selected multilingual Whisper model for both preview and final text.")
+                                    color: root.accent
+                                    font.pixelSize: 11
+                                    wrapMode: Text.Wrap
+                                }
                                 Text { Layout.fillWidth: true; text: controller.parakeetStatus; color: root.secondaryText; font.pixelSize: 12; wrapMode: Text.Wrap }
                                 RowLayout {
                                     visible: controller.parakeetBusy
@@ -1792,6 +1802,7 @@ ApplicationWindow {
                             background: Rectangle { color: root.panelRaised; border.color: root.hairline; radius: 8 }
                             onEditingFinished: controller.updateAiPrompt(text)
                         }
+                        Text { Layout.fillWidth: true; text: qsTr("The selected dictation language is always appended as a strict output-language contract. Custom prompts may use {{language_name}}, {{language_code}}, or {{language}}."); color: root.tertiaryText; font.pixelSize: 10; wrapMode: Text.Wrap }
                         RowLayout {
                             Layout.fillWidth: true
                             Text { Layout.fillWidth: true; text: controller.aiStatus; color: root.secondaryText; font.pixelSize: 11; wrapMode: Text.Wrap }

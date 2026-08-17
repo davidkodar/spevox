@@ -13,6 +13,12 @@ All notable changes to FluidVoice Linux are documented here. The project uses
 - Corrected the Standard overlay's constrained geometry and made appearance
   previews start from a deterministic listening state rather than stale result
   state.
+- Prevented English-only native engines from replacing a fixed non-English live
+  preview with English final text. Those combinations now use multilingual
+  Whisper consistently and are explained in the speech-engine panel.
+- Added a strict named-language contract to every AI cleanup request and custom
+  prompt placeholders for `{{language_name}}`, `{{language_code}}`, and
+  `{{language}}`.
 
 - Began the 0.5 intelligent-cleanup milestone with one conservative,
   language-aware editing contract for local and cloud providers. It explicitly
