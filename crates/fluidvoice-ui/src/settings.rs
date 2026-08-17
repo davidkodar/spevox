@@ -58,6 +58,50 @@ pub(super) enum WriteModeJob {
     },
 }
 
+impl WriteModeJob {
+    const REWRITE_PROMPT: &'static str = "Rewrite the selected text according to the user's instruction. Preserve meaning unless the instruction asks otherwise. Output only the replacement text, with no explanation or markdown fences.";
+    const DRAFT_PROMPT: &'static str = "Write the requested text. Follow the user's instruction precisely. Output only the finished text, with no explanation or markdown fences.";
+
+    pub(super) fn rewrite(instruction: String, selected: String) -> Self {
+        Self::Rewrite {
+            instruction,
+            selected,
+        }
+    }
+
+    pub(super) fn draft(instruction: String) -> Self {
+        Self::Draft { instruction }
+    }
+
+    pub(super) const fn prompt(&self) -> &'static str {
+        match self {
+            Self::Rewrite { .. } => Self::REWRITE_PROMPT,
+            Self::Draft { .. } => Self::DRAFT_PROMPT,
+        }
+    }
+
+    pub(super) fn input(&self) -> String {
+        match self {
+            Self::Rewrite {
+                instruction,
+                selected,
+            } => format!("User instruction: {instruction}\n\nSelected text:\n{selected}"),
+            Self::Draft { instruction } => instruction.clone(),
+        }
+    }
+
+    pub(super) const fn paste_result(&self) -> bool {
+        matches!(self, Self::Rewrite { .. })
+    }
+
+    pub(super) const fn retry_success_status(&self) -> &'static str {
+        match self {
+            Self::Rewrite { .. } => "Rewrite retry pasted or left on clipboard",
+            Self::Draft { .. } => "Draft retry copied to the clipboard",
+        }
+    }
+}
+
 pub(super) fn load_ai_profiles() -> Vec<AiProfile> {
     let Ok(contents) = fs::read_to_string(ai_profiles_path()) else {
         return Vec::new();

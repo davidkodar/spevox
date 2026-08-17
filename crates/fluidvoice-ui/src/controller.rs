@@ -2373,8 +2373,6 @@ impl ffi::FluidVoiceController {
             return;
         };
         let mut config = self.as_ref().rust().ai_config();
-        "Rewrite the selected text according to the user's instruction. Preserve meaning unless the instruction asks otherwise. Output only the replacement text, with no explanation or markdown fences."
-            .clone_into(&mut config.prompt);
         let qt_thread = self.qt_thread();
         self.as_mut().set_assistant_busy(true);
         self.as_mut()
@@ -2410,22 +2408,17 @@ impl ffi::FluidVoiceController {
                 if selected.trim().is_empty() {
                     return Err("The clipboard contains no selected text".to_owned());
                 }
-                let text = ai::enhance(
-                    &config,
-                    &format!("User instruction: {instruction}\n\nSelected text:\n{selected}"),
-                )?;
-                Ok((selected, text))
+                let job = WriteModeJob::rewrite(instruction.clone(), selected.clone());
+                job.prompt().clone_into(&mut config.prompt);
+                let text = ai::enhance(&config, &job.input())?;
+                Ok((job, selected, text))
             });
             qt_thread
                 .queue(move |mut controller| {
                     controller.as_mut().set_assistant_busy(false);
                     match rewritten {
-                Ok((selected, text)) => {
-                            controller.as_mut().rust_mut().get_mut().last_write_job =
-                                Some(WriteModeJob::Rewrite {
-                                    instruction: instruction.clone(),
-                                    selected: selected.clone(),
-                                });
+                Ok((job, selected, text)) => {
+                            controller.as_mut().rust_mut().get_mut().last_write_job = Some(job);
                             controller.as_mut().set_write_mode_retry_available(true);
                             controller.as_mut().set_last_raw_text(QString::from(&selected));
                             let rust = controller.as_mut().rust_mut().get_mut();
@@ -2469,18 +2462,17 @@ impl ffi::FluidVoiceController {
             ));
             return;
         }
+        let job = WriteModeJob::draft(instruction);
         let mut config = self.as_ref().rust().ai_config();
-        "Write the requested text. Follow the user's instruction precisely. Output only the finished text, with no explanation or markdown fences."
-            .clone_into(&mut config.prompt);
-        self.as_mut().rust_mut().get_mut().last_write_job = Some(WriteModeJob::Draft {
-            instruction: instruction.clone(),
-        });
+        job.prompt().clone_into(&mut config.prompt);
+        let input = job.input();
+        self.as_mut().rust_mut().get_mut().last_write_job = Some(job);
         self.as_mut().set_write_mode_retry_available(true);
         let qt_thread = self.qt_thread();
         self.as_mut().set_assistant_busy(true);
         self.as_mut().set_ai_status(QString::from("Writing draft…"));
         std::thread::spawn(move || {
-            let result = ai::enhance(&config, &instruction);
+            let result = ai::enhance(&config, &input);
             qt_thread
                 .queue(move |mut controller| {
                     controller.as_mut().set_assistant_busy(false);
@@ -2526,24 +2518,10 @@ impl ffi::FluidVoiceController {
             return;
         };
         let mut config = self.as_ref().rust().ai_config();
-        let (input, paste_result) = match job {
-            WriteModeJob::Rewrite {
-                instruction,
-                selected,
-            } => {
-                "Rewrite the selected text according to the user's instruction. Preserve meaning unless the instruction asks otherwise. Output only the replacement text, with no explanation or markdown fences."
-                    .clone_into(&mut config.prompt);
-                (
-                    format!("User instruction: {instruction}\n\nSelected text:\n{selected}"),
-                    true,
-                )
-            }
-            WriteModeJob::Draft { instruction } => {
-                "Write the requested text. Follow the user's instruction precisely. Output only the finished text, with no explanation or markdown fences."
-                    .clone_into(&mut config.prompt);
-                (instruction, false)
-            }
-        };
+        job.prompt().clone_into(&mut config.prompt);
+        let input = job.input();
+        let paste_result = job.paste_result();
+        let success_status = job.retry_success_status();
         let qt_thread = self.qt_thread();
         self.as_mut().set_assistant_busy(true);
         self.as_mut()
@@ -2576,11 +2554,7 @@ impl ffi::FluidVoiceController {
                                 }
                                 controller
                                     .as_mut()
-                                    .set_ai_status(QString::from(if paste_result {
-                                        "Rewrite retry pasted or left on clipboard"
-                                    } else {
-                                        "Draft retry copied to the clipboard"
-                                    }));
+                                    .set_ai_status(QString::from(success_status));
                             } else {
                                 controller.as_mut().set_ai_status(QString::from(
                                     "Write Mode retry completed but clipboard delivery failed",
@@ -4278,16 +4252,32 @@ mod tests {
     use std::{fs, time::Duration};
 
     use super::{
-        AiProfile, DesktopAction, DictionaryEntry, MeetingSegment, ai_provider_catalog, asr_gain,
-        assign_speakers, decode_audio_file, decode_file_url, history_clipboard_text,
-        meeting_speaker_names, meter_level, native_language_for_model, native_model_for_engine,
-        parse_csv_record, parse_desktop_action, peak_db, process_transcript,
-        profile_matches_application, read_dictionary_import,
+        AiProfile, DesktopAction, DictionaryEntry, MeetingSegment, WriteModeJob,
+        ai_provider_catalog, asr_gain, assign_speakers, decode_audio_file, decode_file_url,
+        history_clipboard_text, meeting_speaker_names, meter_level, native_language_for_model,
+        native_model_for_engine, parse_csv_record, parse_desktop_action, peak_db,
+        process_transcript, profile_matches_application, read_dictionary_import,
         rename_latest_file_history_speaker_entries, supported_languages, suspicious_single_word,
         timestamp_srt, valid_ollama_model_name, whisper_model_catalog, write_dictionary_csv,
         write_history_export, write_meeting_export,
     };
     use crate::parakeet;
+
+    #[test]
+    fn write_mode_job_owns_request_and_delivery_policy() {
+        let rewrite = WriteModeJob::rewrite("make concise".into(), "selected text".into());
+        assert!(rewrite.prompt().starts_with("Rewrite the selected text"));
+        assert_eq!(
+            rewrite.input(),
+            "User instruction: make concise\n\nSelected text:\nselected text"
+        );
+        assert!(rewrite.paste_result());
+
+        let draft = WriteModeJob::draft("write a note".into());
+        assert!(draft.prompt().starts_with("Write the requested text"));
+        assert_eq!(draft.input(), "write a note");
+        assert!(!draft.paste_result());
+    }
 
     #[test]
     fn provider_catalog_order_matches_the_stable_qml_index_mapping() {
