@@ -14,6 +14,9 @@ All notable changes to FluidVoice Linux are documented here. The project uses
 - Split dictation capture, live preview, enhancement, persistence, delivery,
   and Qt presentation into focused stages; `toggle_recording` is now a small
   composition method without a Clippy line-count suppression.
+- Moved Secret Service API-key writes and KWin automatic-profile configuration
+  onto bounded workers so wallet prompts and desktop reconfiguration cannot
+  freeze the Qt interface; stale completions are ignored after selection changes.
 - Closed follow-up audit regressions in meeting-file retry, local AI proxy
   isolation, IPv6 loopback ASR, Write Mode retry semantics, cancellable Whisper
   previews, model integrity checks, local API lifecycle handling, and native

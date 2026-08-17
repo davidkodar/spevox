@@ -1849,18 +1849,33 @@ impl ffi::FluidVoiceController {
     }
 
     pub fn save_ai_api_key(mut self: Pin<&mut Self>, value: &QString) {
+        let provider_index = *self.as_ref().selected_ai_provider();
         let provider = ai_provider(*self.as_ref().selected_ai_provider());
+        let provider_id = provider.id;
         let value = value.to_string();
-        match ai::store_api_key(provider.id, &value) {
-            Ok(()) => {
-                self.as_mut().rust_mut().get_mut().ai_api_key = value;
-                self.as_mut().set_ai_key_configured(true);
-                self.as_mut().set_ai_status(QString::from(
-                    "API key stored securely by KDE Wallet / Secret Service",
-                ));
-            }
-            Err(error) => self.as_mut().set_ai_status(QString::from(&error)),
-        }
+        self.as_mut()
+            .set_ai_status(QString::from("Storing API key securely…"));
+        let qt_thread = self.qt_thread();
+        std::thread::spawn(move || {
+            let result = ai::store_api_key(provider_id, &value);
+            qt_thread
+                .queue(move |mut controller| {
+                    if *controller.as_ref().selected_ai_provider() != provider_index {
+                        return;
+                    }
+                    match result {
+                        Ok(()) => {
+                            controller.as_mut().rust_mut().get_mut().ai_api_key = value;
+                            controller.as_mut().set_ai_key_configured(true);
+                            controller.as_mut().set_ai_status(QString::from(
+                                "API key stored securely by KDE Wallet / Secret Service",
+                            ));
+                        }
+                        Err(error) => controller.as_mut().set_ai_status(QString::from(&error)),
+                    }
+                })
+                .ok();
+        });
     }
 
     pub fn test_ai_provider(mut self: Pin<&mut Self>) {
@@ -2250,17 +2265,32 @@ impl ffi::FluidVoiceController {
     }
 
     pub fn update_auto_profiles_enabled(mut self: Pin<&mut Self>, enabled: bool) {
-        let script = configure_kwin_profile_script(enabled);
         self.as_mut().set_auto_profiles_enabled(enabled);
         self.as_ref().rust().save_preferences();
         self.as_mut()
-            .set_ai_status(QString::from(if let Err(error) = script {
-                format!("Could not configure the FluidVoice KWin script: {error}")
-            } else if enabled {
-                "Automatic profiles enabled · switch applications to test matching".to_owned()
-            } else {
-                "Automatic profiles disabled · profile selection remains manual".to_owned()
-            }));
+            .set_ai_status(QString::from("Configuring the FluidVoice KWin script…"));
+        let qt_thread = self.qt_thread();
+        std::thread::spawn(move || {
+            let script = configure_kwin_profile_script(enabled);
+            qt_thread
+                .queue(move |mut controller| {
+                    if *controller.as_ref().auto_profiles_enabled() != enabled {
+                        return;
+                    }
+                    controller
+                        .as_mut()
+                        .set_ai_status(QString::from(if let Err(error) = script {
+                            format!("Could not configure the FluidVoice KWin script: {error}")
+                        } else if enabled {
+                            "Automatic profiles enabled · switch applications to test matching"
+                                .to_owned()
+                        } else {
+                            "Automatic profiles disabled · profile selection remains manual"
+                                .to_owned()
+                        }));
+                })
+                .ok();
+        });
     }
 
     fn apply_active_application(mut self: Pin<&mut Self>, application: &ActiveApplication) {
