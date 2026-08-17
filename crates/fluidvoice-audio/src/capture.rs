@@ -313,9 +313,7 @@ impl PipeWireCapture {
             .connect(
                 spa::utils::Direction::Input,
                 None,
-                pw::stream::StreamFlags::AUTOCONNECT
-                    | pw::stream::StreamFlags::MAP_BUFFERS
-                    | pw::stream::StreamFlags::RT_PROCESS,
+                pw::stream::StreamFlags::AUTOCONNECT | pw::stream::StreamFlags::MAP_BUFFERS,
                 &mut [param],
             )
             .map_err(AudioCaptureError::pw)?;
@@ -333,6 +331,7 @@ impl PipeWireCapture {
             .into_result()
             .map_err(AudioCaptureError::pw)?;
         main_loop.run();
+        stream.disconnect().map_err(AudioCaptureError::pw)?;
 
         let mut result = captured.borrow_mut();
         if result.sample_rate == 0 || result.channels == 0 {

@@ -10,6 +10,7 @@ publish.workspace = true
 fluidvoice-audio = { path = "../fluidvoice-audio" }
 serde_json = "1.0.149"
 ureq = { version = "3.1.4", default-features = false, features = ["rustls"] }
+url = "2.5"
 whisper-rs = { version = "0.16.0", features = ["vulkan"] }
 
 [lints]

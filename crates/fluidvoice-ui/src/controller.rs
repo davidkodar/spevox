@@ -1000,6 +1000,7 @@ impl ffi::FluidVoiceController {
                         eprintln!("Application profile bridge stopped: {error}");
                     }
                 });
+                let mut profile_events_open = true;
                 loop {
                     let config = match GlobalShortcutConfig::new(
                         "dictate_hold",
@@ -1141,13 +1142,13 @@ impl ffi::FluidVoiceController {
                                 }
                                 None => break,
                             },
-                            application = profile_events.recv() => match application {
+                            application = profile_events.recv(), if profile_events_open => match application {
                                 Some(application) => {
                                     qt_thread.queue(move |mut controller| {
                                         controller.as_mut().apply_active_application(application);
                                     }).ok();
                                 }
-                                None => {}
+                                None => profile_events_open = false,
                             }
                         }
                     }
@@ -4279,10 +4280,15 @@ fn parse_desktop_action(value: &str) -> Option<DesktopAction> {
 }
 
 fn check_latest_release(current: &str) -> String {
-    let response =
-        ureq::get("https://api.github.com/repos/davidkodar/fluidvoice-linux/releases/latest")
-            .header("user-agent", "FluidVoice-Linux")
-            .call();
+    let agent = ureq::Agent::config_builder()
+        .timeout_global(Some(Duration::from_secs(15)))
+        .timeout_recv_body(Some(Duration::from_secs(10)))
+        .build()
+        .new_agent();
+    let response = agent
+        .get("https://api.github.com/repos/davidkodar/fluidvoice-linux/releases/latest")
+        .header("user-agent", "FluidVoice-Linux")
+        .call();
     let mut response = match response {
         Ok(response) => response,
         Err(ureq::Error::StatusCode(404)) => {
@@ -5627,7 +5633,12 @@ fn download_whisper_model(
         "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/{}",
         model.file_name
     );
-    let response = ureq::get(&url).call().map_err(|error| error.to_string())?;
+    let agent = ureq::Agent::config_builder()
+        .timeout_global(Some(Duration::from_mins(30)))
+        .timeout_recv_body(Some(Duration::from_secs(30)))
+        .build()
+        .new_agent();
+    let response = agent.get(&url).call().map_err(|error| error.to_string())?;
     let mut reader = response.into_body().into_reader();
     let mut output = fs::File::create(&partial).map_err(|error| error.to_string())?;
     let mut buffer = vec![0_u8; 1024 * 256];
@@ -5864,8 +5875,8 @@ fn asr_gain(peak: f32, user_gain: f32) -> f32 {
     // the buffer sent to Whisper into a clipped square wave.
     let automatic = (0.35 / peak).clamp(1.0, 64.0);
     let requested = automatic * user_gain.max(0.0);
-    let headroom_limit = 0.85 / peak;
-    requested.clamp(1.0, headroom_limit.min(64.0))
+    let headroom_limit = (0.85 / peak).min(64.0);
+    requested.min(headroom_limit).max(1.0)
 }
 
 fn suspicious_single_word(text: &str, duration: Duration) -> bool {
@@ -6092,6 +6103,7 @@ mod tests {
         assert_eq!(asr_gain(0.01, 16.0), 64.0);
         assert!((asr_gain(0.1, 1.0) - 3.5).abs() < f32::EPSILON);
         assert_eq!(asr_gain(0.8, 1.0), 1.0);
+        assert_eq!(asr_gain(0.95, 1.0), 1.0);
     }
 
     #[test]

@@ -764,6 +764,7 @@ dependencies = [
  "fluidvoice-audio",
  "serde_json",
  "ureq",
+ "url",
  "whisper-rs",
 ]
 

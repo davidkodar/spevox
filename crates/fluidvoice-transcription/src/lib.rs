@@ -3,6 +3,7 @@
 use std::{error::Error, fmt, path::Path, thread, time::Duration};
 
 use fluidvoice_audio::MonoAudioBuffer;
+use url::Url;
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -85,25 +86,29 @@ impl LocalSpeechServer {
     /// # Errors
     /// Returns an error unless the URL is plain HTTP on loopback.
     pub fn new(base_url: &str) -> Result<Self, TranscriptionError> {
-        let base = base_url.trim().trim_end_matches('/');
-        let local = base.strip_prefix("http://").is_some_and(|host| {
-            host == "localhost"
-                || host.starts_with("localhost:")
-                || host == "127.0.0.1"
-                || host.starts_with("127.0.0.1:")
-                || host == "[::1]"
-                || host.starts_with("[::1]:")
+        let mut base = Url::parse(base_url.trim())
+            .map_err(|_| TranscriptionError::new("external speech server URL is invalid"))?;
+        let host_is_loopback = base.host_str().is_some_and(|host| {
+            host.eq_ignore_ascii_case("localhost")
+                || host
+                    .parse::<std::net::IpAddr>()
+                    .is_ok_and(|address| address.is_loopback())
         });
-        if !local {
+        if base.scheme() != "http"
+            || !base.username().is_empty()
+            || base.password().is_some()
+            || !host_is_loopback
+            || base.query().is_some()
+            || base.fragment().is_some()
+        {
             return Err(TranscriptionError::new(
                 "external speech server must use HTTP loopback (localhost, 127.0.0.1, or ::1)",
             ));
         }
-        let endpoint = if base.ends_with("/v1/audio/transcriptions") {
-            base.to_owned()
-        } else {
-            format!("{base}/v1/audio/transcriptions")
-        };
+        if base.path().trim_end_matches('/') != "/v1/audio/transcriptions" {
+            base.set_path("/v1/audio/transcriptions");
+        }
+        let endpoint = base.to_string();
         Ok(Self { endpoint })
     }
 
@@ -138,6 +143,9 @@ impl LocalSpeechServer {
         body.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());
         let agent = ureq::Agent::config_builder()
             .timeout_global(Some(Duration::from_mins(2)))
+            .timeout_recv_body(Some(Duration::from_secs(30)))
+            .proxy(None)
+            .max_redirects(0)
             .build()
             .new_agent();
         let mut response = agent
@@ -363,9 +371,13 @@ mod tests {
     #[test]
     fn local_server_rejects_non_loopback_audio_destinations() {
         assert!(LocalSpeechServer::new("http://127.0.0.1:8080").is_ok());
+        assert!(LocalSpeechServer::new("http://localhost").is_ok());
+        assert!(LocalSpeechServer::new("http://LOCALHOST:8080").is_ok());
         assert!(LocalSpeechServer::new("http://localhost:8080/v1/audio/transcriptions").is_ok());
         assert!(LocalSpeechServer::new("https://example.com").is_err());
         assert!(LocalSpeechServer::new("http://127.0.0.1.example.com").is_err());
+        assert!(LocalSpeechServer::new("http://localhost:1@evil.example/").is_err());
+        assert!(LocalSpeechServer::new("http://127.0.0.2:8080").is_ok());
     }
 
     #[test]

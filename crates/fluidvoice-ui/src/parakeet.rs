@@ -469,7 +469,13 @@ pub fn download_model(
         .ok_or_else(|| "invalid native model destination".to_owned())?;
     fs::create_dir_all(parent).map_err(|error| error.to_string())?;
     let partial = destination.with_extension("gguf.part");
-    let response = ureq::get(model.url)
+    let agent = ureq::Agent::config_builder()
+        .timeout_global(Some(Duration::from_mins(30)))
+        .timeout_recv_body(Some(Duration::from_secs(30)))
+        .build()
+        .new_agent();
+    let response = agent
+        .get(model.url)
         .call()
         .map_err(|error| format!("{} request failed: {error}", model.name))?;
     let mut reader = response.into_body().into_reader();
@@ -636,10 +642,14 @@ impl Drop for Supervisor {
 }
 
 fn ready() -> bool {
-    ureq::get(&format!("{ENDPOINT}/ready"))
-        .config()
+    ureq::Agent::config_builder()
         .timeout_global(Some(Duration::from_secs(1)))
+        .timeout_recv_body(Some(Duration::from_secs(1)))
+        .proxy(None)
+        .max_redirects(0)
         .build()
+        .new_agent()
+        .get(&format!("{ENDPOINT}/ready"))
         .call()
         .is_ok()
 }

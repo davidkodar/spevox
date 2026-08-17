@@ -49,15 +49,25 @@ pub fn rotate_token(path: &Path) -> Result<String, String> {
             write!(token, "{byte:02x}").expect("writing to a String cannot fail");
             token
         });
+    let temporary = parent.join(format!(".local-api.token.{}.tmp", std::process::id()));
     let mut file = OpenOptions::new()
-        .create(true)
-        .truncate(true)
+        .create_new(true)
         .write(true)
         .mode(0o600)
-        .open(path)
+        .open(&temporary)
         .map_err(|error| error.to_string())?;
-    file.write_all(token.as_bytes())
-        .map_err(|error| error.to_string())?;
+    if let Err(error) = file
+        .write_all(token.as_bytes())
+        .and_then(|()| file.sync_all())
+    {
+        fs::remove_file(&temporary).ok();
+        return Err(error.to_string());
+    }
+    drop(file);
+    fs::rename(&temporary, path).map_err(|error| {
+        fs::remove_file(&temporary).ok();
+        error.to_string()
+    })?;
     fs::set_permissions(path, fs::Permissions::from_mode(0o600))
         .map_err(|error| error.to_string())?;
     Ok(token)
@@ -129,7 +139,22 @@ fn handle_connection(mut stream: TcpStream, token_path: &Path, actions: &Sender<
             .then(|| value.trim().strip_prefix("Bearer "))
             .flatten()
     });
-    let expected = fs::read_to_string(token_path).unwrap_or_default();
+    let expected = match fs::read_to_string(token_path) {
+        Ok(expected)
+            if expected.trim().len() == 64
+                && expected.trim().bytes().all(|byte| byte.is_ascii_hexdigit()) =>
+        {
+            expected
+        }
+        _ => {
+            respond(
+                &mut stream,
+                503,
+                r#"{"error":"authentication token unavailable"}"#,
+            );
+            return;
+        }
+    };
     if !tokens_equal(
         supplied.unwrap_or_default().as_bytes(),
         expected.trim().as_bytes(),
@@ -229,7 +254,8 @@ mod tests {
     #[test]
     fn health_is_public_but_status_requires_bearer_token() {
         let path = std::env::temp_dir().join(format!("fluidvoice-api-http-{}", std::process::id()));
-        fs::write(&path, "valid-token").unwrap();
+        let token = "a".repeat(64);
+        fs::write(&path, &token).unwrap();
         let (health, _) = round_trip(
             "GET /v1/health HTTP/1.1\r\nHost: localhost\r\n\r\n",
             path.clone(),
@@ -241,7 +267,9 @@ mod tests {
         );
         assert!(unauthorized.starts_with("HTTP/1.1 401"));
         let (authorized, _) = round_trip(
-            "GET /v1/status HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer valid-token\r\n\r\n",
+            &format!(
+                "GET /v1/status HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer {token}\r\n\r\n"
+            ),
             path.clone(),
         );
         assert!(authorized.starts_with("HTTP/1.1 200"));
@@ -252,9 +280,12 @@ mod tests {
     fn authenticated_toggle_dispatches_exactly_one_action() {
         let path =
             std::env::temp_dir().join(format!("fluidvoice-api-toggle-{}", std::process::id()));
-        fs::write(&path, "valid-token").unwrap();
+        let token = "b".repeat(64);
+        fs::write(&path, &token).unwrap();
         let (response, events) = round_trip(
-            "POST /v1/dictation/toggle HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer valid-token\r\nContent-Length: 0\r\n\r\n",
+            &format!(
+                "POST /v1/dictation/toggle HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer {token}\r\nContent-Length: 0\r\n\r\n"
+            ),
             path.clone(),
         );
         assert!(response.starts_with("HTTP/1.1 202"));
@@ -263,6 +294,27 @@ mod tests {
             LocalApiAction::ToggleDictation
         );
         assert!(events.try_recv().is_err());
+        fs::remove_file(path).ok();
+    }
+
+    #[test]
+    fn missing_or_empty_token_fails_closed() {
+        let path = std::env::temp_dir().join(format!(
+            "fluidvoice-api-missing-token-{}",
+            std::process::id()
+        ));
+        fs::remove_file(&path).ok();
+        let (missing, _) = round_trip(
+            "GET /v1/status HTTP/1.1\r\nHost: localhost\r\n\r\n",
+            path.clone(),
+        );
+        assert!(missing.starts_with("HTTP/1.1 503"));
+        fs::write(&path, "").unwrap();
+        let (empty, _) = round_trip(
+            "POST /v1/dictation/toggle HTTP/1.1\r\nHost: localhost\r\n\r\n",
+            path.clone(),
+        );
+        assert!(empty.starts_with("HTTP/1.1 503"));
         fs::remove_file(path).ok();
     }
 }
