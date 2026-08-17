@@ -35,6 +35,9 @@ pub mod ffi {
         #[qproperty(i32, selected_input, cxx_name = "selectedInput")]
         #[qproperty(f32, gain_db, cxx_name = "gainDb")]
         #[qproperty(bool, transcribing)]
+        #[qproperty(bool, assistant_busy, cxx_name = "assistantBusy")]
+        #[qproperty(bool, update_busy, cxx_name = "updateBusy")]
+        #[qproperty(bool, export_busy, cxx_name = "exportBusy")]
         #[qproperty(QString, transcript_text, cxx_name = "transcriptText")]
         #[qproperty(QString, live_transcript, cxx_name = "liveTranscript")]
         #[qproperty(QStringList, languages)]
@@ -524,6 +527,9 @@ pub struct FluidVoiceControllerRust {
     selected_input: i32,
     gain_db: f32,
     transcribing: bool,
+    assistant_busy: bool,
+    update_busy: bool,
+    export_busy: bool,
     transcript_text: QString,
     live_transcript: QString,
     stop_token: Option<CaptureStopToken>,
@@ -749,6 +755,9 @@ impl Default for FluidVoiceControllerRust {
             selected_input: -1,
             gain_db: preferences.gain_db,
             transcribing: false,
+            assistant_busy: false,
+            update_busy: false,
+            export_busy: false,
             transcript_text: QString::default(),
             live_transcript: QString::default(),
             stop_token: None,
@@ -1583,7 +1592,7 @@ impl ffi::FluidVoiceController {
 
     pub fn submit_command(mut self: Pin<&mut Self>, command: &QString) {
         let command = command.to_string().trim().to_owned();
-        if command.is_empty() || *self.as_ref().transcribing() {
+        if command.is_empty() || *self.as_ref().assistant_busy() {
             return;
         }
         if !*self.as_ref().ai_enabled() {
@@ -1606,14 +1615,14 @@ impl ffi::FluidVoiceController {
         let mut config = self.as_ref().rust().ai_config();
         config.prompt = "You are FluidVoice Command Mode, a concise KDE Plasma assistant. Answer the user's question or explain how to perform the requested task. Do not claim to have executed anything. Never output shell commands unless explicitly asked, and clearly label them as suggestions.".to_owned();
         let qt_thread = self.qt_thread();
-        self.as_mut().set_transcribing(true);
+        self.as_mut().set_assistant_busy(true);
         self.as_mut()
             .set_command_output(QString::from("Command Mode is thinking…"));
         std::thread::spawn(move || {
             let result = ai::enhance(&config, &command);
             qt_thread
                 .queue(move |mut controller| {
-                    controller.as_mut().set_transcribing(false);
+                    controller.as_mut().set_assistant_busy(false);
                     match result {
                         Ok(output) => {
                             append_command_history(controller.as_mut(), "assistant", &output);
@@ -1796,7 +1805,7 @@ impl ffi::FluidVoiceController {
     }
 
     pub fn test_ai_provider(mut self: Pin<&mut Self>) {
-        if *self.as_ref().transcribing() {
+        if *self.as_ref().assistant_busy() {
             return;
         }
         if !*self.as_ref().ai_enabled() {
@@ -1807,14 +1816,14 @@ impl ffi::FluidVoiceController {
         }
         let config = self.as_ref().rust().ai_config();
         let qt_thread = self.qt_thread();
-        self.as_mut().set_transcribing(true);
+        self.as_mut().set_assistant_busy(true);
         self.as_mut()
             .set_ai_status(QString::from("Verifying provider…"));
         std::thread::spawn(move || {
             let result = ai::enhance(&config, "hello comma this is a provider test");
             qt_thread
                 .queue(move |mut controller| {
-                    controller.as_mut().set_transcribing(false);
+                    controller.as_mut().set_assistant_busy(false);
                     controller
                         .as_mut()
                         .set_ai_status(QString::from(match result {
@@ -1827,7 +1836,7 @@ impl ffi::FluidVoiceController {
     }
 
     pub fn discover_local_ai_models(mut self: Pin<&mut Self>) {
-        if *self.as_ref().transcribing() {
+        if *self.as_ref().assistant_busy() {
             return;
         }
         let config = self.as_ref().rust().ai_config();
@@ -1838,14 +1847,14 @@ impl ffi::FluidVoiceController {
             return;
         }
         let qt_thread = self.qt_thread();
-        self.as_mut().set_transcribing(true);
+        self.as_mut().set_assistant_busy(true);
         self.as_mut()
             .set_ai_status(QString::from("Finding installed local models…"));
         std::thread::spawn(move || {
             let result = ai::discover_local_models(&config);
             qt_thread
                 .queue(move |mut controller| {
-                    controller.as_mut().set_transcribing(false);
+                    controller.as_mut().set_assistant_busy(false);
                     match result {
                         Ok(models) => {
                             let count = models.len();
@@ -1941,14 +1950,15 @@ impl ffi::FluidVoiceController {
         self.as_mut()
             .set_ollama_status(QString::from("Starting the local Ollama server…"));
         std::thread::spawn(move || {
-            let started = Command::new("ollama")
+            let mut command = Command::new("ollama");
+            command
                 .arg("serve")
                 .stdin(Stdio::null())
                 .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .spawn();
+                .stderr(Stdio::null());
+            let started = spawn_reaped(&mut command);
             let status = match started {
-                Ok(_) => {
+                Ok(()) => {
                     let mut ready = false;
                     for _ in 0..10 {
                         std::thread::sleep(Duration::from_millis(300));
@@ -2230,7 +2240,7 @@ impl ffi::FluidVoiceController {
 
     pub fn rewrite_selected_text(mut self: Pin<&mut Self>, instruction: &QString) {
         let instruction = instruction.to_string().trim().to_owned();
-        if instruction.is_empty() || *self.as_ref().transcribing() {
+        if instruction.is_empty() || *self.as_ref().assistant_busy() {
             return;
         }
         if !*self.as_ref().ai_enabled() {
@@ -2247,7 +2257,7 @@ impl ffi::FluidVoiceController {
         let mut config = self.as_ref().rust().ai_config();
         config.prompt = "Rewrite the selected text according to the user's instruction. Preserve meaning unless the instruction asks otherwise. Output only the replacement text, with no explanation or markdown fences.".to_owned();
         let qt_thread = self.qt_thread();
-        self.as_mut().set_transcribing(true);
+        self.as_mut().set_assistant_busy(true);
         self.as_mut()
             .set_ai_status(QString::from("Capturing selected text…"));
         std::thread::spawn(move || {
@@ -2258,7 +2268,7 @@ impl ffi::FluidVoiceController {
             {
                 qt_thread
                     .queue(|mut controller| {
-                        controller.as_mut().set_transcribing(false);
+                        controller.as_mut().set_assistant_busy(false);
                         controller.as_mut().set_ai_status(QString::from(
                             "Rewrite failed · desktop integration stopped",
                         ));
@@ -2289,7 +2299,7 @@ impl ffi::FluidVoiceController {
             });
             qt_thread
                 .queue(move |mut controller| {
-                    controller.as_mut().set_transcribing(false);
+                    controller.as_mut().set_assistant_busy(false);
                     match rewritten {
                 Ok((selected, text)) => {
                             controller.as_mut().rust_mut().get_mut().last_write_job =
@@ -2336,7 +2346,7 @@ impl ffi::FluidVoiceController {
 
     pub fn write_from_instruction(mut self: Pin<&mut Self>, instruction: &QString) {
         let instruction = instruction.to_string().trim().to_owned();
-        if instruction.is_empty() || *self.as_ref().transcribing() {
+        if instruction.is_empty() || *self.as_ref().assistant_busy() {
             return;
         }
         if !*self.as_ref().ai_enabled() {
@@ -2351,13 +2361,13 @@ impl ffi::FluidVoiceController {
             instruction: instruction.clone(),
         });
         let qt_thread = self.qt_thread();
-        self.as_mut().set_transcribing(true);
+        self.as_mut().set_assistant_busy(true);
         self.as_mut().set_ai_status(QString::from("Writing draft…"));
         std::thread::spawn(move || {
             let result = ai::enhance(&config, &instruction);
             qt_thread
                 .queue(move |mut controller| {
-                    controller.as_mut().set_transcribing(false);
+                    controller.as_mut().set_assistant_busy(false);
                     match result {
                         Ok(text) => {
                             let rust = controller.as_mut().rust_mut().get_mut();
@@ -2391,7 +2401,7 @@ impl ffi::FluidVoiceController {
     }
 
     pub fn retry_write_mode(mut self: Pin<&mut Self>) {
-        if *self.as_ref().transcribing() {
+        if *self.as_ref().assistant_busy() {
             return;
         }
         if !*self.as_ref().ai_enabled() {
@@ -2420,14 +2430,14 @@ impl ffi::FluidVoiceController {
             }
         };
         let qt_thread = self.qt_thread();
-        self.as_mut().set_transcribing(true);
+        self.as_mut().set_assistant_busy(true);
         self.as_mut()
             .set_ai_status(QString::from("Retrying Write Mode…"));
         std::thread::spawn(move || {
             let result = ai::enhance(&config, &input);
             qt_thread
                 .queue(move |mut controller| {
-                    controller.as_mut().set_transcribing(false);
+                    controller.as_mut().set_assistant_busy(false);
                     match result {
                         Ok(text) => {
                             let rust = controller.as_mut().rust_mut().get_mut();
@@ -2473,18 +2483,18 @@ impl ffi::FluidVoiceController {
     }
 
     pub fn check_for_updates(mut self: Pin<&mut Self>) {
-        if *self.as_ref().transcribing() {
+        if *self.as_ref().update_busy() {
             return;
         }
         let qt_thread = self.qt_thread();
-        self.as_mut().set_transcribing(true);
+        self.as_mut().set_update_busy(true);
         self.as_mut()
             .set_update_status(QString::from("Checking GitHub Releases…"));
         std::thread::spawn(move || {
             let result = check_latest_release(env!("CARGO_PKG_VERSION"));
             qt_thread
                 .queue(move |mut controller| {
-                    controller.as_mut().set_transcribing(false);
+                    controller.as_mut().set_update_busy(false);
                     controller
                         .as_mut()
                         .set_update_status(QString::from(&result));
@@ -3121,19 +3131,19 @@ impl ffi::FluidVoiceController {
     }
 
     pub fn export_audio_history(mut self: Pin<&mut Self>, path: &QString) {
-        if *self.as_ref().transcribing() {
+        if *self.as_ref().export_busy() {
             return;
         }
         let path = PathBuf::from(decode_file_url(&path.to_string()));
         let qt_thread = self.qt_thread();
-        self.as_mut().set_transcribing(true);
+        self.as_mut().set_export_busy(true);
         self.as_mut()
             .set_status_text(QString::from("Exporting audio history…"));
         std::thread::spawn(move || {
             let result = write_audio_history_zip(&path);
             qt_thread
                 .queue(move |mut controller| {
-                    controller.as_mut().set_transcribing(false);
+                    controller.as_mut().set_export_busy(false);
                     controller.set_status_text(QString::from(match result {
                         Ok(count) => format!("Exported {count} recording(s) and history metadata"),
                         Err(error) => format!("Audio-history export failed: {error}"),
@@ -4298,11 +4308,16 @@ impl DesktopAction {
                 command
             }
         };
-        command
-            .spawn()
-            .map(|_| ())
-            .map_err(|error| error.to_string())
+        spawn_reaped(&mut command).map_err(|error| error.to_string())
     }
+}
+
+fn spawn_reaped(command: &mut Command) -> std::io::Result<()> {
+    let mut child = command.spawn()?;
+    std::thread::spawn(move || {
+        child.wait().ok();
+    });
+    Ok(())
 }
 
 fn configure_kwin_profile_script(enabled: bool) -> Result<(), String> {

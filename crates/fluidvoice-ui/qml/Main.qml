@@ -1678,8 +1678,8 @@ ApplicationWindow {
                                 }
                                 Button {
                                     visible: controller.aiLocalEndpoint
-                                    text: controller.transcribing ? qsTr("Searching…") : qsTr("Find models")
-                                    enabled: !controller.recording && !controller.transcribing
+                                    text: controller.assistantBusy ? qsTr("Searching…") : qsTr("Find models")
+                                    enabled: !controller.assistantBusy
                                     onClicked: controller.discoverLocalAiModels()
                                 }
                             }
@@ -1740,7 +1740,7 @@ ApplicationWindow {
                         RowLayout {
                             Layout.fillWidth: true
                             Text { Layout.fillWidth: true; text: controller.aiStatus; color: root.secondaryText; font.pixelSize: 11; wrapMode: Text.Wrap }
-                            Button { text: controller.transcribing ? qsTr("Testing…") : qsTr("Verify provider"); enabled: !controller.recording && !controller.transcribing; onClicked: controller.testAiProvider() }
+                            Button { text: controller.assistantBusy ? qsTr("Testing…") : qsTr("Verify provider"); enabled: !controller.assistantBusy; onClicked: controller.testAiProvider() }
                         }
                         Text { Layout.fillWidth: true; text: qsTr("Fluid Intelligence / Fluid-1 is not included. This implementation uses your selected standard or local provider and preserves raw-text fallback behavior."); color: root.tertiaryText; font.pixelSize: 11; wrapMode: Text.Wrap }
                     }
@@ -1811,7 +1811,7 @@ ApplicationWindow {
                             RowLayout {
                                 Layout.fillWidth: true
                                 TextField { id: commandInput; Layout.fillWidth: true; placeholderText: qsTr("Ask or request a desktop action"); onAccepted: commandSubmit.clicked() }
-                                Button { id: commandSubmit; text: controller.transcribing ? qsTr("Thinking…") : qsTr("Send"); enabled: !controller.transcribing && commandInput.text.trim().length > 0; onClicked: { controller.submitCommand(commandInput.text); commandInput.clear() } }
+                                Button { id: commandSubmit; text: controller.assistantBusy ? qsTr("Thinking…") : qsTr("Send"); enabled: !controller.assistantBusy && commandInput.text.trim().length > 0; onClicked: { controller.submitCommand(commandInput.text); commandInput.clear() } }
                             }
                             Rectangle {
                                 Layout.fillWidth: true; implicitHeight: commandOutputText.implicitHeight + 24; radius: 10; color: root.panelRaised; border.color: root.hairline
@@ -1839,10 +1839,10 @@ ApplicationWindow {
                             TextField { id: rewriteInstruction; Layout.fillWidth: true; placeholderText: qsTr("For example: Draft a friendly reply, or make my selection concise") }
                             RowLayout {
                                 Layout.fillWidth: true
-                                Button { text: controller.transcribing ? qsTr("Writing…") : qsTr("Create draft"); enabled: !controller.transcribing && rewriteInstruction.text.trim().length > 0; onClicked: controller.writeFromInstruction(rewriteInstruction.text) }
-                                Button { text: controller.transcribing ? qsTr("Rewriting…") : qsTr("Rewrite selection"); enabled: !controller.transcribing && rewriteInstruction.text.trim().length > 0; onClicked: { rewriteDelay.instruction = rewriteInstruction.text; root.hide(); rewriteDelay.restart() } }
+                                Button { text: controller.assistantBusy ? qsTr("Writing…") : qsTr("Create draft"); enabled: !controller.assistantBusy && rewriteInstruction.text.trim().length > 0; onClicked: controller.writeFromInstruction(rewriteInstruction.text) }
+                                Button { text: controller.assistantBusy ? qsTr("Rewriting…") : qsTr("Rewrite selection"); enabled: !controller.assistantBusy && rewriteInstruction.text.trim().length > 0; onClicked: { rewriteDelay.instruction = rewriteInstruction.text; root.hide(); rewriteDelay.restart() } }
                                 Item { Layout.fillWidth: true }
-                                Button { text: qsTr("Retry"); enabled: !controller.transcribing && controller.lastRawText.length > 0; onClicked: controller.retryWriteMode() }
+                                Button { text: qsTr("Retry"); enabled: !controller.assistantBusy && controller.lastRawText.length > 0; onClicked: controller.retryWriteMode() }
                                 Button { text: qsTr("Undo"); enabled: controller.lastRawText.length > 0; onClicked: controller.undoLastAi() }
                                 Button { text: qsTr("Copy result"); enabled: controller.transcriptText.length > 0; onClicked: controller.copyLastResult(false) }
                             }
@@ -1987,7 +1987,7 @@ ApplicationWindow {
                         Item { Layout.fillWidth: true }
                         Button { text: qsTr("Export JSON"); enabled: controller.historyEntries.length > 0; onClicked: historyJsonDialog.open() }
                         Button { text: qsTr("Export CSV"); enabled: controller.historyEntries.length > 0; onClicked: historyCsvDialog.open() }
-                        Button { text: qsTr("Export audio ZIP"); enabled: !controller.transcribing && controller.audioHistoryStatus.indexOf("0 retained") < 0 && controller.audioHistoryStatus.indexOf("No retained") < 0; onClicked: audioHistoryZipDialog.open() }
+                        Button { text: controller.exportBusy ? qsTr("Exporting…") : qsTr("Export audio ZIP"); enabled: !controller.exportBusy && controller.audioHistoryStatus.indexOf("0 retained") < 0 && controller.audioHistoryStatus.indexOf("No retained") < 0; onClicked: audioHistoryZipDialog.open() }
                         Button { text: qsTr("Clear history"); enabled: controller.historyEntries.length > 0; onClicked: controller.clearHistory() }
                     }
                     Text { text: root.destinationDescriptions[6]; color: root.secondaryText; font.pixelSize: 14 }
@@ -2356,7 +2356,7 @@ ApplicationWindow {
                             Text { text: qsTr("FEATURES"); color: root.accent; font.pixelSize: 11; font.weight: Font.DemiBold; Layout.topMargin: 4 }
                             Text { Layout.fillWidth: true; text: qsTr("• Downloadable multilingual Whisper models with Vulkan acceleration\n• Advanced spoken-to-preferred dictionary import and export\n• Native Plasma tray, global shortcuts, configurable overlay, and diagnosed Wayland delivery\n• Local/cloud AI cleanup with a local-only privacy lock\n• Signed release archives plus Arch and Flatpak packaging infrastructure"); color: root.secondaryText; font.pixelSize: 13; lineHeight: 1.25; wrapMode: Text.Wrap }
                             RowLayout { Layout.fillWidth: true
-                                Button { text: controller.transcribing ? qsTr("Checking…") : qsTr("Check for updates"); enabled: !controller.transcribing; onClicked: controller.checkForUpdates() }
+                                Button { text: controller.updateBusy ? qsTr("Checking…") : qsTr("Check for updates"); enabled: !controller.updateBusy; onClicked: controller.checkForUpdates() }
                                 Text { Layout.fillWidth: true; text: controller.updateStatus; color: root.secondaryText; font.pixelSize: 11; wrapMode: Text.Wrap }
                             }
                             Rectangle { Layout.fillWidth: true; height: 1; color: root.hairline; Layout.topMargin: 4; Layout.bottomMargin: 4 }

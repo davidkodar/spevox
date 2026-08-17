@@ -9,6 +9,10 @@ All notable changes to FluidVoice Linux are documented here. The project uses
   and provider tests; added persistent lifetime dictation counters that exclude
   imported files; corrected prerelease update comparisons, weekend streaks,
   oversized-file diagnostics, and final-ASR latency from preview-worker waits.
+- Separated assistant, update, and export activity from actual transcription so
+  unrelated background work no longer disables the dictation hotkey or presents
+  misleading ASR state; reaped launched desktop/Ollama processes and corrected
+  the diagnostics binary metadata, default message, and GUI exit handling.
 - Hardened local security and failure handling: strict parsed loopback URLs,
   proxy-free/no-redirect audio requests, fail-closed atomic local-API tokens,
   bounded API connections, private atomic user data, private native-ASR ports,

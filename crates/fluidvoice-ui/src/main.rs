@@ -7,14 +7,15 @@ mod parakeet;
 use cxx_qt::casting::Upcast;
 use cxx_qt_lib::{QQmlApplicationEngine, QQmlEngine, QUrl};
 
-fn main() {
+fn main() -> std::process::ExitCode {
     let mut application = application::new_application();
-    if application
-        .as_ref()
-        .is_none_or(|application| !application::is_primary_instance(application))
-    {
+    let Some(application_ref) = application.as_ref() else {
+        eprintln!("FluidVoice could not initialize the Qt application.");
+        return std::process::ExitCode::FAILURE;
+    };
+    if !application::is_primary_instance(application_ref) {
         eprintln!("FluidVoice is already running; requested its settings window.");
-        return;
+        return std::process::ExitCode::SUCCESS;
     }
     let mut engine = QQmlApplicationEngine::new();
 
@@ -28,12 +29,15 @@ fn main() {
         engine.as_mut().load(&QUrl::from(
             "qrc:/qt/qml/io/github/davidkodar/FluidVoiceLinux/qml/Main.qml",
         ));
-        let qml_engine: std::pin::Pin<&mut QQmlEngine> = engine.upcast_pin();
-        qml_engine.on_quit(|_| {}).release();
     }
 
     if let Some(mut application) = application.as_mut() {
         application::refresh_application_icon(application.as_mut());
-        application::exec_application(application);
+        let code = application::exec_application(application);
+        return u8::try_from(code).map_or(
+            std::process::ExitCode::FAILURE,
+            std::process::ExitCode::from,
+        );
     }
+    std::process::ExitCode::FAILURE
 }
