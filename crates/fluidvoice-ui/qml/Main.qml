@@ -17,6 +17,8 @@ ApplicationWindow {
     property int settingsSection: 0
     property int statsChartDays: 7
     property int onboardingStep: 0
+    property var cachedAiHistoryStats: ({ "total": 0, "enhanced": 0, "fallback": 0, "attempts": 0, "latencyTotal": 0, "latencyCount": 0, "providers": ({}) })
+    property var cachedFilteredHistory: []
 
     SystemPalette {
         id: systemPalette
@@ -94,7 +96,7 @@ ApplicationWindow {
         return result
     }
     function aiProviderSummary() {
-        var providers = aiHistoryStats().providers
+        var providers = cachedAiHistoryStats.providers
         var rows = []
         for (var key in providers)
             rows.push({ "key": key, "count": providers[key] })
@@ -369,6 +371,14 @@ ApplicationWindow {
         }
         return entries
     }
+    function refreshHistoryDerivedState() {
+        cachedAiHistoryStats = aiHistoryStats()
+        cachedFilteredHistory = filteredHistory(historySearch.text)
+    }
+    Connections {
+        target: controller
+        function onHistoryEntriesChanged() { root.refreshHistoryDerivedState() }
+    }
     onClosing: function(close) {
         close.accepted = false
         root.hide()
@@ -624,6 +634,7 @@ ApplicationWindow {
     }
 
     Component.onCompleted: {
+        refreshHistoryDerivedState()
         controller.initializeAudio()
         controller.initializeDesktopRuntime()
         if (!controller.onboardingCompleted)
@@ -2023,17 +2034,18 @@ ApplicationWindow {
                         placeholderText: qsTr("Search transcriptions…")
                         leftPadding: 14
                         rightPadding: 14
+                        onTextChanged: root.cachedFilteredHistory = root.filteredHistory(text)
                     }
                     RowLayout {
                         Layout.fillWidth: true
-                        Text { text: historySearch.text.length > 0 ? qsTr("%1 matching entries").arg(root.filteredHistory(historySearch.text).length) : qsTr("%1 entries").arg(controller.historyEntries.length); color: root.secondaryText; font.pixelSize: 11 }
+                        Text { text: historySearch.text.length > 0 ? qsTr("%1 matching entries").arg(root.cachedFilteredHistory.length) : qsTr("%1 entries").arg(controller.historyEntries.length); color: root.secondaryText; font.pixelSize: 11 }
                         Item { Layout.fillWidth: true }
                         Text { visible: controller.historyEntries.length > 0; text: qsTr("Newest first"); color: root.tertiaryText; font.pixelSize: 11 }
                     }
                     Text { visible: controller.historyEntries.length === 0; text: qsTr("No transcripts yet. Completed dictation and file transcripts appear here."); color: root.secondaryText; font.pixelSize: 13 }
-                    Text { visible: controller.historyEntries.length > 0 && root.filteredHistory(historySearch.text).length === 0; text: qsTr("No results. Try a different search term."); color: root.secondaryText; font.pixelSize: 13 }
+                    Text { visible: controller.historyEntries.length > 0 && root.cachedFilteredHistory.length === 0; text: qsTr("No results. Try a different search term."); color: root.secondaryText; font.pixelSize: 13 }
                     Repeater {
-                        model: root.filteredHistory(historySearch.text)
+                        model: root.cachedFilteredHistory
                         delegate: Rectangle {
                             required property string modelData; Layout.fillWidth: true; implicitHeight: historyContent.implicitHeight + 28; radius: 10; color: root.panel; border.color: root.hairline
                             ColumnLayout {
@@ -2191,21 +2203,21 @@ ApplicationWindow {
                         Layout.fillWidth: true; spacing: 12
                         Rectangle { Layout.fillWidth: true; height: 116; radius: 16; color: root.panel; border.color: root.hairline
                             Column { anchors.centerIn: parent; spacing: 5
-                                Text { anchors.horizontalCenter: parent.horizontalCenter; text: root.aiHistoryStats().total > 0 ? Math.round(root.aiHistoryStats().enhanced * 100 / root.aiHistoryStats().total) + "%" : "0%"; color: root.accent; font.pixelSize: 28; font.weight: Font.Bold }
+                                Text { anchors.horizontalCenter: parent.horizontalCenter; text: root.cachedAiHistoryStats.total > 0 ? Math.round(root.cachedAiHistoryStats.enhanced * 100 / root.cachedAiHistoryStats.total) + "%" : "0%"; color: root.accent; font.pixelSize: 28; font.weight: Font.Bold }
                                 Text { anchors.horizontalCenter: parent.horizontalCenter; text: qsTr("AI enhanced"); color: root.secondaryText; font.pixelSize: 12 }
-                                Text { anchors.horizontalCenter: parent.horizontalCenter; text: qsTr("%1 of %2 dictations").arg(root.aiHistoryStats().enhanced).arg(root.aiHistoryStats().total); color: root.tertiaryText; font.pixelSize: 10 }
+                                Text { anchors.horizontalCenter: parent.horizontalCenter; text: qsTr("%1 of %2 dictations").arg(root.cachedAiHistoryStats.enhanced).arg(root.cachedAiHistoryStats.total); color: root.tertiaryText; font.pixelSize: 10 }
                             }
                         }
                         Rectangle { Layout.fillWidth: true; height: 116; radius: 16; color: root.panel; border.color: root.hairline
                             Column { anchors.centerIn: parent; spacing: 5
-                                Text { anchors.horizontalCenter: parent.horizontalCenter; text: root.aiHistoryStats().attempts > 0 ? Math.round(root.aiHistoryStats().enhanced * 100 / root.aiHistoryStats().attempts) + "%" : "—"; color: root.primaryText; font.pixelSize: 28; font.weight: Font.Bold }
+                                Text { anchors.horizontalCenter: parent.horizontalCenter; text: root.cachedAiHistoryStats.attempts > 0 ? Math.round(root.cachedAiHistoryStats.enhanced * 100 / root.cachedAiHistoryStats.attempts) + "%" : "—"; color: root.primaryText; font.pixelSize: 28; font.weight: Font.Bold }
                                 Text { anchors.horizontalCenter: parent.horizontalCenter; text: qsTr("AI success rate"); color: root.secondaryText; font.pixelSize: 12 }
-                                Text { anchors.horizontalCenter: parent.horizontalCenter; text: qsTr("%1 successful · %2 fallback").arg(root.aiHistoryStats().enhanced).arg(root.aiHistoryStats().fallback); color: root.tertiaryText; font.pixelSize: 10 }
+                                Text { anchors.horizontalCenter: parent.horizontalCenter; text: qsTr("%1 successful · %2 fallback").arg(root.cachedAiHistoryStats.enhanced).arg(root.cachedAiHistoryStats.fallback); color: root.tertiaryText; font.pixelSize: 10 }
                             }
                         }
                         Rectangle { Layout.fillWidth: true; height: 116; radius: 16; color: root.panel; border.color: root.hairline
                             Column { anchors.centerIn: parent; spacing: 5
-                                Text { anchors.horizontalCenter: parent.horizontalCenter; text: root.aiHistoryStats().latencyCount > 0 ? Math.round(root.aiHistoryStats().latencyTotal / root.aiHistoryStats().latencyCount) + " ms" : "—"; color: root.primaryText; font.pixelSize: 28; font.weight: Font.Bold }
+                                Text { anchors.horizontalCenter: parent.horizontalCenter; text: root.cachedAiHistoryStats.latencyCount > 0 ? Math.round(root.cachedAiHistoryStats.latencyTotal / root.cachedAiHistoryStats.latencyCount) + " ms" : "—"; color: root.primaryText; font.pixelSize: 28; font.weight: Font.Bold }
                                 Text { anchors.horizontalCenter: parent.horizontalCenter; text: qsTr("Average AI latency"); color: root.secondaryText; font.pixelSize: 12 }
                                 Text { anchors.horizontalCenter: parent.horizontalCenter; text: qsTr("Successful and fallback attempts"); color: root.tertiaryText; font.pixelSize: 10 }
                             }

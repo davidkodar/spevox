@@ -19,15 +19,12 @@ Platform metaphors are translated rather than copied blindly: the notch overlay 
 ## Implemented modules
 
 ```text
-crates/fluidvoice-core/     dependency-light state machine and domain events
-crates/fluidvoice-app/      application lifecycle and composition
+crates/fluidvoice-app/      command-line diagnostics and integration checks
 crates/fluidvoice-audio/    PipeWire devices, capture, conversion, buffering
-crates/fluidvoice-asr/      provider interface and whisper.cpp adapter
+crates/fluidvoice-transcription/ whisper.cpp and local-server ASR adapters
 crates/fluidvoice-portal/   XDG Global Shortcuts and permission adapters
-crates/fluidvoice-delivery/ AT-SPI, consented input, clipboard recovery
-crates/fluidvoice-storage/  XDG settings, history, and migrations
+crates/fluidvoice-delivery/ consented input and clipboard recovery
 crates/fluidvoice-ui/       CXX-Qt bridge, Qt Quick tray, overlay, settings
-tests/                      desktop integration and compatibility harness
 ```
 
 The UI controller also coordinates provider streaming, application/workflow
@@ -36,7 +33,7 @@ audio-file decoding, update checks, and release-facing status. These remain
 separated from microphone capture and embedded whisper.cpp inference by typed
 Rust boundaries even though the desktop bridge composes them in one process.
 
-## State machine
+## Runtime state
 
 ```text
 Idle → Recording → Transcribing → Delivering → Complete → Idle
@@ -44,7 +41,11 @@ Idle → Recording → Transcribing → Delivering → Complete → Idle
    Error/Cancelled/RecoverableClipboard
 ```
 
-No platform integration should call directly across subsystem boundaries. The Rust dictation coordinator owns state transitions and consumes interface-level events. Qt types remain at the CXX-Qt/QML boundary and do not enter the domain crates.
+The CXX-Qt controller currently owns desktop workflow state. Feature-specific
+busy properties keep ASR, assistant, update, and export work independent so an
+unrelated background operation cannot disable dictation. Qt types remain at the
+CXX-Qt/QML boundary and do not enter the audio, transcription, delivery, or
+portal crates.
 
 ## First two technical gates
 

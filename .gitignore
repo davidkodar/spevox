@@ -7,3 +7,4 @@ target/
 /work/
 *.profraw
 *.profdata
+AUDIT_REPORT.md

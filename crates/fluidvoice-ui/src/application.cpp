@@ -7,6 +7,7 @@
 #include <QLocalSocket>
 #include <QStandardPaths>
 #include <QWindow>
+#include <vector>
 
 namespace fluidvoice {
 
@@ -111,11 +112,31 @@ void FluidVoiceApplication::refreshApplicationIcon() {
 bool FluidVoiceApplication::isPrimaryInstance() const { return primaryInstance; }
 
 std::unique_ptr<FluidVoiceApplication> newApplication() {
-    static int argc = 1;
-    static char applicationName[] = "fluidvoice-ui";
-    static char *argv[] = {applicationName, nullptr};
+    static std::vector<QByteArray> argumentStorage = [] {
+        QFile commandLineFile("/proc/self/cmdline");
+        if (commandLineFile.open(QIODevice::ReadOnly)) {
+            QList<QByteArray> arguments = commandLineFile.readAll().split('\0');
+            while (!arguments.isEmpty() && arguments.last().isEmpty()) {
+                arguments.removeLast();
+            }
+            if (!arguments.isEmpty()) {
+                return std::vector<QByteArray>(arguments.cbegin(), arguments.cend());
+            }
+        }
+        return std::vector<QByteArray>{QByteArray("fluidvoice-ui")};
+    }();
+    static std::vector<char *> arguments = [] {
+        std::vector<char *> result;
+        result.reserve(argumentStorage.size() + 1);
+        for (QByteArray &argument : argumentStorage) {
+            result.push_back(argument.data());
+        }
+        result.push_back(nullptr);
+        return result;
+    }();
+    static int argc = static_cast<int>(argumentStorage.size());
 
-    return std::make_unique<FluidVoiceApplication>(argc, argv);
+    return std::make_unique<FluidVoiceApplication>(argc, arguments.data());
 }
 
 int execApplication(FluidVoiceApplication &application) {

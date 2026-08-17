@@ -579,13 +579,17 @@ impl Supervisor {
         let stdout =
             fs::File::create(log_dir.join("nemo-speech.log")).map_err(|error| error.to_string())?;
         let stderr = stdout.try_clone().map_err(|error| error.to_string())?;
+        let thread_count = std::thread::available_parallelism()
+            .map_or(1, std::num::NonZero::get)
+            .to_string();
         let mut command = Command::new(&executable);
         command
             .args(["serve", "--asr-model"])
             .arg(model_path(model))
             .args(["--host", "127.0.0.1", "--port"])
             .arg(self.port.to_string())
-            .args(["--no-ui", "--max-upload-mb", "16", "--threads", "2"]);
+            .args(["--no-ui", "--max-upload-mb", "16", "--threads"])
+            .arg(thread_count);
         // FluidVoice uses Nemotron for completed dictation rather than a
         // latency-critical voice-agent stream. NVIDIA's largest trained
         // right-context geometry materially improves broad-coverage languages

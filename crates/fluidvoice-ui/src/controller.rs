@@ -482,7 +482,7 @@ use std::{
     pin::Pin,
     process::{Command, Stdio},
     sync::{
-        Arc, Mutex,
+        Arc, Mutex, OnceLock,
         atomic::{AtomicBool, Ordering},
     },
     time::{Duration, Instant},
@@ -503,6 +503,38 @@ use tokio::sync::mpsc;
 use crate::ai::{self, AiConfig};
 use crate::local_api::{self, LocalApiAction};
 use crate::parakeet::{self, Backend as ParakeetBackend};
+
+type SharedWhisperTranscriber = Arc<WhisperTranscriber>;
+
+static WHISPER_CACHE: OnceLock<Mutex<Option<(String, SharedWhisperTranscriber)>>> = OnceLock::new();
+static HISTORY_IO_LOCK: Mutex<()> = Mutex::new(());
+
+fn cached_whisper_transcriber(
+    model: &std::path::Path,
+    language: &str,
+    use_gpu: bool,
+) -> Result<SharedWhisperTranscriber, String> {
+    let key = format!("{}\u{1f}{}\u{1f}{use_gpu}", model.display(), language);
+    let cache = WHISPER_CACHE.get_or_init(|| Mutex::new(None));
+    let mut cached = cache
+        .lock()
+        .map_err(|_| "Whisper model cache lock was poisoned".to_owned())?;
+    if let Some(transcriber) = cached
+        .as_ref()
+        .filter(|(cached_key, _)| cached_key == &key)
+        .map(|(_, transcriber)| Arc::clone(transcriber))
+    {
+        return Ok(transcriber);
+    }
+
+    let config = TranscriptionConfig::default()
+        .with_language(Some(language.to_owned()))
+        .with_gpu(use_gpu);
+    let transcriber =
+        Arc::new(WhisperTranscriber::load(model, config).map_err(|error| error.to_string())?);
+    cached.replace((key, Arc::clone(&transcriber)));
+    Ok(transcriber)
+}
 
 pub struct FluidVoiceControllerRust {
     status_text: QString,
@@ -719,9 +751,10 @@ impl Default for FluidVoiceControllerRust {
         {
             ai_base_url = provider.default_url.to_owned();
         }
-        let provider_key = provider.id;
-        let ai_api_key = ai::load_api_key(provider_key);
-        let ai_key_configured = provider.local || !ai_api_key.is_empty();
+        // Keyring access may display an unlock prompt, so defer it until after
+        // QML construction instead of blocking the first frame.
+        let ai_api_key = String::new();
+        let ai_key_configured = provider.local;
         let lifetime_stats = LifetimeStats::load_or_migrate(&history);
         let ai_profiles = load_ai_profiles();
         Self {
@@ -959,6 +992,20 @@ impl ffi::FluidVoiceController {
         let (desktop_sender, mut desktop_receiver) = mpsc::unbounded_channel();
         self.as_mut().rust_mut().get_mut().desktop_sender = Some(desktop_sender);
         let qt_thread = self.qt_thread();
+        let key_provider = ai_provider(*self.as_ref().selected_ai_provider());
+        if !key_provider.local {
+            let key_thread = qt_thread.clone();
+            std::thread::spawn(move || {
+                let api_key = ai::load_api_key(key_provider.id);
+                key_thread
+                    .queue(move |mut controller| {
+                        let configured = !api_key.is_empty();
+                        controller.as_mut().rust_mut().get_mut().ai_api_key = api_key;
+                        controller.as_mut().set_ai_key_configured(configured);
+                    })
+                    .ok();
+            });
+        }
         let api_preferences = Preferences::load();
         if api_preferences.local_api_enabled {
             let (api_actions, api_events) = std::sync::mpsc::channel();
@@ -1056,8 +1103,7 @@ impl ffi::FluidVoiceController {
                             eprintln!("Global shortcut stopped: {error}");
                         }
                     });
-                    let shortcut_label = requested_shortcut.replace('+', "+");
-                    let ready_status = format!("Ready · hold {shortcut_label} to dictate");
+                    let ready_status = format!("Ready · hold {requested_shortcut} to dictate");
                     qt_thread
                         .queue(move |controller| {
                             controller.set_status_text(QString::from(&ready_status))
@@ -3038,6 +3084,7 @@ impl ffi::FluidVoiceController {
     }
 
     pub fn clear_history(mut self: Pin<&mut Self>) {
+        let _history_guard = HISTORY_IO_LOCK.lock().ok();
         save_lines(&history_path(), &[]).ok();
         if audio_history_directory().is_dir() {
             fs::remove_dir_all(audio_history_directory()).ok();
@@ -3114,6 +3161,7 @@ impl ffi::FluidVoiceController {
                 .set_status_text(QString::from("Recording could not be deleted safely"));
             return;
         }
+        let _history_guard = HISTORY_IO_LOCK.lock().ok();
         let mut history = load_lines(&history_path());
         if let Some(saved) = history.iter_mut().find(|saved| saved.as_str() == entry) {
             let mut fields = saved.split('\t').map(str::to_owned).collect::<Vec<_>>();
@@ -3573,10 +3621,9 @@ impl ffi::FluidVoiceController {
                 }
                 let Some(model) = preview_model else { return };
                 let automatic_language = preview_language.is_empty();
-                let config = TranscriptionConfig::default()
-                    .with_language(Some(preview_language))
-                    .with_gpu(use_gpu);
-                let Ok(transcriber) = WhisperTranscriber::load(&model, config) else {
+                let Ok(transcriber) =
+                    cached_whisper_transcriber(&model, &preview_language, use_gpu)
+                else {
                     return;
                 };
                 while let Ok(audio) = preview_receiver.recv() {
@@ -3694,11 +3741,7 @@ impl ffi::FluidVoiceController {
                     .as_deref()
                     .ok_or_else(|| "No Whisper model is installed".to_owned())
                     .and_then(|model| {
-                        let config = TranscriptionConfig::default()
-                            .with_language(Some(language.clone()))
-                            .with_gpu(use_gpu);
-                        WhisperTranscriber::load(model, config)
-                            .map_err(|error| error.to_string())?
+                        cached_whisper_transcriber(model, &language, use_gpu)?
                             .transcribe(&asr_audio)
                             .map_err(|error| error.to_string())
                     })
@@ -4578,7 +4621,11 @@ fn preferences_path() -> PathBuf {
         return PathBuf::from(directory).join("fluidvoice/settings.conf");
     }
     std::env::var_os("HOME").map_or_else(
-        || PathBuf::from(".fluidvoice-settings.conf"),
+        || {
+            std::env::temp_dir()
+                .join(format!("fluidvoice-{}", std::process::id()))
+                .join("settings.conf")
+        },
         |home| PathBuf::from(home).join(".config/fluidvoice/settings.conf"),
     )
 }
@@ -4749,6 +4796,9 @@ fn prune_audio_history(budget_bytes: u64) -> Result<(), String> {
 }
 
 fn clear_missing_audio_history_references() -> Result<(), String> {
+    let _history_guard = HISTORY_IO_LOCK
+        .lock()
+        .map_err(|_| "history lock was poisoned".to_owned())?;
     let path = history_path();
     let mut history = load_lines(&path);
     let mut changed = false;
@@ -5110,6 +5160,7 @@ fn record_history(
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |duration| duration.as_secs());
+    let _history_guard = HISTORY_IO_LOCK.lock().ok();
     let mut history = load_lines(&history_path());
     history.push(format!(
         "{timestamp}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
@@ -5435,6 +5486,9 @@ fn meeting_speaker_names(segments: &[MeetingSegment]) -> Vec<String> {
 }
 
 fn rename_latest_file_history_speaker(current: &str, replacement: &str) -> Result<(), String> {
+    let _history_guard = HISTORY_IO_LOCK
+        .lock()
+        .map_err(|_| "history lock was poisoned".to_owned())?;
     let path = history_path();
     let mut history = load_lines(&path);
     rename_latest_file_history_speaker_entries(&mut history, current, replacement)?;

@@ -5,6 +5,12 @@ All notable changes to FluidVoice Linux are documented here. The project uses
 
 ## 0.4.0 - 2026-08-16
 
+- Closed the remaining audit performance and architecture gaps: Whisper live
+  preview and final decoding now reuse one bounded cached model context,
+  inference thread counts follow available hardware, keyring access no longer
+  blocks QML startup, history-derived UI data is cached, history mutations are
+  serialized, real process arguments reach Qt, and the unused prototype core
+  crate was removed in favor of accurate architecture documentation.
 - Hardened remaining desktop integrations: local-API bearer tokens are no
   longer copied into Klipper history and the health route is now authenticated;
   portal consent uses a private persistent restore token, model-download

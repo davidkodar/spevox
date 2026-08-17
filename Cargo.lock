@@ -721,7 +721,6 @@ name = "fluidvoice-app"
 version = "0.4.0"
 dependencies = [
  "fluidvoice-audio",
- "fluidvoice-core",
  "fluidvoice-delivery",
  "fluidvoice-portal",
  "fluidvoice-transcription",
@@ -735,10 +734,6 @@ version = "0.4.0"
 dependencies = [
  "pipewire",
 ]
-
-[[package]]
-name = "fluidvoice-core"
-version = "0.4.0"
 
 [[package]]
 name = "fluidvoice-delivery"

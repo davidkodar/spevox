@@ -341,7 +341,7 @@ impl Error for TranscriptionError {}
 
 fn default_thread_count() -> i32 {
     let available = thread::available_parallelism().map_or(1, std::num::NonZero::get);
-    i32::try_from(available.min(8)).unwrap_or(8)
+    i32::try_from(available).unwrap_or(i32::MAX).max(1)
 }
 
 #[cfg(test)]
@@ -357,7 +357,7 @@ mod tests {
     fn defaults_to_language_detection_and_bounded_parallelism() {
         let config = TranscriptionConfig::default();
         assert_eq!(config.language(), None);
-        assert!((1..=8).contains(&config.thread_count()));
+        assert!(config.thread_count() >= 1);
         assert!(config.use_gpu());
         assert!(!config.with_gpu(false).use_gpu());
     }

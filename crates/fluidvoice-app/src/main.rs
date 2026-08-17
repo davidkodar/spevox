@@ -1,7 +1,6 @@
 use std::time::Duration;
 
 use fluidvoice_audio::{AudioBuffer, CaptureStopToken, PipeWireCapture};
-use fluidvoice_core::{DictationCoordinator, DictationState};
 use fluidvoice_delivery::ClipboardDelivery;
 use fluidvoice_portal::{
     GlobalShortcutBinding, GlobalShortcutConfig, GlobalShortcutEvent, TextInputSession,
@@ -148,9 +147,6 @@ async fn main() {
         }
         return;
     }
-
-    let coordinator = DictationCoordinator::default();
-    debug_assert_eq!(coordinator.state(), &DictationState::Idle);
 
     println!("FluidVoice diagnostics. Use --help to list available checks.");
 }
