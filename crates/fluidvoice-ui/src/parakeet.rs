@@ -16,6 +16,7 @@ use fluidvoice_audio::AudioBuffer;
 pub const RUNTIME_REVISION: &str = "9bc876635af36df537d9bc6d3f57ad1b76e4f74a";
 pub const ENDPOINT: &str = "http://127.0.0.1:8179";
 const REALTIME_ENDPOINT: &str = "ws://127.0.0.1:8179/v1/realtime";
+const REALTIME_FRAME_SAMPLES: usize = 2_560; // 160 ms at 16 kHz.
 
 const SOURCE_URL: &str = "https://github.com/NVIDIA/NeMo-Speech.cpp.git";
 
@@ -168,29 +169,44 @@ pub fn stream_transcript(
         .map_err(|error| format!("could not configure realtime transcription: {error}"))?;
 
     let mut accumulated = String::new();
+    let mut pending = Vec::<i16>::with_capacity(REALTIME_FRAME_SAMPLES * 2);
     while let Ok(chunk) = receiver.recv() {
         let mono = chunk.to_asr_mono().amplified(gain);
-        let mut pcm = Vec::with_capacity(mono.samples().len() * 2);
         for sample in mono.samples() {
             #[allow(clippy::cast_possible_truncation)]
             let value = (sample.clamp(-1.0, 1.0) * f32::from(i16::MAX)).round() as i16;
-            pcm.extend_from_slice(&value.to_le_bytes());
+            pending.push(value);
         }
-        socket
-            .send(Message::Binary(pcm.into()))
-            .map_err(|error| format!("could not send realtime audio: {error}"))?;
+        while pending.len() >= REALTIME_FRAME_SAMPLES {
+            send_pcm16(&mut socket, pending.drain(..REALTIME_FRAME_SAMPLES))?;
+            drain_realtime_events(&mut socket, &mut accumulated, &mut publish)?;
+        }
+    }
+    if !pending.is_empty() {
+        send_pcm16(&mut socket, pending.drain(..))?;
         drain_realtime_events(&mut socket, &mut accumulated, &mut publish)?;
+    }
+    // The regular HTTP transcription below this preview is authoritative.
+    // Discard the realtime session instead of running the same final inference
+    // twice and blocking the model worker after the shortcut is released.
+    socket
+        .send(Message::Text(r#"{"type":"response.cancel"}"#.into()))
+        .map_err(|error| format!("could not cancel realtime preview: {error}"))?;
+    socket.close(None).ok();
+    Ok(())
+}
+
+fn send_pcm16(
+    socket: &mut tungstenite::WebSocket<MaybeTlsStream<std::net::TcpStream>>,
+    samples: impl Iterator<Item = i16>,
+) -> Result<(), String> {
+    let mut pcm = Vec::with_capacity(REALTIME_FRAME_SAMPLES * 2);
+    for sample in samples {
+        pcm.extend_from_slice(&sample.to_le_bytes());
     }
     socket
-        .send(Message::Text(
-            r#"{"type":"input_audio_buffer.commit"}"#.into(),
-        ))
-        .map_err(|error| format!("could not finish realtime transcription: {error}"))?;
-    for _ in 0..100 {
-        drain_realtime_events(&mut socket, &mut accumulated, &mut publish)?;
-        thread::sleep(Duration::from_millis(10));
-    }
-    Ok(())
+        .send(Message::Binary(pcm.into()))
+        .map_err(|error| format!("could not send realtime audio: {error}"))
 }
 
 fn drain_realtime_events(
@@ -614,7 +630,7 @@ mod tests {
 
     #[test]
     #[ignore = "requires a managed NeMo server on 127.0.0.1:8179"]
-    fn realtime_endpoint_accepts_pcm_and_commit() {
+    fn realtime_endpoint_accepts_framed_pcm_and_cancel() {
         let (sender, receiver) = std::sync::mpsc::channel();
         sender
             .send(AudioBuffer::new(vec![0.0; 3_200], 16_000, 1, false).expect("audio"))

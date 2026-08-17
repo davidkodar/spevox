@@ -179,8 +179,9 @@ compute tries Vulkan first and installs CPU instead when the Vulkan development
 packages are incomplete; “Vulkan only” remains available for strict GPU use.
 During capture, native engines receive every audio chunk through the managed
 loopback WebSocket and publish model-native partial text in the overlay. Cold
-starts queue audio without blocking PipeWire; release still performs the normal
-verified final transcription and preserves Whisper fallback.
+starts queue audio without blocking PipeWire, chunks are sent in NeMo's native
+160 ms cadence, and release cancels the preview before the single authoritative
+final transcription. Whisper fallback remains available if that final fails.
 
 User data follows XDG conventions:
 

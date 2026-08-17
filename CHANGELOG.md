@@ -8,7 +8,10 @@ All notable changes to FluidVoice Linux are documented here. The project uses
 - Added true realtime native-engine previews through NeMo-Speech.cpp's
   loopback WebSocket protocol, including lossless incremental PCM16 capture,
   cold-start buffering, cumulative partials, final-event reconciliation,
-  cancellation-safe commit, locale/gain handling, and final Whisper fallback.
+  160 ms model-native framing, locale/gain handling, and final Whisper fallback.
+- Prevented realtime preview from delaying final transcription by eliminating
+  per-PipeWire-chunk read waits and cancelling the preview session on release
+  instead of redundantly running both WebSocket and HTTP final inference.
 - Clarified in the native-engine interface that Vulkan acceleration works
   across AMD, Intel, and NVIDIA GPUs without requiring CUDA or NVIDIA hardware.
 - Added a verified native speech catalog with one-click installation for
