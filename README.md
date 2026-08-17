@@ -12,10 +12,8 @@ Native, local-first voice dictation for KDE Plasma on Wayland.
 > experience. It remains a prerelease preview.
 
 Credit belongs to Altic and the upstream FluidVoice contributors for the
-original macOS project and product concept. Spevox uses its own name and
-original artwork; historical artwork provenance from earlier private preview
-builds remains recorded in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). See
-[CREDITS.md](CREDITS.md) for authorship and relationship details.
+original macOS project and product concept. See [CREDITS.md](CREDITS.md) for
+authorship and relationship details.
 
 Spevox combines a Rust 2024 core, Qt Quick/CXX-Qt interface,
 PipeWire capture, XDG desktop portals, and local whisper.cpp inference. The
@@ -426,14 +424,11 @@ for reproducible bugs and focused feature proposals.
 Spevox is an independent GPLv3 Linux implementation inspired by the
 GPLv3-licensed [FluidVoice](https://github.com/altic-dev/FluidVoice) macOS
 project created by Altic and the upstream contributors. Spevox is authored
-and maintained by David Bolin and uses original branding. See
-[LICENSE](LICENSE), [CREDITS.md](CREDITS.md), and
-[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for authorship, license, and
-exact asset-provenance details. The generated
+and maintained by David Bolin. See [LICENSE](LICENSE),
+[CREDITS.md](CREDITS.md), and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)
+for license and attribution details. The generated
 [THIRD_PARTY_LICENSES.html](THIRD_PARTY_LICENSES.html) bundles the license texts
 and crate attribution for the locked Rust dependency graph.
 
 Fluid Intelligence is a separate, privately maintained component and is not
-part of this repository. FluidVoice and its artwork remain associated with
-their respective owners; no trademark license or upstream endorsement is
-claimed.
+part of this repository.
