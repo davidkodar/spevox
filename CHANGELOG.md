@@ -5,6 +5,8 @@ All notable changes to FluidVoice Linux are documented here. The project uses
 
 ## 0.4.0 - 2026-08-16
 
+- Clarified in the native-engine interface that Vulkan acceleration works
+  across AMD, Intel, and NVIDIA GPUs without requiring CUDA or NVIDIA hardware.
 - Added a verified native speech catalog with one-click installation for
   Parakeet TDT v3, Nemotron 3.5 Multilingual, Nemotron Streaming English, and
   Parakeet CTC 1.1B. All engines reuse the pinned NeMo-Speech.cpp runtime,

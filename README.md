@@ -167,6 +167,9 @@ TDT v3, Nemotron 3.5 Multilingual, Nemotron Streaming English, and Parakeet CTC
 downloads the chosen official quantized model, and verifies its exact size and
 SHA-256 digest before activation. Nemotron 3.5 receives model-native locale
 codes such as `sv-SE`; the two English-only engines deliberately force English.
+“NVIDIA” identifies the runtime and model publisher, not a hardware requirement:
+GPU acceleration uses cross-vendor Vulkan on supported AMD, Intel, and NVIDIA
+drivers, requires no CUDA installation, and retains a CPU fallback.
 The helper listens only on `127.0.0.1`, starts on first use, and is supervised
 by FluidVoice. If setup, startup, or transcription fails, the captured audio is
 sent through the selected local Whisper model instead of being lost. Installing

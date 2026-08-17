@@ -1036,7 +1036,7 @@ ApplicationWindow {
                                 ProgressBar { visible: controller.parakeetBusy && controller.parakeetDownloadProgress > 0; Layout.fillWidth: true; value: controller.parakeetDownloadProgress }
                                 RowLayout {
                                     Layout.fillWidth: true
-                                    Text { Layout.fillWidth: true; text: qsTr("Runs locally through pinned NVIDIA NeMo-Speech.cpp. Whisper provides live text while you speak and remains the automatic fallback."); color: root.tertiaryText; font.pixelSize: 11; wrapMode: Text.Wrap }
+                                    Text { Layout.fillWidth: true; text: qsTr("Runs locally using the pinned NeMo-Speech.cpp runtime. GPU acceleration is cross-vendor through Vulkan; no NVIDIA GPU or CUDA is required. Whisper provides live text and automatic fallback."); color: root.tertiaryText; font.pixelSize: 11; wrapMode: Text.Wrap }
                                     Button { Layout.preferredWidth: 160; text: qsTr("Check setup"); enabled: !controller.parakeetBusy; onClicked: controller.diagnoseParakeet() }
                                 }
                                 Text { Layout.fillWidth: true; text: qsTr("Install performs the complete verified setup in one click. The runtime is shared, so additional native models only require their model download."); color: root.tertiaryText; font.pixelSize: 11; wrapMode: Text.Wrap }
