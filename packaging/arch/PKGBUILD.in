@@ -5,6 +5,7 @@ pkgdesc='Native local-first voice dictation for KDE Plasma on Wayland'
 arch=('x86_64')
 url='https://github.com/davidkodar/spevox'
 license=('GPL-3.0-only')
+options=('!lto')
 depends=('ffmpeg' 'gcc-libs' 'glibc' 'hicolor-icon-theme' 'kconfig' 'libpipewire' 'qt6-base' 'qt6-declarative' 'qt6-tools' 'vulkan-icd-loader')
 optdepends=('libsecret: secure cloud-provider API key storage' 'ollama: fully local AI enhancement')
 makedepends=('cargo' 'clang' 'cmake' 'git' 'qt6-tools' 'shaderc' 'vulkan-headers')
