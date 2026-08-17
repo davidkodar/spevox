@@ -90,9 +90,10 @@ or beta update metadata, and Sigstore keyless signatures/certificates. Verify a
 download with `cosign verify-blob --certificate-identity-regexp
 'github.com/davidkodar/fluidvoice-linux' --certificate-oidc-issuer
 'https://token.actions.githubusercontent.com' --certificate FILE.pem
---signature FILE.sig FILE`. The Flatpak manifest lives under
-`packaging/flatpak`; after installing its KDE SDK/runtime, maintainers can build
-an offline-vendored bundle with `./packaging/package-flatpak.sh`.
+--signature FILE.sig FILE`. The manifest under `packaging/flatpak` is a
+developer preview and is not published as a release artifact: host KWin
+integration, keyring access, native-runtime setup, and desktop actions still
+need portal-native implementations before the sandboxed package is supported.
 
 ### 3. Configure dictation
 

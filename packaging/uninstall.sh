@@ -19,6 +19,11 @@ if [[ -z "$destination" && ( "$prefix" == /usr || "$prefix" == /usr/* ) ]]; then
 fi
 "${remover[@]}" "${files[@]}"
 if [[ -z "$destination" ]] && command -v kbuildsycoca6 >/dev/null; then
+  user_data_home=${XDG_DATA_HOME:-$HOME/.local/share}
+  rm -f "$user_data_home/applications/io.github.davidkodar.FluidVoiceLinux.desktop"
+  if command -v kwriteconfig6 >/dev/null; then
+    kwriteconfig6 --file kwinrc --group Plugins --key fluidvoiceprofilesEnabled false || true
+  fi
   kbuildsycoca6 --noincremental || true
 fi
 echo "FluidVoice Linux application files removed; user models and history were preserved."

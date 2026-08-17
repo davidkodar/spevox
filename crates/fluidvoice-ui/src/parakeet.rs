@@ -14,8 +14,6 @@ use tungstenite::{Message, connect, stream::MaybeTlsStream};
 use fluidvoice_audio::AudioBuffer;
 
 pub const RUNTIME_REVISION: &str = "9bc876635af36df537d9bc6d3f57ad1b76e4f74a";
-pub const ENDPOINT: &str = "http://127.0.0.1:8179";
-const REALTIME_ENDPOINT: &str = "ws://127.0.0.1:8179/v1/realtime";
 const REALTIME_FRAME_SAMPLES: usize = 2_560; // 160 ms at 16 kHz.
 
 const SOURCE_URL: &str = "https://github.com/NVIDIA/NeMo-Speech.cpp.git";
@@ -232,12 +230,14 @@ pub fn model_installed(model: Model) -> bool {
 /// Streams captured audio chunks to the managed `NeMo` server and publishes
 /// cumulative partial text until the sender is dropped.
 pub fn stream_transcript(
+    endpoint: &str,
     receiver: &std::sync::mpsc::Receiver<AudioBuffer>,
     language: String,
     gain: f32,
     mut publish: impl FnMut(String),
 ) -> Result<(), String> {
-    let (mut socket, _) = connect(REALTIME_ENDPOINT)
+    let realtime_endpoint = format!("{}/v1/realtime", endpoint.replacen("http://", "ws://", 1));
+    let (mut socket, _) = connect(realtime_endpoint)
         .map_err(|error| format!("could not connect realtime transcription: {error}"))?;
     if let MaybeTlsStream::Plain(stream) = socket.get_mut() {
         stream
@@ -537,16 +537,23 @@ pub struct Supervisor {
     child: Option<Child>,
     executable: Option<PathBuf>,
     model: Option<Model>,
+    port: u16,
 }
 
 impl Supervisor {
     #[must_use]
-    pub const fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             child: None,
             executable: None,
             model: None,
+            port: reserve_loopback_port().unwrap_or(8179),
         }
+    }
+
+    #[must_use]
+    pub fn endpoint(&self) -> String {
+        format!("http://127.0.0.1:{}", self.port)
     }
 
     pub fn ensure_ready(&mut self, backend: Backend, model: Model) -> Result<(), String> {
@@ -561,7 +568,7 @@ impl Supervisor {
                 .child
                 .as_mut()
                 .is_some_and(|child| child.try_wait().ok().flatten().is_none())
-            && ready()
+            && ready(self.port)
         {
             return Ok(());
         }
@@ -575,17 +582,9 @@ impl Supervisor {
         command
             .args(["serve", "--asr-model"])
             .arg(model_path(model))
-            .args([
-                "--host",
-                "127.0.0.1",
-                "--port",
-                "8179",
-                "--no-ui",
-                "--max-upload-mb",
-                "16",
-                "--threads",
-                "2",
-            ]);
+            .args(["--host", "127.0.0.1", "--port"])
+            .arg(self.port.to_string())
+            .args(["--no-ui", "--max-upload-mb", "16", "--threads", "2"]);
         // FluidVoice uses Nemotron for completed dictation rather than a
         // latency-critical voice-agent stream. NVIDIA's largest trained
         // right-context geometry materially improves broad-coverage languages
@@ -608,9 +607,6 @@ impl Supervisor {
         self.executable = Some(executable);
         self.model = Some(model);
         for _ in 0..120 {
-            if ready() {
-                return Ok(());
-            }
             if let Some(status) = self
                 .child
                 .as_mut()
@@ -618,6 +614,9 @@ impl Supervisor {
             {
                 self.child = None;
                 return Err(format!("NeMo-Speech.cpp exited during startup ({status})"));
+            }
+            if ready(self.port) {
+                return Ok(());
             }
             thread::sleep(Duration::from_millis(500));
         }
@@ -641,7 +640,7 @@ impl Drop for Supervisor {
     }
 }
 
-fn ready() -> bool {
+fn ready(port: u16) -> bool {
     ureq::Agent::config_builder()
         .timeout_global(Some(Duration::from_secs(1)))
         .timeout_recv_body(Some(Duration::from_secs(1)))
@@ -649,9 +648,16 @@ fn ready() -> bool {
         .max_redirects(0)
         .build()
         .new_agent()
-        .get(&format!("{ENDPOINT}/ready"))
+        .get(&format!("http://127.0.0.1:{port}/ready"))
         .call()
         .is_ok()
+}
+
+fn reserve_loopback_port() -> Result<u16, String> {
+    std::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))
+        .and_then(|listener| listener.local_addr())
+        .map(|address| address.port())
+        .map_err(|error| format!("could not select a private native-speech port: {error}"))
 }
 
 fn executable_on_path(name: &str) -> Option<PathBuf> {
@@ -761,6 +767,13 @@ mod tests {
             .send(AudioBuffer::new(vec![0.0; 3_200], 16_000, 1, false).expect("audio"))
             .expect("send audio");
         drop(sender);
-        stream_transcript(&receiver, "sv-SE".to_owned(), 1.0, |_| {}).expect("realtime session");
+        stream_transcript(
+            "http://127.0.0.1:8179",
+            &receiver,
+            "sv-SE".to_owned(),
+            1.0,
+            |_| {},
+        )
+        .expect("realtime session");
     }
 }

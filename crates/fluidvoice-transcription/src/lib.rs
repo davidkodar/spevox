@@ -136,6 +136,15 @@ impl LocalSpeechServer {
         append_form_field(&mut body, boundary, "model", "default");
         append_form_field(&mut body, boundary, "response_format", "json");
         if let Some(language) = language.filter(|value| !value.trim().is_empty()) {
+            if !(2..=10).contains(&language.len())
+                || !language
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphabetic() || byte == b'-')
+            {
+                return Err(TranscriptionError::new(
+                    "speech-server language must be a 2–10 character language code",
+                ));
+            }
             append_form_field(&mut body, boundary, "language", language);
         }
         body.extend_from_slice(format!("--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"dictation.wav\"\r\nContent-Type: audio/wav\r\n\r\n").as_bytes());

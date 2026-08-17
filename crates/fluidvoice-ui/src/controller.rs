@@ -471,8 +471,9 @@ pub mod ffi {
     impl cxx_qt::Threading for FluidVoiceController {}
 }
 
+use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::{
-    fs,
+    fs::{self, OpenOptions},
     io::{Read, Write},
     path::PathBuf,
     pin::Pin,
@@ -493,6 +494,7 @@ use fluidvoice_portal::{
     TextInputSession, run_profile_bridge,
 };
 use fluidvoice_transcription::{LocalSpeechServer, TranscriptionConfig, WhisperTranscriber};
+use sha2::{Digest, Sha256};
 use tokio::sync::mpsc;
 
 use crate::ai::{self, AiConfig};
@@ -561,6 +563,7 @@ pub struct FluidVoiceControllerRust {
     meeting_segments: QStringList,
     meeting_speakers: QStringList,
     last_meeting_file: QString,
+    last_meeting_source: QString,
     meeting_results: Vec<MeetingSegment>,
     meeting_cancel: Option<Arc<AtomicBool>>,
     compute_backends: QStringList,
@@ -579,6 +582,7 @@ pub struct FluidVoiceControllerRust {
     ai_status: QString,
     write_mode_activation: i32,
     ai_key_configured: bool,
+    ai_api_key: String,
     ai_local_models: QStringList,
     ai_local_endpoint: bool,
     ai_local_only: bool,
@@ -593,7 +597,7 @@ pub struct FluidVoiceControllerRust {
     auto_profiles_enabled: bool,
     active_application: QString,
     ai_profiles: Vec<AiProfile>,
-    last_write_instruction: String,
+    last_write_job: Option<WriteModeJob>,
     app_version: QString,
     update_status: QString,
     local_api_enabled: bool,
@@ -710,7 +714,8 @@ impl Default for FluidVoiceControllerRust {
             ai_base_url = provider.default_url.to_owned();
         }
         let provider_key = provider.id;
-        let ai_key_configured = provider.local || !ai::load_api_key(provider_key).is_empty();
+        let ai_api_key = ai::load_api_key(provider_key);
+        let ai_key_configured = provider.local || !ai_api_key.is_empty();
         let dictated_word_count = history
             .iter()
             .map(|entry| history_field(entry, 1).unwrap_or(entry))
@@ -799,6 +804,7 @@ impl Default for FluidVoiceControllerRust {
             meeting_segments: QStringList::default(),
             meeting_speakers: QStringList::default(),
             last_meeting_file: QString::default(),
+            last_meeting_source: QString::default(),
             meeting_results: Vec::new(),
             meeting_cancel: None,
             compute_backends: ["Automatic (Vulkan → CPU)", "Vulkan only", "CPU only"]
@@ -837,6 +843,7 @@ impl Default for FluidVoiceControllerRust {
             }),
             write_mode_activation: 0,
             ai_key_configured,
+            ai_api_key,
             ai_local_models: QStringList::default(),
             ai_local_endpoint: AiConfig {
                 enabled: false,
@@ -867,7 +874,7 @@ impl Default for FluidVoiceControllerRust {
             auto_profiles_enabled: preferences.auto_profiles_enabled,
             active_application: QString::from("KWin bridge has not reported an application."),
             ai_profiles,
-            last_write_instruction: String::new(),
+            last_write_job: None,
             app_version: QString::from(env!("CARGO_PKG_VERSION")),
             update_status: QString::from("Updates have not been checked."),
             local_api_enabled: preferences.local_api_enabled,
@@ -1719,8 +1726,10 @@ impl ffi::FluidVoiceController {
             .set_ai_model(QString::from(provider.default_model));
         self.as_mut()
             .set_ai_base_url(QString::from(provider.default_url));
+        let api_key = ai::load_api_key(provider.id);
+        self.as_mut().rust_mut().get_mut().ai_api_key = api_key.clone();
         self.as_mut()
-            .set_ai_key_configured(provider.local || !ai::load_api_key(provider.id).is_empty());
+            .set_ai_key_configured(provider.local || !api_key.is_empty());
         self.as_mut().set_ai_local_models(QStringList::default());
         self.as_mut().set_ai_local_endpoint(provider.local);
         self.as_mut()
@@ -1772,8 +1781,10 @@ impl ffi::FluidVoiceController {
 
     pub fn save_ai_api_key(mut self: Pin<&mut Self>, value: &QString) {
         let provider = ai_provider(*self.as_ref().selected_ai_provider());
-        match ai::store_api_key(provider.id, &value.to_string()) {
+        let value = value.to_string();
+        match ai::store_api_key(provider.id, &value) {
             Ok(()) => {
+                self.as_mut().rust_mut().get_mut().ai_api_key = value;
                 self.as_mut().set_ai_key_configured(true);
                 self.as_mut().set_ai_status(QString::from(
                     "API key stored securely by KDE Wallet / Secret Service",
@@ -2203,6 +2214,11 @@ impl ffi::FluidVoiceController {
                 "Automatically selected {name} for {}",
                 application.resource_class
             )));
+        } else if self.as_ref().rust().selected_ai_profile != 0 {
+            self.as_mut().select_ai_profile(0);
+            self.as_mut().set_ai_status(QString::from(
+                "No application profile matched · reverted to Default",
+            ));
         }
     }
 
@@ -2219,7 +2235,6 @@ impl ffi::FluidVoiceController {
         let mut config = self.as_ref().rust().ai_config();
         config.enabled = true;
         config.prompt = "Rewrite the selected text according to the user's instruction. Preserve meaning unless the instruction asks otherwise. Output only the replacement text, with no explanation or markdown fences.".to_owned();
-        self.as_mut().rust_mut().get_mut().last_write_instruction = instruction.clone();
         let qt_thread = self.qt_thread();
         self.as_mut().set_transcribing(true);
         self.as_mut()
@@ -2230,6 +2245,14 @@ impl ffi::FluidVoiceController {
                 .send(DesktopCommand::CopySelection(reply))
                 .is_err()
             {
+                qt_thread
+                    .queue(|mut controller| {
+                        controller.as_mut().set_transcribing(false);
+                        controller.as_mut().set_ai_status(QString::from(
+                            "Rewrite failed · desktop integration stopped",
+                        ));
+                    })
+                    .ok();
                 return;
             }
             let copied = result
@@ -2257,7 +2280,12 @@ impl ffi::FluidVoiceController {
                 .queue(move |mut controller| {
                     controller.as_mut().set_transcribing(false);
                     match rewritten {
-                        Ok((selected, text)) => {
+                Ok((selected, text)) => {
+                            controller.as_mut().rust_mut().get_mut().last_write_job =
+                                Some(WriteModeJob::Rewrite {
+                                    instruction: instruction.clone(),
+                                    selected: selected.clone(),
+                                });
                             controller.as_mut().set_last_raw_text(QString::from(&selected));
                             let rust = controller.as_mut().rust_mut().get_mut();
                             if rust.clipboard.is_none() {
@@ -2303,6 +2331,9 @@ impl ffi::FluidVoiceController {
         let mut config = self.as_ref().rust().ai_config();
         config.enabled = true;
         config.prompt = "Write the requested text. Follow the user's instruction precisely. Output only the finished text, with no explanation or markdown fences.".to_owned();
+        self.as_mut().rust_mut().get_mut().last_write_job = Some(WriteModeJob::Draft {
+            instruction: instruction.clone(),
+        });
         let qt_thread = self.qt_thread();
         self.as_mut().set_transcribing(true);
         self.as_mut().set_ai_status(QString::from("Writing draft…"));
@@ -2347,25 +2378,32 @@ impl ffi::FluidVoiceController {
         if *self.as_ref().transcribing() {
             return;
         }
-        let selected = self.as_ref().last_raw_text().to_string();
-        let instruction = self.as_ref().rust().last_write_instruction.clone();
-        if selected.trim().is_empty() || instruction.trim().is_empty() {
+        let Some(job) = self.as_ref().rust().last_write_job.clone() else {
             self.as_mut()
                 .set_ai_status(QString::from("No Write Mode result is available to retry"));
             return;
-        }
+        };
         let mut config = self.as_ref().rust().ai_config();
         config.enabled = true;
-        config.prompt = "Rewrite the selected text according to the user's instruction. Preserve meaning unless the instruction asks otherwise. Output only the replacement text, with no explanation or markdown fences.".to_owned();
+        let input = match job {
+            WriteModeJob::Rewrite {
+                instruction,
+                selected,
+            } => {
+                config.prompt = "Rewrite the selected text according to the user's instruction. Preserve meaning unless the instruction asks otherwise. Output only the replacement text, with no explanation or markdown fences.".to_owned();
+                format!("User instruction: {instruction}\n\nSelected text:\n{selected}")
+            }
+            WriteModeJob::Draft { instruction } => {
+                config.prompt = "Write the requested text. Follow the user's instruction precisely. Output only the finished text, with no explanation or markdown fences.".to_owned();
+                instruction
+            }
+        };
         let qt_thread = self.qt_thread();
         self.as_mut().set_transcribing(true);
         self.as_mut()
             .set_ai_status(QString::from("Retrying Write Mode…"));
         std::thread::spawn(move || {
-            let result = ai::enhance(
-                &config,
-                &format!("User instruction: {instruction}\n\nSelected text:\n{selected}"),
-            );
+            let result = ai::enhance(&config, &input);
             qt_thread
                 .queue(move |mut controller| {
                     controller.as_mut().set_transcribing(false);
@@ -2886,7 +2924,9 @@ impl ffi::FluidVoiceController {
     }
 
     pub fn import_dictionary(mut self: Pin<&mut Self>, path: &QString, conflict_mode: i32) {
-        let path = PathBuf::from(decode_file_url(&path.to_string()));
+        let source = path.to_string();
+        let path = PathBuf::from(decode_file_url(&source));
+        self.as_mut().rust_mut().get_mut().last_meeting_source = QString::from(&source);
         let imported = match read_dictionary_import(&path) {
             Ok(entries) if !entries.is_empty() => entries,
             Ok(_) => {
@@ -3381,7 +3421,7 @@ impl ffi::FluidVoiceController {
     }
 
     pub fn retry_meeting_transcription(mut self: Pin<&mut Self>) {
-        let path = self.as_ref().last_meeting_file().clone();
+        let path = self.as_ref().rust().last_meeting_source.clone();
         if path.is_empty() {
             self.as_mut().set_file_transcription_status(QString::from(
                 "Choose an audio or video file before retrying.",
@@ -3463,18 +3503,18 @@ impl ffi::FluidVoiceController {
                     .filter(|_| native_realtime)
                     .map(|native_model| {
                         std::thread::spawn(move || {
-                            let ready = stream_supervisor
+                            let endpoint = stream_supervisor
                                 .lock()
                                 .map_err(|_| {
                                     "Native speech supervisor lock was poisoned".to_owned()
                                 })
                                 .and_then(|mut supervisor| {
-                                    supervisor.ensure_ready(parakeet_backend, native_model)
+                                    supervisor.ensure_ready(parakeet_backend, native_model)?;
+                                    Ok(supervisor.endpoint())
                                 });
-                            if ready.is_err() {
-                                return;
-                            }
+                            let Ok(endpoint) = endpoint else { return };
                             parakeet::stream_transcript(
+                                &endpoint,
                                 &stream_receiver,
                                 stream_language,
                                 gain,
@@ -3619,22 +3659,10 @@ impl ffi::FluidVoiceController {
                         let config = TranscriptionConfig::default()
                             .with_language(Some(language.clone()))
                             .with_gpu(use_gpu);
-                        let first = WhisperTranscriber::load(model, config.clone())
+                        WhisperTranscriber::load(model, config)
                             .map_err(|error| error.to_string())?
                             .transcribe(&asr_audio)
-                            .map_err(|error| error.to_string())?;
-                        if suspicious_single_word(&first.text, duration) {
-                            let retry = WhisperTranscriber::load(model, config)
-                                .map_err(|error| error.to_string())?
-                                .transcribe(&asr_audio)
-                                .map_err(|error| error.to_string())?;
-                            if retry.text.split_whitespace().count()
-                                > first.text.split_whitespace().count()
-                            {
-                                return Ok(retry);
-                            }
-                        }
-                        Ok(first)
+                            .map_err(|error| error.to_string())
                     })
             };
             let (transcription, parakeet_fallback) = if speech_engine == 5 {
@@ -3655,11 +3683,11 @@ impl ffi::FluidVoiceController {
                     .lock()
                     .map_err(|_| "Parakeet supervisor lock was poisoned".to_owned())
                     .and_then(|mut supervisor| {
-                        supervisor.ensure_ready(parakeet_backend, native_model)
+                        supervisor.ensure_ready(parakeet_backend, native_model)?;
+                        Ok(supervisor.endpoint())
                     })
-                    .and_then(|()| {
-                        LocalSpeechServer::new(parakeet::ENDPOINT)
-                            .map_err(|error| error.to_string())
+                    .and_then(|endpoint| {
+                        LocalSpeechServer::new(&endpoint).map_err(|error| error.to_string())
                     })
                     .and_then(|server| {
                         server
@@ -3925,7 +3953,7 @@ impl FluidVoiceControllerRust {
             model: self.ai_model.to_string(),
             base_url: self.ai_base_url.to_string(),
             prompt,
-            api_key: ai::load_api_key(provider.id),
+            api_key: self.ai_api_key.clone(),
             local_only: self.ai_local_only,
             timeout_seconds: 45,
         }
@@ -3973,6 +4001,17 @@ struct AiProfile {
     application_match: String,
 }
 
+#[derive(Clone)]
+enum WriteModeJob {
+    Rewrite {
+        instruction: String,
+        selected: String,
+    },
+    Draft {
+        instruction: String,
+    },
+}
+
 fn load_ai_profiles() -> Vec<AiProfile> {
     let Ok(contents) = fs::read_to_string(ai_profiles_path()) else {
         return Vec::new();
@@ -4013,11 +4052,12 @@ fn save_ai_profiles(profiles: &[AiProfile]) -> Result<(), String> {
         .parent()
         .ok_or_else(|| "profile path has no parent".to_owned())?;
     fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-    fs::write(
-        path,
-        serde_json::to_string_pretty(&values).map_err(|error| error.to_string())?,
+    atomic_write_private(
+        &path,
+        serde_json::to_string_pretty(&values)
+            .map_err(|error| error.to_string())?
+            .as_bytes(),
     )
-    .map_err(|error| error.to_string())
 }
 
 fn profile_matches_application(profile: &AiProfile, lowercase_window_identity: &str) -> bool {
@@ -4153,44 +4193,41 @@ impl Preferences {
             .parent()
             .ok_or_else(|| "preferences path has no parent".to_owned())?;
         fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-        fs::write(
-            path,
-            format!(
-                "language={}\nmodel={}\nshortcut={}\ninput={}\ngain_db={}\noverlay_enabled={}\noverlay_size={}\noverlay_position={}\noverlay_show_text={}\noverlay_opacity={}\ncommand_mode_enabled={}\ncompute_backend={}\ntheme={}\naccent={}\nai_enabled={}\nai_provider={}\nai_model={}\nai_base_url={}\nai_prompt={}\nai_local_only={}\nauto_profiles_enabled={}\ntyping_wpm={}\nskip_weekends={}\naudio_history_enabled={}\naudio_history_budget_mb={}\nlocal_api_enabled={}\nlocal_api_port={}\nspeech_engine={}\nlocal_speech_url={}\ndiarization_enabled={}\nonboarding_completed={}\n",
-                self.language,
-                self.model.display(),
-                self.shortcut,
-                self.input,
-                self.gain_db,
-                self.overlay_enabled,
-                self.overlay_size,
-                self.overlay_position,
-                self.overlay_show_text,
-                self.overlay_opacity,
-                self.command_mode_enabled,
-                self.compute_backend,
-                self.theme,
-                self.accent,
-                self.ai_enabled,
-                self.ai_provider,
-                escape_setting(&self.ai_model),
-                escape_setting(&self.ai_base_url),
-                escape_setting(&self.ai_prompt),
-                self.ai_local_only,
-                self.auto_profiles_enabled,
-                self.typing_wpm,
-                self.skip_weekends,
-                self.audio_history_enabled,
-                self.audio_history_budget_mb,
-                self.local_api_enabled,
-                self.local_api_port,
-                self.speech_engine,
-                escape_setting(&self.local_speech_url),
-                self.diarization_enabled,
-                self.onboarding_completed
-            ),
-        )
-        .map_err(|error| error.to_string())
+        let contents = format!(
+            "language={}\nmodel={}\nshortcut={}\ninput={}\ngain_db={}\noverlay_enabled={}\noverlay_size={}\noverlay_position={}\noverlay_show_text={}\noverlay_opacity={}\ncommand_mode_enabled={}\ncompute_backend={}\ntheme={}\naccent={}\nai_enabled={}\nai_provider={}\nai_model={}\nai_base_url={}\nai_prompt={}\nai_local_only={}\nauto_profiles_enabled={}\ntyping_wpm={}\nskip_weekends={}\naudio_history_enabled={}\naudio_history_budget_mb={}\nlocal_api_enabled={}\nlocal_api_port={}\nspeech_engine={}\nlocal_speech_url={}\ndiarization_enabled={}\nonboarding_completed={}\n",
+            self.language,
+            self.model.display(),
+            self.shortcut,
+            self.input,
+            self.gain_db,
+            self.overlay_enabled,
+            self.overlay_size,
+            self.overlay_position,
+            self.overlay_show_text,
+            self.overlay_opacity,
+            self.command_mode_enabled,
+            self.compute_backend,
+            self.theme,
+            self.accent,
+            self.ai_enabled,
+            self.ai_provider,
+            escape_setting(&self.ai_model),
+            escape_setting(&self.ai_base_url),
+            escape_setting(&self.ai_prompt),
+            self.ai_local_only,
+            self.auto_profiles_enabled,
+            self.typing_wpm,
+            self.skip_weekends,
+            self.audio_history_enabled,
+            self.audio_history_budget_mb,
+            self.local_api_enabled,
+            self.local_api_port,
+            self.speech_engine,
+            escape_setting(&self.local_speech_url),
+            self.diarization_enabled,
+            self.onboarding_completed
+        );
+        atomic_write_private(&path, contents.as_bytes())
     }
 }
 
@@ -4444,6 +4481,7 @@ fn ollama_server_responds() -> bool {
 
 fn valid_ollama_model_name(model: &str) -> bool {
     !model.is_empty()
+        && !model.starts_with('-')
         && model.len() <= 128
         && model
             .chars()
@@ -4694,15 +4732,46 @@ fn load_lines(path: &PathBuf) -> Vec<String> {
 }
 
 fn save_lines(path: &PathBuf, lines: &[String]) -> Result<(), String> {
-    let parent = path
-        .parent()
-        .ok_or_else(|| "data path has no parent".to_owned())?;
-    fs::create_dir_all(parent).map_err(|error| error.to_string())?;
     let mut contents = lines.join("\n");
     if !contents.is_empty() {
         contents.push('\n');
     }
-    fs::write(path, contents).map_err(|error| error.to_string())
+    atomic_write_private(path, contents.as_bytes())
+}
+
+fn atomic_write_private(path: &std::path::Path, contents: &[u8]) -> Result<(), String> {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let parent = path
+        .parent()
+        .ok_or_else(|| "data path has no parent".to_owned())?;
+    fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    fs::set_permissions(parent, fs::Permissions::from_mode(0o700))
+        .map_err(|error| error.to_string())?;
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_nanos());
+    let temporary = parent.join(format!(
+        ".{}.{}-{nonce}.tmp",
+        path.file_name()
+            .and_then(std::ffi::OsStr::to_str)
+            .unwrap_or("fluidvoice"),
+        std::process::id()
+    ));
+    let mut file = OpenOptions::new()
+        .create_new(true)
+        .write(true)
+        .mode(0o600)
+        .open(&temporary)
+        .map_err(|error| error.to_string())?;
+    if let Err(error) = file.write_all(contents).and_then(|()| file.sync_all()) {
+        fs::remove_file(&temporary).ok();
+        return Err(error.to_string());
+    }
+    drop(file);
+    fs::rename(&temporary, path).map_err(|error| {
+        fs::remove_file(&temporary).ok();
+        error.to_string()
+    })
 }
 
 fn process_transcript(text: &str, command_mode: bool, dictionary: &[String]) -> String {
@@ -4857,11 +4926,19 @@ fn write_dictionary_csv(path: &PathBuf, entries: &[DictionaryEntry]) -> Result<(
     for entry in entries {
         output.push_str(&format!(
             "\"{}\",\"{}\"\n",
-            entry.spoken.replace('"', "\"\""),
-            entry.preferred.replace('"', "\"\"")
+            spreadsheet_safe(&entry.spoken).replace('"', "\"\""),
+            spreadsheet_safe(&entry.preferred).replace('"', "\"\"")
         ));
     }
     fs::write(path, output).map_err(|error| error.to_string())
+}
+
+fn spreadsheet_safe(value: &str) -> String {
+    if value.starts_with(['=', '+', '-', '@']) {
+        format!("'{value}")
+    } else {
+        value.to_owned()
+    }
 }
 
 fn replace_ascii_case_insensitive(text: &str, needle: &str, replacement: &str) -> String {
@@ -5013,7 +5090,7 @@ fn write_history_export(path: &PathBuf, format: &str, history: &[String]) -> Res
             ];
             output.push_str(
                 &fields
-                    .map(|field| format!("\"{}\"", field.replace('"', "\"\"")))
+                    .map(|field| format!("\"{}\"", spreadsheet_safe(&field).replace('"', "\"\"")))
                     .join(","),
             );
             output.push('\n');
@@ -5032,7 +5109,10 @@ fn decode_file_url(value: &str) -> String {
     let mut index = 0;
     while index < bytes.len() {
         if bytes[index] == b'%' && index + 2 < bytes.len() {
-            if let Ok(decoded) = u8::from_str_radix(&value[index + 1..index + 3], 16) {
+            if let (Some(high), Some(low)) =
+                (hex_digit(bytes[index + 1]), hex_digit(bytes[index + 2]))
+            {
+                let decoded = high * 16 + low;
                 result.push(decoded);
                 index += 3;
                 continue;
@@ -5042,6 +5122,15 @@ fn decode_file_url(value: &str) -> String {
         index += 1;
     }
     String::from_utf8_lossy(&result).into_owned()
+}
+
+const fn hex_digit(byte: u8) -> Option<u8> {
+    match byte {
+        b'0'..=b'9' => Some(byte - b'0'),
+        b'a'..=b'f' => Some(byte - b'a' + 10),
+        b'A'..=b'F' => Some(byte - b'A' + 10),
+        _ => None,
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -5150,7 +5239,14 @@ fn write_temporary_diarization_wav(
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |duration| duration.as_nanos());
-    let path = std::env::temp_dir().join(format!(
+    let directory = std::env::var_os("XDG_RUNTIME_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(std::env::temp_dir)
+        .join("fluidvoice");
+    fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
+    fs::set_permissions(&directory, fs::Permissions::from_mode(0o700))
+        .map_err(|error| error.to_string())?;
+    let path = directory.join(format!(
         "fluidvoice-diarization-{}-{nonce}.wav",
         std::process::id()
     ));
@@ -5160,7 +5256,13 @@ fn write_temporary_diarization_wav(
         bits_per_sample: 16,
         sample_format: hound::SampleFormat::Int,
     };
-    let mut writer = hound::WavWriter::create(&path, spec).map_err(|error| error.to_string())?;
+    let file = OpenOptions::new()
+        .create_new(true)
+        .write(true)
+        .mode(0o600)
+        .open(&path)
+        .map_err(|error| error.to_string())?;
+    let mut writer = hound::WavWriter::new(file, spec).map_err(|error| error.to_string())?;
     for sample in audio.samples() {
         #[allow(clippy::cast_possible_truncation)]
         let value = (sample.clamp(-1.0, 1.0) * f32::from(i16::MAX)).round() as i16;
@@ -5525,6 +5627,7 @@ struct WhisperModel {
     display_name: &'static str,
     file_name: &'static str,
     expected_bytes: u64,
+    sha256: &'static str,
     description: &'static str,
 }
 
@@ -5534,36 +5637,42 @@ fn whisper_model_catalog() -> &'static [WhisperModel] {
             display_name: "Whisper Tiny",
             file_name: "ggml-tiny.bin",
             expected_bytes: 77_691_713,
+            sha256: "be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21",
             description: "75 MB · fastest · basic accuracy · 99 languages",
         },
         WhisperModel {
             display_name: "Whisper Base",
             file_name: "ggml-base.bin",
             expected_bytes: 147_951_465,
+            sha256: "60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe",
             description: "141 MB · fast · balanced for short dictation · 99 languages",
         },
         WhisperModel {
             display_name: "Whisper Small",
             file_name: "ggml-small.bin",
             expected_bytes: 487_601_967,
+            sha256: "1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b",
             description: "465 MB · recommended · good accuracy · 99 languages",
         },
         WhisperModel {
             display_name: "Whisper Medium",
             file_name: "ggml-medium.bin",
             expected_bytes: 1_533_763_059,
+            sha256: "6c14d5adee5f86394037b4e4e8b59f1673b6cee10e3cf0b11bbdbee79c156208",
             description: "1.4 GB · slower · high accuracy · 6 GB+ RAM",
         },
         WhisperModel {
             display_name: "Whisper Large Turbo",
             file_name: "ggml-large-v3-turbo.bin",
             expected_bytes: 1_624_555_275,
+            sha256: "1fc70f774d38eb169993ac391eea357ef47c88757ef72ee5943879b7e8e2bc69",
             description: "1.5 GB · high accuracy · optimized decoding · 8 GB+ RAM",
         },
         WhisperModel {
             display_name: "Whisper Large",
             file_name: "ggml-large-v3.bin",
             expected_bytes: 3_095_033_483,
+            sha256: "64d182b440b98d5203c4f9bd541544d84c605196c4f7b845dfa11fb23594d1e2",
             description: "2.9 GB · slowest · highest accuracy · 10 GB+ RAM",
         },
     ]
@@ -5641,6 +5750,7 @@ fn download_whisper_model(
     let response = agent.get(&url).call().map_err(|error| error.to_string())?;
     let mut reader = response.into_body().into_reader();
     let mut output = fs::File::create(&partial).map_err(|error| error.to_string())?;
+    let mut hasher = Sha256::new();
     let mut buffer = vec![0_u8; 1024 * 256];
     let mut downloaded = 0_u64;
     loop {
@@ -5658,16 +5768,18 @@ fn download_whisper_model(
         output
             .write_all(&buffer[..count])
             .map_err(|error| error.to_string())?;
+        hasher.update(&buffer[..count]);
         downloaded = downloaded.saturating_add(u64::try_from(count).unwrap_or_default());
         progress((downloaded as f64 / model.expected_bytes as f64).clamp(0.0, 1.0) as f32);
     }
     output.sync_all().map_err(|error| error.to_string())?;
     drop(output);
-    if downloaded != model.expected_bytes {
+    let digest = format!("{:x}", hasher.finalize());
+    if downloaded != model.expected_bytes || digest != model.sha256 {
         fs::remove_file(&partial).ok();
         return Err(format!(
-            "downloaded {downloaded} bytes; expected {}",
-            model.expected_bytes
+            "model verification failed (bytes {downloaded}/{}, sha256 {digest})",
+            model.expected_bytes,
         ));
     }
     fs::rename(&partial, destination).map_err(|error| error.to_string())?;
@@ -6031,6 +6143,7 @@ mod tests {
             "registry.example/team/model:latest"
         ));
         assert!(!valid_ollama_model_name(""));
+        assert!(!valid_ollama_model_name("--insecure"));
         assert!(!valid_ollama_model_name("model; touch /tmp/nope"));
     }
 
@@ -6198,6 +6311,11 @@ mod tests {
         assert_eq!(
             decode_file_url("file:///tmp/Voice%20Sample.wav"),
             "/tmp/Voice Sample.wav"
+        );
+        assert_eq!(decode_file_url("file:///tmp/100%aö.wav"), "/tmp/100%aö.wav");
+        assert_eq!(
+            decode_file_url("file:///tmp/literal%25.wav"),
+            "/tmp/literal%.wav"
         );
     }
 

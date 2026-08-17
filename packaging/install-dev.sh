@@ -30,7 +30,7 @@ fi
 QMAKE=${QMAKE:-/usr/bin/qmake6} cargo build --release -p fluidvoice-ui
 
 install_command=(install)
-if [[ -z "$destination" && "$prefix" == /usr/* ]]; then
+if [[ -z "$destination" && ( "$prefix" == /usr || "$prefix" == /usr/* ) ]]; then
   install_command=(sudo install)
 fi
 

@@ -5,6 +5,11 @@ All notable changes to FluidVoice Linux are documented here. The project uses
 
 ## 0.4.0 - 2026-08-16
 
+- Hardened local security and failure handling: strict parsed loopback URLs,
+  proxy-free/no-redirect audio requests, fail-closed atomic local-API tokens,
+  bounded API connections, private atomic user data, private native-ASR ports,
+  verified Whisper SHA-256 downloads, finite network timeouts, non-RT capture
+  callbacks, immutable CI actions, and regression coverage for crash paths.
 - Hardened the meeting workflow with retry-under-current-settings, visible last
   file, validated speaker renaming propagated to the current result, latest
   file History entry, and every export format. Added truthful compute

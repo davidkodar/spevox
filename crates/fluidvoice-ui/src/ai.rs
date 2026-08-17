@@ -99,7 +99,10 @@ pub fn enhance(config: &AiConfig, transcript: &str) -> Result<String, String> {
         let body = json!({
             "model": config.model,
             "temperature": 0.2,
-            "messages": [{"role": "user", "content": format!("{prompt}\n\n{transcript}")}]
+            "messages": [
+                {"role": "system", "content": prompt},
+                {"role": "user", "content": transcript}
+            ]
         });
         let body = body.to_string();
         let mut response = send_with_retry(|| {
@@ -155,7 +158,10 @@ pub fn enhance_streaming(
         let endpoint = chat_completions_url(&config.base_url);
         let body = json!({
             "model": config.model, "temperature": 0.2, "stream": true,
-            "messages": [{"role": "user", "content": format!("{prompt}\n\n{transcript}")}]
+            "messages": [
+                {"role": "system", "content": prompt},
+                {"role": "user", "content": transcript}
+            ]
         })
         .to_string();
         send_with_retry(|| {
@@ -172,6 +178,9 @@ pub fn enhance_streaming(
 }
 
 fn validate_config(config: &AiConfig) -> Result<(), String> {
+    if !config.enabled {
+        return Err("AI enhancement is disabled".to_owned());
+    }
     if config.model.trim().is_empty() {
         return Err("No AI model is configured".to_owned());
     }
@@ -301,11 +310,18 @@ fn extract_text(value: &Value) -> Option<&str> {
 }
 
 fn strip_markdown_fence(value: &str) -> &str {
-    value
+    let Some(inner) = value
         .strip_prefix("```")
         .and_then(|value| value.strip_suffix("```"))
-        .map(|value| value.trim_start_matches("text").trim())
-        .unwrap_or(value)
+    else {
+        return value;
+    };
+    let inner = inner.trim();
+    inner
+        .strip_prefix("text\n")
+        .or_else(|| inner.strip_prefix("plaintext\n"))
+        .unwrap_or(inner)
+        .trim()
 }
 
 fn request_error(error: ureq::Error) -> String {
@@ -341,11 +357,10 @@ fn parse_response(response: &mut ureq::http::Response<ureq::Body>) -> Result<Val
     const MAX_RESPONSE_BYTES: usize = 1_048_576;
     let body = response
         .body_mut()
+        .with_config()
+        .limit(MAX_RESPONSE_BYTES as u64)
         .read_to_string()
-        .map_err(|error| error.to_string())?;
-    if body.len() > MAX_RESPONSE_BYTES {
-        return Err("AI provider response exceeded the 1 MiB safety limit".to_owned());
-    }
+        .map_err(|error| format!("AI provider response invalid or exceeded 1 MiB: {error}"))?;
     serde_json::from_str(&body)
         .map_err(|error| format!("AI provider returned invalid JSON: {error}"))
 }
@@ -356,13 +371,18 @@ fn parse_stream(
 ) -> Result<String, String> {
     const MAX_RESPONSE_BYTES: usize = 1_048_576;
     let mut output = String::new();
-    let mut raw = String::new();
-    for line in BufReader::new(response.body_mut().as_reader()).lines() {
+    let reader = response
+        .body_mut()
+        .with_config()
+        .limit(MAX_RESPONSE_BYTES as u64)
+        .reader();
+    let mut received = 0_usize;
+    for line in BufReader::new(reader).lines() {
         let line = line.map_err(|error| error.to_string())?;
-        if raw.len().saturating_add(line.len()) > MAX_RESPONSE_BYTES {
+        received = received.saturating_add(line.len());
+        if received > MAX_RESPONSE_BYTES {
             return Err("AI provider response exceeded the 1 MiB safety limit".to_owned());
         }
-        raw.push_str(&line);
         let payload = line
             .strip_prefix("data:")
             .map(str::trim)

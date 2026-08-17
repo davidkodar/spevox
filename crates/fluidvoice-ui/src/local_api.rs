@@ -4,10 +4,15 @@ use std::io::{Read, Write};
 use std::net::{Ipv4Addr, SocketAddrV4, TcpListener, TcpStream};
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
-use std::sync::mpsc::Sender;
-use std::time::Duration;
+use std::sync::{
+    Arc,
+    atomic::{AtomicUsize, Ordering},
+    mpsc::Sender,
+};
+use std::time::{Duration, Instant};
 
 const MAX_REQUEST_BYTES: usize = 16 * 1024;
+const MAX_CONNECTIONS: usize = 8;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LocalApiAction {
@@ -79,9 +84,27 @@ pub fn start(port: u16, actions: Sender<LocalApiAction>) -> Result<(), String> {
     let token = token_path();
     ensure_token(&token)?;
     std::thread::spawn(move || {
+        let active = Arc::new(AtomicUsize::new(0));
         for connection in listener.incoming() {
             match connection {
-                Ok(stream) => handle_connection(stream, &token, &actions),
+                Ok(mut stream) => {
+                    if active
+                        .fetch_update(Ordering::AcqRel, Ordering::Acquire, |count| {
+                            (count < MAX_CONNECTIONS).then_some(count + 1)
+                        })
+                        .is_err()
+                    {
+                        respond(&mut stream, 503, r#"{"error":"server busy"}"#);
+                        continue;
+                    }
+                    let active = Arc::clone(&active);
+                    let token = token.clone();
+                    let actions = actions.clone();
+                    std::thread::spawn(move || {
+                        handle_connection(stream, &token, &actions);
+                        active.fetch_sub(1, Ordering::AcqRel);
+                    });
+                }
                 Err(error) => eprintln!("Local API connection failed: {error}"),
             }
         }
@@ -90,11 +113,16 @@ pub fn start(port: u16, actions: Sender<LocalApiAction>) -> Result<(), String> {
 }
 
 fn handle_connection(mut stream: TcpStream, token_path: &Path, actions: &Sender<LocalApiAction>) {
-    stream.set_read_timeout(Some(Duration::from_secs(3))).ok();
+    let deadline = Instant::now() + Duration::from_secs(3);
     stream.set_write_timeout(Some(Duration::from_secs(3))).ok();
     let mut request = Vec::new();
     let mut buffer = [0_u8; 2048];
     while request.len() <= MAX_REQUEST_BYTES {
+        let Some(remaining) = deadline.checked_duration_since(Instant::now()) else {
+            respond(&mut stream, 408, r#"{"error":"request timed out"}"#);
+            return;
+        };
+        stream.set_read_timeout(Some(remaining)).ok();
         match stream.read(&mut buffer) {
             Ok(0) | Err(_) => break,
             Ok(count) => {
@@ -198,6 +226,7 @@ fn respond(stream: &mut TcpStream, status: u16, body: &str) {
         400 => "Bad Request",
         401 => "Unauthorized",
         403 => "Forbidden",
+        408 => "Request Timeout",
         404 => "Not Found",
         413 => "Payload Too Large",
         _ => "Service Unavailable",

@@ -363,6 +363,7 @@ struct CaptureData {
 
 struct CapturedSamples {
     samples: Vec<f32>,
+    maximum_samples: usize,
     sample_rate: u32,
     channels: u32,
     truncated: bool,
@@ -370,8 +371,13 @@ struct CapturedSamples {
 
 impl CapturedSamples {
     fn new(capacity: usize) -> Self {
+        // Reserve a modest working set and let the vector grow only when the
+        // negotiated format requires it. The previous worst-case reservation
+        // could request hundreds of MiB before PipeWire supplied a format.
+        let initial_capacity = capacity.min(48_000 * 2 * PREVIEW_WINDOW_SECONDS);
         Self {
-            samples: Vec::with_capacity(capacity),
+            samples: Vec::with_capacity(initial_capacity),
+            maximum_samples: capacity,
             sample_rate: 0,
             channels: 0,
             truncated: false,
@@ -381,7 +387,7 @@ impl CapturedSamples {
     fn append(&mut self, bytes: &[u8]) -> f32 {
         let mut peak = 0.0_f32;
         for chunk in bytes.chunks_exact(mem::size_of::<f32>()) {
-            if self.samples.len() == self.samples.capacity() {
+            if self.samples.len() == self.maximum_samples {
                 self.truncated = true;
                 break;
             }

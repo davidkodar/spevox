@@ -1,6 +1,8 @@
 #include "fluidvoice-ui/src/application.h"
 
 #include <QDir>
+#include <QDebug>
+#include <QFile>
 #include <QIcon>
 #include <QLocalSocket>
 #include <QStandardPaths>
@@ -22,7 +24,12 @@ FluidVoiceApplication::FluidVoiceApplication(int &argc, char **argv)
     setQuitOnLastWindowClosed(false);
     QString runtimeDirectory = QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation);
     if (runtimeDirectory.isEmpty()) {
-        runtimeDirectory = QDir::tempPath();
+        runtimeDirectory = QStandardPaths::writableLocation(QStandardPaths::GenericCacheLocation)
+                           + "/fluidvoice/runtime";
+        QDir().mkpath(runtimeDirectory);
+        QFile::setPermissions(runtimeDirectory,
+                              QFileDevice::ReadOwner | QFileDevice::WriteOwner |
+                                  QFileDevice::ExeOwner);
     }
     instanceLock = std::make_unique<QLockFile>(runtimeDirectory + "/fluidvoice-linux.lock");
     instanceLock->setStaleLockTime(1000);
@@ -30,10 +37,11 @@ FluidVoiceApplication::FluidVoiceApplication(int &argc, char **argv)
     if (!primaryInstance && instanceLock->removeStaleLockFile()) {
         primaryInstance = instanceLock->tryLock(0);
     }
-    const QString activationName = "fluidvoice-linux-activation";
+    const QString activationName = runtimeDirectory + "/fluidvoice-linux-activation";
     if (primaryInstance) {
         QLocalServer::removeServer(activationName);
         activationServer = std::make_unique<QLocalServer>();
+        activationServer->setSocketOptions(QLocalServer::UserAccessOption);
         connect(activationServer.get(), &QLocalServer::newConnection, this, [this]() {
             while (QLocalSocket *socket = activationServer->nextPendingConnection()) {
                 connect(socket, &QLocalSocket::disconnected, socket, &QObject::deleteLater);
@@ -41,7 +49,10 @@ FluidVoiceApplication::FluidVoiceApplication(int &argc, char **argv)
             }
             showSettingsWindow();
         });
-        activationServer->listen(activationName);
+        if (!activationServer->listen(activationName)) {
+            qWarning() << "FluidVoice activation socket unavailable:"
+                       << activationServer->errorString();
+        }
 
         trayMenu = std::make_unique<QMenu>();
         QAction *openAction = trayMenu->addAction("Open FluidVoice");

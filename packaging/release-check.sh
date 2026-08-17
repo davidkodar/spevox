@@ -34,7 +34,8 @@ test -f "${smoke_root}/install/usr/share/metainfo/io.github.davidkodar.FluidVoic
 test -f "${smoke_root}/install/usr/share/icons/hicolor/256x256/apps/io.github.davidkodar.FluidVoiceLinux.png"
 
 ./packaging/package-tarball.sh
-archive="target/package/fluidvoice-linux-0.4.0-$(uname -m).tar.gz"
+version=$(awk -F '"' '/^version = "/ { print $2; exit }' Cargo.toml)
+archive="target/package/fluidvoice-linux-${version}-$(uname -m).tar.gz"
 test -s "${archive}"
 archive_listing="${smoke_root}/archive-contents.txt"
 tar -tzf "${archive}" > "${archive_listing}"
