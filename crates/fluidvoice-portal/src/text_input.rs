@@ -1,8 +1,13 @@
-use ashpd::desktop::CreateSessionOptions;
+use std::{fs, io::Write, path::PathBuf};
+
+#[cfg(unix)]
+use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+
 use ashpd::desktop::remote_desktop::{
     DeviceType, KeyState, NotifyKeyboardKeycodeOptions, RemoteDesktop, SelectDevicesOptions,
     StartOptions,
 };
+use ashpd::desktop::{CreateSessionOptions, PersistMode};
 
 /// A consented Wayland keyboard-control session used only to paste text that
 /// `FluidVoice` has already placed on the clipboard.
@@ -21,17 +26,24 @@ impl TextInputSession {
         let session = portal
             .create_session(CreateSessionOptions::default())
             .await?;
+        let restore_token = fs::read_to_string(restore_token_path()).ok();
         portal
             .select_devices(
                 &session,
-                SelectDevicesOptions::default().set_devices(Some(DeviceType::Keyboard.into())),
+                SelectDevicesOptions::default()
+                    .set_devices(Some(DeviceType::Keyboard.into()))
+                    .set_persist_mode(PersistMode::ExplicitlyRevoked)
+                    .set_restore_token(restore_token.as_deref()),
             )
             .await?
             .response()?;
-        portal
+        let response = portal
             .start(&session, None, StartOptions::default())
             .await?
             .response()?;
+        if let Some(token) = response.restore_token() {
+            save_restore_token(token).ok();
+        }
         Ok(Self { portal, session })
     }
 
@@ -78,4 +90,33 @@ impl TextInputSession {
             )
             .await
     }
+}
+
+fn restore_token_path() -> PathBuf {
+    if let Some(directory) = std::env::var_os("XDG_STATE_HOME") {
+        return PathBuf::from(directory).join("fluidvoice/portal-restore-token");
+    }
+    std::env::var_os("HOME").map_or_else(
+        || std::env::temp_dir().join(format!("fluidvoice-{}-portal-token", std::process::id())),
+        |home| PathBuf::from(home).join(".local/state/fluidvoice/portal-restore-token"),
+    )
+}
+
+fn save_restore_token(token: &str) -> std::io::Result<()> {
+    let path = restore_token_path();
+    let parent = path
+        .parent()
+        .ok_or_else(|| std::io::Error::other("restore token path has no parent"))?;
+    fs::create_dir_all(parent)?;
+    #[cfg(unix)]
+    fs::set_permissions(parent, fs::Permissions::from_mode(0o700))?;
+    let temporary = path.with_extension(format!("tmp-{}", std::process::id()));
+    let mut options = fs::OpenOptions::new();
+    options.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    options.mode(0o600);
+    let mut file = options.open(&temporary)?;
+    file.write_all(token.as_bytes())?;
+    file.sync_all()?;
+    fs::rename(temporary, path)
 }

@@ -5,6 +5,12 @@ All notable changes to FluidVoice Linux are documented here. The project uses
 
 ## 0.4.0 - 2026-08-16
 
+- Hardened remaining desktop integrations: local-API bearer tokens are no
+  longer copied into Klipper history and the health route is now authenticated;
+  portal consent uses a private persistent restore token, model-download
+  progress is throttled, release artifacts no
+  longer include an unused update manifest, and release binaries no longer
+  search developer-checkout paths or use cwd-relative private data fallbacks.
 - Replaced linear ASR downsampling with an optimized windowed-sinc filter that
   suppresses aliasing above the 8 kHz speech band, preserves phase across native
   realtime chunks, and reuses precomputed kernels. PipeWire device discovery is

@@ -111,7 +111,7 @@ pub fn data_directory() -> PathBuf {
     std::env::var_os("XDG_DATA_HOME").map_or_else(
         || {
             std::env::var_os("HOME").map_or_else(
-                || PathBuf::from(".local/share/fluidvoice"),
+                || std::env::temp_dir().join(format!("fluidvoice-{}", std::process::id())),
                 |home| PathBuf::from(home).join(".local/share/fluidvoice"),
             )
         },

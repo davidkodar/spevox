@@ -927,7 +927,7 @@ ApplicationWindow {
                         }
                         RowLayout {
                             Layout.fillWidth: true
-                            Button { text: qsTr("Copy bearer token"); onClicked: controller.copyLocalApiToken() }
+                            Button { text: qsTr("Show token location"); onClicked: controller.showLocalApiTokenLocation() }
                             Button { text: qsTr("Rotate token"); onClicked: controller.rotateLocalApiToken() }
                             Item { Layout.fillWidth: true }
                         }

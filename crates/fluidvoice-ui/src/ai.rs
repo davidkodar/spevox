@@ -216,7 +216,10 @@ pub fn discover_local_models(config: &AiConfig) -> Result<Vec<String>, String> {
         .timeout_global(Some(Duration::from_secs(8)))
         .build()
         .new_agent();
-    let mut response = agent.get(&endpoint).call().map_err(request_error)?;
+    let mut response = agent
+        .get(&endpoint)
+        .call()
+        .map_err(|error| request_error(&error))?;
     let value = parse_response(&mut response)?;
     let mut models = extract_models(&value);
     models.sort_unstable();
@@ -324,7 +327,7 @@ fn strip_markdown_fence(value: &str) -> &str {
         .trim()
 }
 
-fn request_error(error: ureq::Error) -> String {
+fn request_error(error: &ureq::Error) -> String {
     format!("AI provider request failed: {error}")
 }
 
@@ -337,7 +340,7 @@ fn send_with_retry(
             Err(error) if attempt < 2 && retryable(&error) => {
                 std::thread::sleep(Duration::from_millis(200 * (attempt + 1)));
             }
-            Err(error) => return Err(request_error(error)),
+            Err(error) => return Err(request_error(&error)),
         }
     }
     unreachable!("retry loop always returns")
@@ -383,10 +386,7 @@ fn parse_stream(
         if received > MAX_RESPONSE_BYTES {
             return Err("AI provider response exceeded the 1 MiB safety limit".to_owned());
         }
-        let payload = line
-            .strip_prefix("data:")
-            .map(str::trim)
-            .unwrap_or(line.trim());
+        let payload = line.strip_prefix("data:").map_or(line.trim(), str::trim);
         if payload.is_empty() || payload == "[DONE]" {
             continue;
         }
@@ -400,11 +400,11 @@ fn parse_stream(
         if let Some(delta) = delta {
             output.push_str(delta);
             on_update(output.trim());
-        } else if output.is_empty() {
-            if let Some(text) = extract_text(&event) {
-                output.push_str(text);
-                on_update(output.trim());
-            }
+        } else if output.is_empty()
+            && let Some(text) = extract_text(&event)
+        {
+            output.push_str(text);
+            on_update(output.trim());
         }
     }
     let output = strip_markdown_fence(output.trim());
@@ -537,7 +537,7 @@ mod tests {
             for attempt in 0..3 {
                 let (mut stream, _) = listener.accept().expect("accept local request");
                 let mut request = [0_u8; 2048];
-                stream.read(&mut request).expect("read request");
+                let _count = stream.read(&mut request).expect("read request");
                 let (status, body) = if attempt < 2 {
                     ("500 Internal Server Error", "{}")
                 } else {
@@ -578,7 +578,7 @@ mod tests {
         let server = std::thread::spawn(move || {
             let (mut stream, _) = listener.accept().expect("accept local request");
             let mut request = [0_u8; 4096];
-            stream.read(&mut request).expect("read request");
+            let _count = stream.read(&mut request).expect("read request");
             let body = "data: {\"choices\":[{\"delta\":{\"content\":\"clean \"}}]}\n\ndata: {\"choices\":[{\"delta\":{\"content\":\"text\"}}]}\n\ndata: [DONE]\n\n";
             write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).expect("write stream");
         });

@@ -419,8 +419,8 @@ pub mod ffi {
         fn rotate_local_api_token(self: Pin<&mut Self>);
 
         #[qinvokable]
-        #[cxx_name = "copyLocalApiToken"]
-        fn copy_local_api_token(self: Pin<&mut Self>);
+        #[cxx_name = "showLocalApiTokenLocation"]
+        fn show_local_api_token_location(self: Pin<&mut Self>);
 
         #[qinvokable]
         #[cxx_name = "selectSpeechEngine"]
@@ -922,7 +922,7 @@ impl Default for FluidVoiceControllerRust {
             sortformer_download_progress: 0.0,
             sortformer_status: QString::from(
                 if parakeet::model_installed(parakeet::SORTFORMER_V2) {
-                    "Verified experimental Sortformer model is ready."
+                    "Downloaded experimental Sortformer model is ready."
                 } else {
                     "Optional experimental setup for speaker-labelled meeting transcripts."
                 },
@@ -1342,7 +1342,14 @@ impl ffi::FluidVoiceController {
         let qt_thread = self.qt_thread();
         std::thread::spawn(move || {
             let progress_thread = qt_thread.clone();
+            let mut last_progress = Instant::now()
+                .checked_sub(Duration::from_secs(1))
+                .unwrap_or_else(Instant::now);
             let result = download_whisper_model(model, &destination, &cancel, move |progress| {
+                if progress < 1.0 && last_progress.elapsed() < Duration::from_millis(50) {
+                    return;
+                }
+                last_progress = Instant::now();
                 progress_thread
                     .queue(move |mut controller| {
                         controller.as_mut().set_model_download_progress(progress);
@@ -2524,23 +2531,16 @@ impl ffi::FluidVoiceController {
         self.as_mut().set_local_api_status(QString::from(&message));
     }
 
-    pub fn copy_local_api_token(mut self: Pin<&mut Self>) {
-        let result = local_api::ensure_token(&local_api::token_path()).and_then(|token| {
-            let rust = self.as_mut().rust_mut().get_mut();
-            if rust.clipboard.is_none() {
-                rust.clipboard = ClipboardDelivery::connect().ok();
-            }
-            rust.clipboard
-                .as_mut()
-                .ok_or_else(|| "clipboard integration is unavailable".to_owned())?
-                .copy_transcript(&token)
-                .map_err(|error| error.to_string())
-        });
-        self.as_mut()
-            .set_local_api_status(QString::from(match result {
-                Ok(()) => "Bearer token copied · treat it like a password".to_owned(),
-                Err(error) => format!("Could not copy local API token: {error}"),
-            }));
+    pub fn show_local_api_token_location(mut self: Pin<&mut Self>) {
+        let path = local_api::token_path();
+        let message = match local_api::ensure_token(&path) {
+            Ok(_) => format!(
+                "Bearer token is stored privately at {} · read it directly when configuring a client",
+                path.display()
+            ),
+            Err(error) => format!("Could not prepare local API token: {error}"),
+        };
+        self.as_mut().set_local_api_status(QString::from(&message));
     }
 
     pub fn select_speech_engine(mut self: Pin<&mut Self>, index: i32) {
@@ -2551,7 +2551,7 @@ impl ffi::FluidVoiceController {
             self.as_mut().set_parakeet_model_installed(installed);
             self.as_mut()
                 .set_parakeet_status(QString::from(if installed {
-                    format!("{} is verified and ready.", model.name)
+                    format!("{} is downloaded and ready.", model.name)
                 } else {
                     format!("Download {} to use this native engine.", model.name)
                 }));
@@ -2737,10 +2737,10 @@ impl ffi::FluidVoiceController {
         self.as_mut()
             .set_parakeet_status(QString::from(match (runtime, model) {
                 (true, true) => {
-                    "Runtime and verified model are ready; the server starts on first dictation."
+                    "Runtime and downloaded model are ready; the server starts on first dictation."
                 }
                 (false, true) => "The model is ready; install the shared native runtime.",
-                (true, false) => "The runtime is ready; download this verified model.",
+                (true, false) => "The runtime is ready; download this model.",
                 (false, false) => "Install the shared native runtime and download this model.",
             }));
     }
@@ -2775,7 +2775,7 @@ impl ffi::FluidVoiceController {
         self.as_mut().set_sortformer_busy(true);
         self.as_mut().set_sortformer_download_progress(0.0);
         self.as_mut().set_sortformer_status(QString::from(
-            "Preparing the shared native runtime and verified Sortformer model…",
+            "Preparing the shared native runtime and Sortformer model…",
         ));
         let qt_thread = self.qt_thread();
         std::thread::spawn(move || {
@@ -2873,8 +2873,8 @@ impl ffi::FluidVoiceController {
         self.as_mut().set_sortformer_installed(model);
         self.as_mut()
             .set_sortformer_status(QString::from(match (runtime, model) {
-                (true, true) => "Shared native runtime and verified Sortformer model are ready.",
-                (false, true) => "Sortformer is verified; rebuild the shared native runtime.",
+                (true, true) => "Shared native runtime and downloaded Sortformer model are ready.",
+                (false, true) => "Sortformer is downloaded; rebuild the shared native runtime.",
                 (true, false) => "The native runtime is ready; download the Sortformer model.",
                 (false, false) => {
                     "Run one-click setup to build the runtime and download Sortformer."
@@ -3892,7 +3892,7 @@ impl ffi::FluidVoiceController {
                         }
                         Ok(_) => {
                             controller.as_mut().set_transcript_text(QString::from(&format!(
-                                "No speech recognized (ASR peak {:.0}%). Increase the Scarlett hardware gain if this persists.",
+                                "No speech recognized (ASR peak {:.0}%). Increase the microphone or interface hardware gain if this persists.",
                                 asr_peak * 100.0
                             )));
                             controller.set_status_text(QString::from(&format!(
@@ -4372,8 +4372,7 @@ fn check_latest_release(current: &str) -> String {
     let mut response = match response {
         Ok(response) => response,
         Err(ureq::Error::StatusCode(404)) => {
-            return "No public release feed is available while the repository is private."
-                .to_owned();
+            return "No GitHub release feed is available for this repository.".to_owned();
         }
         Err(error) => return format!("Update check failed: {error}"),
     };
@@ -4589,7 +4588,7 @@ fn data_directory() -> PathBuf {
         return PathBuf::from(directory).join("fluidvoice");
     }
     std::env::var_os("HOME").map_or_else(
-        || PathBuf::from(".fluidvoice"),
+        || std::env::temp_dir().join(format!("fluidvoice-{}", std::process::id())),
         |home| PathBuf::from(home).join(".local/share/fluidvoice"),
     )
 }
@@ -5812,16 +5811,13 @@ fn managed_model_directory() -> PathBuf {
         return PathBuf::from(directory).join("fluidvoice/models");
     }
     std::env::var_os("HOME").map_or_else(
-        || PathBuf::from(".local/share/fluidvoice/models"),
+        || data_directory().join("models"),
         |home| PathBuf::from(home).join(".local/share/fluidvoice/models"),
     )
 }
 
 fn model_search_directories() -> Vec<PathBuf> {
-    vec![
-        managed_model_directory(),
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../work/models"),
-    ]
+    vec![managed_model_directory()]
 }
 
 fn resolve_model_path(model: &WhisperModel) -> PathBuf {

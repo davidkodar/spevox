@@ -157,10 +157,6 @@ fn handle_connection(mut stream: TcpStream, token_path: &Path, actions: &Sender<
         );
         return;
     }
-    if method == "GET" && path == "/v1/health" {
-        respond(&mut stream, 200, r#"{"status":"ok"}"#);
-        return;
-    }
     let supplied = lines.find_map(|line| {
         let (name, value) = line.split_once(':')?;
         name.eq_ignore_ascii_case("authorization")
@@ -188,6 +184,10 @@ fn handle_connection(mut stream: TcpStream, token_path: &Path, actions: &Sender<
         expected.trim().as_bytes(),
     ) {
         respond(&mut stream, 401, r#"{"error":"unauthorized"}"#);
+        return;
+    }
+    if method == "GET" && path == "/v1/health" {
+        respond(&mut stream, 200, r#"{"status":"ok"}"#);
         return;
     }
     match (method, path) {
@@ -281,12 +281,19 @@ mod tests {
     }
 
     #[test]
-    fn health_is_public_but_status_requires_bearer_token() {
+    fn health_and_status_require_bearer_token() {
         let path = std::env::temp_dir().join(format!("fluidvoice-api-http-{}", std::process::id()));
         let token = "a".repeat(64);
         fs::write(&path, &token).unwrap();
-        let (health, _) = round_trip(
+        let (unauthorized_health, _) = round_trip(
             "GET /v1/health HTTP/1.1\r\nHost: localhost\r\n\r\n",
+            path.clone(),
+        );
+        assert!(unauthorized_health.starts_with("HTTP/1.1 401"));
+        let (health, _) = round_trip(
+            &format!(
+                "GET /v1/health HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer {token}\r\n\r\n"
+            ),
             path.clone(),
         );
         assert!(health.starts_with("HTTP/1.1 200"));
