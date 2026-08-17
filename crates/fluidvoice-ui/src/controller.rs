@@ -3793,39 +3793,34 @@ impl ffi::FluidVoiceController {
                         .ok();
                 },
             );
-            let enhancement_started = Instant::now();
-            let enhancement = transcription.as_ref().ok().and_then(|transcript| {
-                if ai_config.enabled {
+            let EnhancementResult {
+                result: enhancement,
+                duration_ms: ai_duration_ms,
+            } = transcription.as_ref().ok().map_or(
+                EnhancementResult {
+                    result: None,
+                    duration_ms: 0,
+                },
+                |transcript| {
                     let stream_thread = qt_thread.clone();
-                    Some(ai::enhance_streaming(
-                        &ai_config,
-                        &transcript.text,
-                        move |text| {
-                            let text = text.to_owned();
-                            stream_thread
-                                .queue(move |mut controller| {
-                                    if *controller.as_ref().overlay_enabled() {
-                                        controller.as_mut().set_overlay_visible(true);
-                                    }
-                                    controller
-                                        .as_mut()
-                                        .set_live_transcript(QString::from(&text));
-                                    controller.set_status_text(QString::from(
-                                        "Enhancing locally or with selected provider…",
-                                    ));
-                                })
-                                .ok();
-                        },
-                    ))
-                } else {
-                    None
-                }
-            });
-            let ai_duration_ms = if enhancement.is_some() {
-                enhancement_started.elapsed().as_millis()
-            } else {
-                0
-            };
+                    enhance_transcript(&ai_config, &transcript.text, move |text| {
+                        let text = text.to_owned();
+                        stream_thread
+                            .queue(move |mut controller| {
+                                if *controller.as_ref().overlay_enabled() {
+                                    controller.as_mut().set_overlay_visible(true);
+                                }
+                                controller
+                                    .as_mut()
+                                    .set_live_transcript(QString::from(&text));
+                                controller.set_status_text(QString::from(
+                                    "Enhancing locally or with selected provider…",
+                                ));
+                            })
+                            .ok();
+                    })
+                },
+            );
             let retained_audio = if retain_audio
                 && transcription
                     .as_ref()
@@ -4338,7 +4333,9 @@ use models::{
 mod dictation;
 #[path = "speech_runtime.rs"]
 mod speech_runtime;
-use dictation::{FinalAsrRequest, FinalAsrResult, transcribe_final};
+use dictation::{
+    EnhancementResult, FinalAsrRequest, FinalAsrResult, enhance_transcript, transcribe_final,
+};
 #[cfg(test)]
 use dictionary::parse_csv_record;
 #[cfg(test)]

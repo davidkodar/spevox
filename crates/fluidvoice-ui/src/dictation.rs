@@ -1,12 +1,16 @@
 use std::{
     path::Path,
     sync::{Arc, Mutex},
+    time::Instant,
 };
 
 use fluidvoice_audio::MonoAudioBuffer;
 use fluidvoice_transcription::{LocalSpeechServer, Transcript};
 
-use crate::{parakeet, whisper_cache};
+use crate::{
+    ai::{self, AiConfig},
+    parakeet, whisper_cache,
+};
 
 use super::{ParakeetBackend, native_language_for_model};
 
@@ -25,6 +29,30 @@ pub(super) struct FinalAsrRequest<'a> {
 pub(super) struct FinalAsrResult {
     pub(super) transcription: Result<Transcript, String>,
     pub(super) native_fallback_error: Option<String>,
+}
+
+pub(super) struct EnhancementResult {
+    pub(super) result: Option<Result<String, String>>,
+    pub(super) duration_ms: u128,
+}
+
+pub(super) fn enhance_transcript(
+    config: &AiConfig,
+    transcript: &str,
+    on_update: impl FnMut(&str),
+) -> EnhancementResult {
+    if !config.enabled {
+        return EnhancementResult {
+            result: None,
+            duration_ms: 0,
+        };
+    }
+    let started = Instant::now();
+    let result = ai::enhance_streaming(config, transcript, on_update);
+    EnhancementResult {
+        result: Some(result),
+        duration_ms: started.elapsed().as_millis(),
+    }
 }
 
 pub(super) fn transcribe_final(
@@ -97,5 +125,30 @@ pub(super) fn transcribe_final(
                 native_fallback_error: Some(error),
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{AiConfig, enhance_transcript};
+
+    #[test]
+    fn disabled_enhancement_is_an_immediate_noop() {
+        let config = AiConfig {
+            enabled: false,
+            provider: "Ollama".to_owned(),
+            model: "unused".to_owned(),
+            base_url: "http://127.0.0.1:11434".to_owned(),
+            prompt: "unused".to_owned(),
+            api_key: String::new(),
+            local_only: true,
+            timeout_seconds: 30,
+        };
+        let mut updates = 0;
+        let result = enhance_transcript(&config, "unaltered", |_| updates += 1);
+
+        assert!(result.result.is_none());
+        assert_eq!(result.duration_ms, 0);
+        assert_eq!(updates, 0);
     }
 }
