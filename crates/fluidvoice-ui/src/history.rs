@@ -110,7 +110,11 @@ pub(super) fn history_clipboard_text(entry: &str, mode: i32) -> (String, &'stati
 }
 
 pub(super) fn ai_provider_name(config: &AiConfig) -> &str {
-    if config.enabled { &config.provider } else { "" }
+    if config.enabled {
+        config.provider.as_str()
+    } else {
+        ""
+    }
 }
 
 pub(super) fn write_history_export(

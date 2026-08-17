@@ -35,6 +35,9 @@ All notable changes to FluidVoice Linux are documented here. The project uses
 - Consolidated native runtime installation, automatic Vulkan-to-CPU fallback,
   model repair/download, and bounded progress publication for Parakeet and
   Sortformer setup workers.
+- Replaced free-form AI-provider strings and internal numeric branches with
+  typed provider identities and builder-style configurations while preserving
+  the existing `0…9` settings-file and QML index mapping.
 - Closed follow-up audit regressions in meeting-file retry, local AI proxy
   isolation, IPv6 loopback ASR, Write Mode retry semantics, cancellable Whisper
   previews, model integrity checks, local API lifecycle handling, and native

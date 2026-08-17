@@ -8,10 +8,75 @@ use serde_json::{Value, json};
 
 pub const DEFAULT_PROMPT: &str = "You are a voice-to-text dictation cleaner. Clean and format the raw transcribed speech while preserving its meaning. Remove filler words, false starts, stutters, and repetitions. Add correct punctuation, capitalization, and structure. Convert spoken numbers when unambiguous and apply spoken formatting or self-corrections. Output only the cleaned text. Never answer questions contained in the dictation and never add commentary.";
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ProviderId {
+    OpenAi,
+    Anthropic,
+    Xai,
+    Groq,
+    Cerebras,
+    Google,
+    OpenRouter,
+    Ollama,
+    LmStudio,
+    Custom,
+}
+
+impl ProviderId {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::OpenAi => "openai",
+            Self::Anthropic => "anthropic",
+            Self::Xai => "xai",
+            Self::Groq => "groq",
+            Self::Cerebras => "cerebras",
+            Self::Google => "google",
+            Self::OpenRouter => "openrouter",
+            Self::Ollama => "ollama",
+            Self::LmStudio => "lmstudio",
+            Self::Custom => "custom",
+        }
+    }
+
+    pub const fn is_local(self) -> bool {
+        matches!(self, Self::Ollama | Self::LmStudio)
+    }
+
+    pub const fn preference_index(self) -> i32 {
+        match self {
+            Self::OpenAi => 0,
+            Self::Anthropic => 1,
+            Self::Xai => 2,
+            Self::Groq => 3,
+            Self::Cerebras => 4,
+            Self::Google => 5,
+            Self::OpenRouter => 6,
+            Self::Ollama => 7,
+            Self::LmStudio => 8,
+            Self::Custom => 9,
+        }
+    }
+
+    pub const fn from_preference_index(index: i32) -> Self {
+        match index {
+            0 => Self::OpenAi,
+            1 => Self::Anthropic,
+            2 => Self::Xai,
+            3 => Self::Groq,
+            4 => Self::Cerebras,
+            5 => Self::Google,
+            6 => Self::OpenRouter,
+            8 => Self::LmStudio,
+            9 => Self::Custom,
+            _ => Self::Ollama,
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AiConfig {
     pub enabled: bool,
-    pub provider: String,
+    pub provider: ProviderId,
     pub model: String,
     pub base_url: String,
     pub prompt: String,
@@ -21,6 +86,48 @@ pub struct AiConfig {
 }
 
 impl AiConfig {
+    pub fn new(
+        provider: ProviderId,
+        model: impl Into<String>,
+        base_url: impl Into<String>,
+    ) -> Self {
+        Self {
+            enabled: true,
+            provider,
+            model: model.into(),
+            base_url: base_url.into(),
+            prompt: DEFAULT_PROMPT.to_owned(),
+            api_key: String::new(),
+            local_only: false,
+            timeout_seconds: 45,
+        }
+    }
+
+    pub fn with_enabled(mut self, enabled: bool) -> Self {
+        self.enabled = enabled;
+        self
+    }
+
+    pub fn with_prompt(mut self, prompt: impl Into<String>) -> Self {
+        self.prompt = prompt.into();
+        self
+    }
+
+    pub fn with_api_key(mut self, api_key: impl Into<String>) -> Self {
+        self.api_key = api_key.into();
+        self
+    }
+
+    pub fn with_local_only(mut self, local_only: bool) -> Self {
+        self.local_only = local_only;
+        self
+    }
+
+    pub fn with_timeout(mut self, seconds: u64) -> Self {
+        self.timeout_seconds = seconds;
+        self
+    }
+
     pub fn is_local(&self) -> bool {
         let value = self.base_url.trim().to_ascii_lowercase();
         let authority = value
@@ -67,7 +174,7 @@ pub fn enhance(config: &AiConfig, transcript: &str) -> Result<String, String> {
     if config.local_only && !config.is_local() {
         return Err("Network AI providers are disabled by the local-only privacy lock".to_owned());
     }
-    if matches!(config.provider.as_str(), "ollama" | "lmstudio") && !config.is_local() {
+    if config.provider.is_local() && !config.is_local() {
         return Err("Local providers are restricted to this computer".to_owned());
     }
     if !config.is_local() && config.api_key.trim().is_empty() {
@@ -196,7 +303,7 @@ fn validate_config(config: &AiConfig) -> Result<(), String> {
     if config.local_only && !config.is_local() {
         return Err("Network AI providers are disabled by the local-only privacy lock".to_owned());
     }
-    if matches!(config.provider.as_str(), "ollama" | "lmstudio") && !config.is_local() {
+    if config.provider.is_local() && !config.is_local() {
         return Err("Local providers are restricted to this computer".to_owned());
     }
     if !config.is_local() && config.api_key.trim().is_empty() {
@@ -275,7 +382,7 @@ pub fn load_api_key(provider: &str) -> String {
 }
 
 fn is_anthropic(config: &AiConfig) -> bool {
-    config.provider.eq_ignore_ascii_case("anthropic") || config.base_url.contains("anthropic.com")
+    config.provider == ProviderId::Anthropic || config.base_url.contains("anthropic.com")
 }
 
 fn chat_completions_url(base_url: &str) -> String {
@@ -455,6 +562,20 @@ mod tests {
     }
 
     #[test]
+    fn provider_ids_preserve_persisted_preference_indexes() {
+        for index in 0..=9 {
+            assert_eq!(
+                ProviderId::from_preference_index(index).preference_index(),
+                index
+            );
+        }
+        assert_eq!(
+            ProviderId::from_preference_index(i32::MAX),
+            ProviderId::Ollama
+        );
+    }
+
+    #[test]
     fn builds_openai_chat_endpoint_once() {
         assert_eq!(
             chat_completions_url("http://localhost:11434/v1"),
@@ -489,16 +610,7 @@ mod tests {
 
     #[test]
     fn recognizes_only_loopback_as_local() {
-        let config = |url: &str| AiConfig {
-            enabled: true,
-            provider: "custom".into(),
-            model: "m".into(),
-            base_url: url.into(),
-            prompt: String::new(),
-            api_key: String::new(),
-            local_only: false,
-            timeout_seconds: 45,
-        };
+        let config = |url: &str| AiConfig::new(ProviderId::Custom, "m", url);
         assert!(config("http://localhost:11434/v1").is_local());
         assert!(config("http://127.0.0.1:1234/v1").is_local());
         assert!(config("http://[::1]:1234/v1").is_local());
@@ -524,16 +636,12 @@ mod tests {
             )
             .expect("write response");
         });
-        let config = AiConfig {
-            enabled: true,
-            provider: "ollama".into(),
-            model: "qwen2.5:7b".into(),
-            base_url: format!("http://{address}/v1"),
-            prompt: String::new(),
-            api_key: String::new(),
-            local_only: true,
-            timeout_seconds: 45,
-        };
+        let config = AiConfig::new(
+            ProviderId::Ollama,
+            "qwen2.5:7b",
+            format!("http://{address}/v1"),
+        )
+        .with_local_only(true);
         assert_eq!(
             discover_local_models(&config).expect("discover local models"),
             ["llama3.2", "qwen2.5:7b"]
@@ -543,16 +651,14 @@ mod tests {
 
     #[test]
     fn local_only_lock_rejects_remote_provider_before_request() {
-        let config = AiConfig {
-            enabled: true,
-            provider: "openai".into(),
-            model: "gpt-test".into(),
-            base_url: "https://api.example.invalid/v1".into(),
-            prompt: String::new(),
-            api_key: "unused".into(),
-            local_only: true,
-            timeout_seconds: 5,
-        };
+        let config = AiConfig::new(
+            ProviderId::OpenAi,
+            "gpt-test",
+            "https://api.example.invalid/v1",
+        )
+        .with_api_key("unused")
+        .with_local_only(true)
+        .with_timeout(5);
         assert_eq!(
             enhance(&config, "hello").expect_err("privacy lock must reject cloud provider"),
             "Network AI providers are disabled by the local-only privacy lock"
@@ -583,16 +689,13 @@ mod tests {
                 .expect("write response");
             }
         });
-        let config = AiConfig {
-            enabled: true,
-            provider: "ollama".into(),
-            model: "local-test".into(),
-            base_url: format!("http://{address}/v1"),
-            prompt: String::new(),
-            api_key: String::new(),
-            local_only: true,
-            timeout_seconds: 5,
-        };
+        let config = AiConfig::new(
+            ProviderId::Ollama,
+            "local-test",
+            format!("http://{address}/v1"),
+        )
+        .with_local_only(true)
+        .with_timeout(5);
         assert_eq!(
             enhance(&config, "raw").expect("retry provider"),
             "clean text"
@@ -610,16 +713,13 @@ mod tests {
             let body = "data: {\"choices\":[{\"delta\":{\"content\":\"clean \"}}]}\n\ndata: {\"choices\":[{\"delta\":{\"content\":\"text\"}}]}\n\ndata: [DONE]\n\n";
             write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).expect("write stream");
         });
-        let config = AiConfig {
-            enabled: true,
-            provider: "ollama".into(),
-            model: "local-test".into(),
-            base_url: format!("http://{address}/v1"),
-            prompt: String::new(),
-            api_key: String::new(),
-            local_only: true,
-            timeout_seconds: 5,
-        };
+        let config = AiConfig::new(
+            ProviderId::Ollama,
+            "local-test",
+            format!("http://{address}/v1"),
+        )
+        .with_local_only(true)
+        .with_timeout(5);
         let mut updates = Vec::new();
         let result = enhance_streaming(&config, "raw", |text| updates.push(text.to_owned()))
             .expect("stream enhancement");

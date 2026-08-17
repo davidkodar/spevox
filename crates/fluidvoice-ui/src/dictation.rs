@@ -415,19 +415,15 @@ mod tests {
     use fluidvoice_transcription::Transcript;
 
     use super::{AiConfig, DictationTextResult, enhance_transcript, resolve_final_text};
+    use crate::ai::ProviderId;
 
     #[test]
     fn disabled_enhancement_is_an_immediate_noop() {
-        let config = AiConfig {
-            enabled: false,
-            provider: "Ollama".to_owned(),
-            model: "unused".to_owned(),
-            base_url: "http://127.0.0.1:11434".to_owned(),
-            prompt: "unused".to_owned(),
-            api_key: String::new(),
-            local_only: true,
-            timeout_seconds: 30,
-        };
+        let config = AiConfig::new(ProviderId::Ollama, "unused", "http://127.0.0.1:11434")
+            .with_enabled(false)
+            .with_prompt("unused")
+            .with_local_only(true)
+            .with_timeout(30);
         let mut updates = 0;
         let result = enhance_transcript(&config, "unaltered", |_| updates += 1);
 

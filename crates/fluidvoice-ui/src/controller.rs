@@ -501,7 +501,7 @@ use fluidvoice_transcription::{LocalSpeechServer, TranscriptionConfig, WhisperTr
 use sha2::Sha256;
 use tokio::sync::mpsc;
 
-use crate::ai::{self, AiConfig};
+use crate::ai::{self, AiConfig, ProviderId};
 use crate::local_api::{self, LocalApiAction};
 use crate::parakeet::{self, Backend as ParakeetBackend};
 use crate::updates::check_latest_release;
@@ -775,7 +775,11 @@ impl Default for FluidVoiceControllerRust {
             .collect();
         let selected_ai_provider = if preferences.ai_local_only {
             let saved = preferences.ai_provider.clamp(0, 9);
-            if ai_provider(saved).local { saved } else { 7 }
+            if ai_provider(saved).id.is_local() {
+                saved
+            } else {
+                ProviderId::Ollama.preference_index()
+            }
         } else {
             preferences.ai_provider.clamp(0, 9)
         };
@@ -790,25 +794,17 @@ impl Default for FluidVoiceControllerRust {
         } else {
             preferences.ai_base_url.clone()
         };
-        if provider.local
-            && !(AiConfig {
-                enabled: false,
-                provider: provider.id.to_owned(),
-                model: String::new(),
-                base_url: ai_base_url.clone(),
-                prompt: String::new(),
-                api_key: String::new(),
-                local_only: false,
-                timeout_seconds: 45,
-            })
-            .is_local()
+        if provider.id.is_local()
+            && !AiConfig::new(provider.id, "", &ai_base_url)
+                .with_enabled(false)
+                .is_local()
         {
             provider.default_url.clone_into(&mut ai_base_url);
         }
         // Keyring access may display an unlock prompt, so defer it until after
         // QML construction instead of blocking the first frame.
         let ai_api_key = String::new();
-        let ai_key_configured = provider.local;
+        let ai_key_configured = provider.id.is_local();
         Self {
             status_text: QString::from("Ready"),
             text_delivery_status: QString::from(
@@ -929,17 +925,9 @@ impl Default for FluidVoiceControllerRust {
             ai_key_configured,
             ai_api_key,
             ai_local_models: QStringList::default(),
-            ai_local_endpoint: AiConfig {
-                enabled: false,
-                provider: provider.id.to_owned(),
-                model: ai_model.clone(),
-                base_url: ai_base_url.clone(),
-                prompt: String::new(),
-                api_key: String::new(),
-                local_only: false,
-                timeout_seconds: 45,
-            }
-            .is_local(),
+            ai_local_endpoint: AiConfig::new(provider.id, ai_model.clone(), ai_base_url.clone())
+                .with_enabled(false)
+                .is_local(),
             ai_local_only: preferences.ai_local_only,
             ollama_status: QString::from("Run the setup check to inspect Ollama."),
             ollama_installed: false,
@@ -1047,10 +1035,10 @@ impl ffi::FluidVoiceController {
                 .ok();
         });
         let key_provider = ai_provider(*self.as_ref().selected_ai_provider());
-        if !key_provider.local {
+        if !key_provider.id.is_local() {
             let key_thread = qt_thread.clone();
             std::thread::spawn(move || {
-                let api_key = ai::load_api_key(key_provider.id);
+                let api_key = ai::load_api_key(key_provider.id.as_str());
                 key_thread
                     .queue(move |mut controller| {
                         let configured = !api_key.is_empty();
@@ -1817,7 +1805,7 @@ impl ffi::FluidVoiceController {
             return;
         }
         let provider = ai_provider(index);
-        if *self.as_ref().ai_local_only() && !provider.local {
+        if *self.as_ref().ai_local_only() && !provider.id.is_local() {
             self.as_mut()
                 .set_ai_status(QString::from("Local-only mode blocks network AI providers"));
             return;
@@ -1828,20 +1816,20 @@ impl ffi::FluidVoiceController {
         self.as_mut()
             .set_ai_base_url(QString::from(provider.default_url));
         self.as_mut().rust_mut().get_mut().ai_api_key.clear();
-        self.as_mut().set_ai_key_configured(provider.local);
+        self.as_mut().set_ai_key_configured(provider.id.is_local());
         self.as_mut().set_ai_local_models(QStringList::default());
-        self.as_mut().set_ai_local_endpoint(provider.local);
+        self.as_mut().set_ai_local_endpoint(provider.id.is_local());
         self.as_mut()
-            .set_ai_status(QString::from(if provider.local {
+            .set_ai_status(QString::from(if provider.id.is_local() {
                 "Local endpoint · transcript stays on this computer"
             } else {
                 "Cloud provider · transcript is sent only when enhancement is enabled"
             }));
         self.as_ref().rust().save_preferences();
-        if !provider.local {
+        if !provider.id.is_local() {
             let qt_thread = self.qt_thread();
             std::thread::spawn(move || {
-                let api_key = ai::load_api_key(provider.id);
+                let api_key = ai::load_api_key(provider.id.as_str());
                 qt_thread
                     .queue(move |mut controller| {
                         // Ignore a late keyring result if the user selected a
@@ -1866,18 +1854,10 @@ impl ffi::FluidVoiceController {
     pub fn update_ai_base_url(mut self: Pin<&mut Self>, value: &QString) {
         let value = value.to_string().trim().to_owned();
         let provider = ai_provider(*self.as_ref().selected_ai_provider());
-        let is_local = AiConfig {
-            enabled: false,
-            provider: provider.id.to_owned(),
-            model: String::new(),
-            base_url: value.clone(),
-            prompt: String::new(),
-            api_key: String::new(),
-            local_only: false,
-            timeout_seconds: 45,
-        }
-        .is_local();
-        if provider.local && !is_local {
+        let is_local = AiConfig::new(provider.id, "", &value)
+            .with_enabled(false)
+            .is_local();
+        if provider.id.is_local() && !is_local {
             self.as_mut().set_ai_status(QString::from(
                 "Ollama and LM Studio endpoints must resolve to this computer",
             ));
@@ -1904,7 +1884,7 @@ impl ffi::FluidVoiceController {
             .set_ai_status(QString::from("Storing API key securely…"));
         let qt_thread = self.qt_thread();
         std::thread::spawn(move || {
-            let result = ai::store_api_key(provider_id, &value);
+            let result = ai::store_api_key(provider_id.as_str(), &value);
             qt_thread
                 .queue(move |mut controller| {
                     if *controller.as_ref().selected_ai_provider() != provider_index {
@@ -2182,7 +2162,8 @@ impl ffi::FluidVoiceController {
     pub fn update_ai_local_only(mut self: Pin<&mut Self>, enabled: bool) {
         self.as_mut().set_ai_local_only(enabled);
         if enabled && !*self.as_ref().ai_local_endpoint() {
-            self.as_mut().select_ai_provider(7);
+            self.as_mut()
+                .select_ai_provider(ProviderId::Ollama.preference_index());
         }
         self.as_mut().set_ai_status(QString::from(if enabled {
             "Privacy lock active · network AI providers are disabled"
@@ -3636,16 +3617,15 @@ impl FluidVoiceControllerRust {
                 || self.ai_prompt.to_string(),
                 |profile| profile.prompt.clone(),
             );
-        AiConfig {
-            enabled: self.ai_enabled,
-            provider: provider.id.to_owned(),
-            model: self.ai_model.to_string(),
-            base_url: self.ai_base_url.to_string(),
-            prompt,
-            api_key: self.ai_api_key.clone(),
-            local_only: self.ai_local_only,
-            timeout_seconds: 45,
-        }
+        AiConfig::new(
+            provider.id,
+            self.ai_model.to_string(),
+            self.ai_base_url.to_string(),
+        )
+        .with_enabled(self.ai_enabled)
+        .with_prompt(prompt)
+        .with_api_key(self.ai_api_key.clone())
+        .with_local_only(self.ai_local_only)
     }
 }
 
@@ -3747,106 +3727,94 @@ fn parse_desktop_action(value: &str) -> Option<DesktopAction> {
 
 #[derive(Clone, Copy)]
 struct AiProviderPreset {
-    id: &'static str,
+    id: ProviderId,
     name: &'static str,
     default_url: &'static str,
     default_model: &'static str,
-    local: bool,
 }
 
 fn ai_provider_catalog() -> &'static [AiProviderPreset] {
     &[
         AiProviderPreset {
-            id: "openai",
+            id: ProviderId::OpenAi,
             name: "OpenAI",
             default_url: "https://api.openai.com/v1",
             default_model: "gpt-4.1",
-            local: false,
         },
         AiProviderPreset {
-            id: "anthropic",
+            id: ProviderId::Anthropic,
             name: "Anthropic",
             default_url: "https://api.anthropic.com/v1",
             default_model: "claude-sonnet-4-20250514",
-            local: false,
         },
         AiProviderPreset {
-            id: "xai",
+            id: ProviderId::Xai,
             name: "xAI",
             default_url: "https://api.x.ai/v1",
             default_model: "grok-3-fast",
-            local: false,
         },
         AiProviderPreset {
-            id: "groq",
+            id: ProviderId::Groq,
             name: "Groq",
             default_url: "https://api.groq.com/openai/v1",
             default_model: "openai/gpt-oss-120b",
-            local: false,
         },
         AiProviderPreset {
-            id: "cerebras",
+            id: ProviderId::Cerebras,
             name: "Cerebras",
             default_url: "https://api.cerebras.ai/v1",
             default_model: "gpt-oss-120b",
-            local: false,
         },
         AiProviderPreset {
-            id: "google",
+            id: ProviderId::Google,
             name: "Google Gemini",
             default_url: "https://generativelanguage.googleapis.com/v1beta/openai",
             default_model: "gemini-2.5-flash",
-            local: false,
         },
         AiProviderPreset {
-            id: "openrouter",
+            id: ProviderId::OpenRouter,
             name: "OpenRouter",
             default_url: "https://openrouter.ai/api/v1",
             default_model: "openai/gpt-oss-20b",
-            local: false,
         },
         AiProviderPreset {
-            id: "ollama",
+            id: ProviderId::Ollama,
             name: "Ollama (local)",
             default_url: "http://localhost:11434/v1",
             default_model: "qwen2.5:7b",
-            local: true,
         },
         AiProviderPreset {
-            id: "lmstudio",
+            id: ProviderId::LmStudio,
             name: "LM Studio (local)",
             default_url: "http://localhost:1234/v1",
             default_model: "local-model",
-            local: true,
         },
         AiProviderPreset {
-            id: "custom",
+            id: ProviderId::Custom,
             name: "Custom OpenAI-compatible",
             default_url: "",
             default_model: "",
-            local: false,
         },
     ]
 }
 
 fn ai_provider(index: i32) -> AiProviderPreset {
+    let provider_id = ProviderId::from_preference_index(index);
     ai_provider_catalog()
-        .get(usize::try_from(index).unwrap_or(7))
+        .iter()
+        .find(|provider| provider.id == provider_id)
         .copied()
-        .unwrap_or(ai_provider_catalog()[7])
+        .expect("the provider catalog covers every ProviderId")
 }
 
 fn ollama_config() -> AiConfig {
-    AiConfig {
-        enabled: true,
-        provider: "ollama".to_owned(),
-        model: "qwen2.5:7b".to_owned(),
-        base_url: "http://localhost:11434/v1".to_owned(),
-        prompt: ai::DEFAULT_PROMPT.to_owned(),
-        api_key: String::new(),
-        local_only: true,
-        timeout_seconds: 8,
-    }
+    AiConfig::new(
+        ProviderId::Ollama,
+        "qwen2.5:7b",
+        "http://localhost:11434/v1",
+    )
+    .with_local_only(true)
+    .with_timeout(8)
 }
 
 fn ollama_server_responds() -> bool {
@@ -4310,15 +4278,26 @@ mod tests {
     use std::{fs, time::Duration};
 
     use super::{
-        AiProfile, DesktopAction, DictionaryEntry, MeetingSegment, asr_gain, assign_speakers,
-        decode_audio_file, decode_file_url, history_clipboard_text, meeting_speaker_names,
-        meter_level, native_language_for_model, native_model_for_engine, parse_csv_record,
-        parse_desktop_action, peak_db, process_transcript, profile_matches_application,
-        read_dictionary_import, rename_latest_file_history_speaker_entries, supported_languages,
-        suspicious_single_word, timestamp_srt, valid_ollama_model_name, whisper_model_catalog,
-        write_dictionary_csv, write_history_export, write_meeting_export,
+        AiProfile, DesktopAction, DictionaryEntry, MeetingSegment, ai_provider_catalog, asr_gain,
+        assign_speakers, decode_audio_file, decode_file_url, history_clipboard_text,
+        meeting_speaker_names, meter_level, native_language_for_model, native_model_for_engine,
+        parse_csv_record, parse_desktop_action, peak_db, process_transcript,
+        profile_matches_application, read_dictionary_import,
+        rename_latest_file_history_speaker_entries, supported_languages, suspicious_single_word,
+        timestamp_srt, valid_ollama_model_name, whisper_model_catalog, write_dictionary_csv,
+        write_history_export, write_meeting_export,
     };
     use crate::parakeet;
+
+    #[test]
+    fn provider_catalog_order_matches_the_stable_qml_index_mapping() {
+        for (index, provider) in ai_provider_catalog().iter().enumerate() {
+            assert_eq!(
+                usize::try_from(provider.id.preference_index()).unwrap(),
+                index
+            );
+        }
+    }
 
     #[test]
     fn maps_native_engines_and_their_language_contracts() {

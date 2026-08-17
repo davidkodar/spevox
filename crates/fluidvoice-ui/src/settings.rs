@@ -1,6 +1,6 @@
 use super::{
-    PathBuf, ai_profiles_path, atomic_write_private, escape_setting, fs, preferences_path,
-    unescape_setting,
+    PathBuf, ProviderId, ai_profiles_path, atomic_write_private, escape_setting, fs,
+    preferences_path, unescape_setting,
 };
 
 // Persisted feature switches are independent user choices rather than one
@@ -138,7 +138,7 @@ impl Default for Preferences {
             theme: 0,
             accent: 0,
             ai_enabled: false,
-            ai_provider: 7,
+            ai_provider: ProviderId::Ollama.preference_index(),
             ai_model: String::new(),
             ai_base_url: String::new(),
             ai_prompt: String::new(),
@@ -201,7 +201,9 @@ impl Preferences {
             } else if let Some(value) = line.strip_prefix("ai_enabled=") {
                 preferences.ai_enabled = value == "true";
             } else if let Some(value) = line.strip_prefix("ai_provider=") {
-                preferences.ai_provider = value.parse().unwrap_or(7);
+                preferences.ai_provider = value
+                    .parse()
+                    .unwrap_or_else(|_| ProviderId::Ollama.preference_index());
             } else if let Some(value) = line.strip_prefix("ai_model=") {
                 preferences.ai_model = unescape_setting(value);
             } else if let Some(value) = line.strip_prefix("ai_base_url=") {
