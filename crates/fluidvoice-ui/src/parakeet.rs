@@ -11,7 +11,7 @@ use std::{
 use sha2::{Digest, Sha256};
 use tungstenite::{Message, connect, stream::MaybeTlsStream};
 
-use fluidvoice_audio::AudioBuffer;
+use fluidvoice_audio::{AudioBuffer, StreamingAsrConverter};
 
 pub const RUNTIME_REVISION: &str = "9bc876635af36df537d9bc6d3f57ad1b76e4f74a";
 const REALTIME_FRAME_SAMPLES: usize = 2_560; // 160 ms at 16 kHz.
@@ -260,8 +260,9 @@ pub fn stream_transcript(
 
     let mut accumulated = String::new();
     let mut pending = Vec::<i16>::with_capacity(REALTIME_FRAME_SAMPLES * 2);
+    let mut converter = StreamingAsrConverter::default();
     while let Ok(chunk) = receiver.recv() {
-        let mono = chunk.to_asr_mono().amplified(gain);
+        let mono = converter.process(&chunk).amplified(gain);
         for sample in mono.samples() {
             #[allow(clippy::cast_possible_truncation)]
             let value = (sample.clamp(-1.0, 1.0) * f32::from(i16::MAX)).round() as i16;

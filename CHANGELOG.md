@@ -5,6 +5,10 @@ All notable changes to FluidVoice Linux are documented here. The project uses
 
 ## 0.4.0 - 2026-08-16
 
+- Replaced linear ASR downsampling with an optimized windowed-sinc filter that
+  suppresses aliasing above the 8 kHz speech band, preserves phase across native
+  realtime chunks, and reuses precomputed kernels. PipeWire device discovery is
+  now time-bounded, and capture stream failures report their actual error.
 - Made the AI master switch authoritative for Command Mode, Write Mode, retries,
   and provider tests; added persistent lifetime dictation counters that exclude
   imported files; corrected prerelease update comparisons, weekend streaks,

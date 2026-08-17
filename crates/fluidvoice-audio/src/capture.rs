@@ -1,5 +1,5 @@
 use std::{
-    cell::RefCell,
+    cell::{Cell, RefCell},
     error::Error,
     fmt,
     io::Cursor,
@@ -95,16 +95,42 @@ impl PipeWireCapture {
             })
             .register();
         let pending = core.sync(0).map_err(AudioCaptureError::pw)?;
+        let completed = Rc::new(Cell::new(false));
+        let completed_signal = Rc::clone(&completed);
+        let discovery_error = Rc::new(RefCell::new(None::<String>));
+        let core_error = Rc::clone(&discovery_error);
         let loop_clone = main_loop.clone();
+        let error_loop = main_loop.clone();
         let _core_listener = core
             .add_listener_local()
             .done(move |id, sequence| {
                 if id == pw::core::PW_ID_CORE && sequence == pending {
+                    completed_signal.set(true);
                     loop_clone.quit();
                 }
             })
+            .error(move |_, _, _, message| {
+                *core_error.borrow_mut() = Some(message.to_owned());
+                error_loop.quit();
+            })
             .register();
+        let timeout_loop = main_loop.clone();
+        let timer = main_loop.loop_().add_timer(move |_| timeout_loop.quit());
+        timer
+            .update_timer(Some(Duration::from_secs(3)), None)
+            .into_result()
+            .map_err(AudioCaptureError::pw)?;
         main_loop.run();
+        if let Some(error) = discovery_error.borrow().as_ref() {
+            return Err(AudioCaptureError::new(format!(
+                "PipeWire device discovery failed: {error}"
+            )));
+        }
+        if !completed.get() {
+            return Err(AudioCaptureError::new(
+                "PipeWire device discovery timed out after 3 seconds",
+            ));
+        }
         let mut result = devices.borrow().clone();
         result.sort_by(|a, b| a.description.cmp(&b.description));
         result.dedup_by(|a, b| a.node_name == b.node_name);
@@ -212,9 +238,18 @@ impl PipeWireCapture {
         let captured = Rc::new(RefCell::new(CapturedSamples::new(capacity)));
         let format_output = Rc::clone(&captured);
         let sample_output = Rc::clone(&captured);
+        let capture_error = Rc::new(RefCell::new(None::<String>));
+        let stream_error = Rc::clone(&capture_error);
+        let error_loop = main_loop.clone();
         let mut last_preview = Instant::now();
         let _listener = stream
             .add_local_listener_with_user_data(CaptureData::default())
+            .state_changed(move |_, _, _, state| {
+                if let pw::stream::StreamState::Error(message) = state {
+                    *stream_error.borrow_mut() = Some(message);
+                    error_loop.quit();
+                }
+            })
             .param_changed(move |_, data, id, param| {
                 let Some(param) = param else { return };
                 if id != spa::param::ParamType::Format.as_raw()
@@ -332,6 +367,12 @@ impl PipeWireCapture {
             .map_err(AudioCaptureError::pw)?;
         main_loop.run();
         stream.disconnect().map_err(AudioCaptureError::pw)?;
+
+        if let Some(error) = capture_error.borrow().as_ref() {
+            return Err(AudioCaptureError::new(format!(
+                "PipeWire capture stream failed: {error}"
+            )));
+        }
 
         let mut result = captured.borrow_mut();
         if result.sample_rate == 0 || result.channels == 0 {

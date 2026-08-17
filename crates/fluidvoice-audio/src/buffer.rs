@@ -101,7 +101,7 @@ impl AudioBuffer {
         (sum / self.samples.len() as f32).sqrt()
     }
 
-    /// Downmixes and linearly resamples to the mono 16 kHz ASR contract.
+    /// Downmixes and band-limited resamples to the mono 16 kHz ASR contract.
     #[must_use]
     #[allow(clippy::cast_precision_loss)]
     pub fn to_asr_mono(&self) -> MonoAudioBuffer {
@@ -115,20 +115,65 @@ impl AudioBuffer {
             return MonoAudioBuffer { samples: mono };
         }
 
-        let output_length = resampled_length(mono.len(), self.sample_rate, ASR_SAMPLE_RATE);
-        let mut output = Vec::with_capacity(output_length);
-        for output_index in 0..output_length {
-            let source_numerator =
-                u64::try_from(output_index).unwrap_or(u64::MAX) * u64::from(self.sample_rate);
-            let lower = usize::try_from(source_numerator / u64::from(ASR_SAMPLE_RATE))
-                .unwrap_or(mono.len() - 1)
-                .min(mono.len() - 1);
-            let upper = (lower + 1).min(mono.len() - 1);
-            let remainder = source_numerator % u64::from(ASR_SAMPLE_RATE);
-            let fraction = remainder as f32 / ASR_SAMPLE_RATE as f32;
-            output.push(mono[lower] + (mono[upper] - mono[lower]) * fraction);
+        MonoAudioBuffer {
+            samples: band_limited_resample(&mono, self.sample_rate, ASR_SAMPLE_RATE),
+        }
+    }
+}
+
+/// Preserves resampling phase between realtime capture chunks.
+///
+/// A short look-ahead is intentionally retained, so the final few input
+/// samples are omitted from previews; the authoritative full-utterance pass
+/// still uses [`AudioBuffer::to_asr_mono`].
+#[derive(Default)]
+pub struct StreamingAsrConverter {
+    samples: Vec<f32>,
+    input_rate: u32,
+    channels: u32,
+    next_output: usize,
+    kernel: Option<SincKernel>,
+}
+
+impl StreamingAsrConverter {
+    #[must_use]
+    #[allow(clippy::cast_precision_loss)]
+    pub fn process(&mut self, input: &AudioBuffer) -> MonoAudioBuffer {
+        if self.input_rate != input.sample_rate || self.channels != input.channels {
+            self.samples.clear();
+            self.next_output = 0;
+            self.input_rate = input.sample_rate;
+            self.channels = input.channels;
+            self.kernel = (self.input_rate != ASR_SAMPLE_RATE)
+                .then(|| SincKernel::new(self.input_rate, ASR_SAMPLE_RATE));
+        }
+        let channels = usize::try_from(input.channels).unwrap_or(1);
+        self.samples.extend(
+            input
+                .samples
+                .chunks_exact(channels)
+                .map(|frame| frame.iter().copied().sum::<f32>() / input.channels as f32),
+        );
+        if self.input_rate == ASR_SAMPLE_RATE {
+            let output = self.samples[self.next_output..].to_vec();
+            self.next_output = self.samples.len();
+            return MonoAudioBuffer { samples: output };
         }
 
+        let available_outputs = resampled_length(
+            self.samples.len().saturating_sub(SINC_HALF_TAPS),
+            self.input_rate,
+            ASR_SAMPLE_RATE,
+        );
+        let Some(kernel) = self.kernel.as_ref() else {
+            return MonoAudioBuffer {
+                samples: Vec::new(),
+            };
+        };
+        let output = (self.next_output..available_outputs)
+            .map(|index| kernel.sample(&self.samples, index))
+            .collect();
+        self.next_output = available_outputs;
         MonoAudioBuffer { samples: output }
     }
 }
@@ -253,9 +298,101 @@ fn resampled_length(input_length: usize, input_rate: u32, output_rate: u32) -> u
     usize::try_from(rounded).unwrap_or(usize::MAX)
 }
 
+const SINC_HALF_TAPS: usize = 12;
+
+#[allow(clippy::cast_precision_loss)]
+fn band_limited_resample(input: &[f32], input_rate: u32, output_rate: u32) -> Vec<f32> {
+    let kernel = SincKernel::new(input_rate, output_rate);
+    (0..resampled_length(input.len(), input_rate, output_rate))
+        .map(|index| kernel.sample(input, index))
+        .collect()
+}
+
+struct SincKernel {
+    input_rate: u32,
+    output_rate: u32,
+    phase_divisor: u32,
+    phases: Vec<Vec<f32>>,
+}
+
+impl SincKernel {
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::cast_possible_wrap,
+        clippy::cast_precision_loss
+    )]
+    fn new(input_rate: u32, output_rate: u32) -> Self {
+        let divisor = greatest_common_divisor(input_rate, output_rate);
+        let phase_count = output_rate / divisor;
+        let cutoff = (f64::from(output_rate) / f64::from(input_rate)).min(1.0) * 0.92;
+        let phases = (0..phase_count)
+            .map(|phase| {
+                let fraction = f64::from(phase) / f64::from(phase_count);
+                (-(SINC_HALF_TAPS as isize)..=(SINC_HALF_TAPS as isize))
+                    .map(|tap| {
+                        let distance = fraction - tap as f64;
+                        let argument = std::f64::consts::PI * cutoff * distance;
+                        let sinc = if argument.abs() < f64::EPSILON {
+                            1.0
+                        } else {
+                            argument.sin() / argument
+                        };
+                        let window_position = distance / (SINC_HALF_TAPS as f64 + 1.0);
+                        let window = 0.5 * (1.0 + (std::f64::consts::PI * window_position).cos());
+                        (cutoff * sinc * window) as f32
+                    })
+                    .collect()
+            })
+            .collect();
+        Self {
+            input_rate,
+            output_rate,
+            phase_divisor: divisor,
+            phases,
+        }
+    }
+
+    fn sample(&self, input: &[f32], output_index: usize) -> f32 {
+        let numerator =
+            u64::try_from(output_index).unwrap_or(u64::MAX) * u64::from(self.input_rate);
+        let center = isize::try_from(numerator / u64::from(self.output_rate)).unwrap_or(isize::MAX);
+        let remainder = u32::try_from(numerator % u64::from(self.output_rate)).unwrap_or_default();
+        let phase = usize::try_from(remainder / self.phase_divisor).unwrap_or_default();
+        let mut weighted = 0.0_f32;
+        let mut weight_sum = 0.0_f32;
+        for (offset, weight) in self.phases[phase].iter().enumerate() {
+            let tap = isize::try_from(offset).unwrap_or(isize::MAX)
+                - isize::try_from(SINC_HALF_TAPS).unwrap_or_default();
+            let Ok(source) = usize::try_from(center.saturating_add(tap)) else {
+                continue;
+            };
+            let Some(sample) = input.get(source) else {
+                continue;
+            };
+            weighted += sample * weight;
+            weight_sum += weight;
+        }
+        if weight_sum.abs() < f32::EPSILON {
+            0.0
+        } else {
+            weighted / weight_sum
+        }
+    }
+}
+
+const fn greatest_common_divisor(mut left: u32, mut right: u32) -> u32 {
+    while right != 0 {
+        let remainder = left % right;
+        left = right;
+        right = remainder;
+    }
+    left
+}
+
 #[cfg(test)]
+#[allow(clippy::cast_precision_loss)]
 mod tests {
-    use super::{ASR_SAMPLE_RATE, AudioBuffer, AudioFormatError};
+    use super::{ASR_SAMPLE_RATE, AudioBuffer, AudioFormatError, StreamingAsrConverter};
 
     #[test]
     fn rejects_incomplete_interleaved_frame() {
@@ -286,6 +423,49 @@ mod tests {
         assert_eq!(output.sample_rate(), ASR_SAMPLE_RATE);
         assert_eq!(output.samples().len(), 16_000);
         assert_eq!(output.duration(), std::time::Duration::from_secs(1));
+    }
+
+    #[test]
+    fn suppresses_frequencies_above_the_asr_nyquist_limit() {
+        let samples = (0..48_000)
+            .map(|index| (2.0 * std::f32::consts::PI * 12_000.0 * index as f32 / 48_000.0).sin())
+            .collect();
+        let output = AudioBuffer::new(samples, 48_000, 1, false)
+            .unwrap()
+            .to_asr_mono();
+        let rms = (output
+            .samples()
+            .iter()
+            .map(|value| value * value)
+            .sum::<f32>()
+            / output.samples().len() as f32)
+            .sqrt();
+        assert!(rms < 0.08, "aliased out-of-band tone RMS was {rms}");
+    }
+
+    #[test]
+    fn streaming_conversion_matches_one_shot_phase() {
+        let samples = (0..4_800)
+            .map(|index| (index as f32 * 0.031).sin())
+            .collect::<Vec<_>>();
+        let full = AudioBuffer::new(samples.clone(), 48_000, 1, false)
+            .unwrap()
+            .to_asr_mono();
+        let mut converter = StreamingAsrConverter::default();
+        let mut streamed = Vec::new();
+        for chunk in samples.chunks(777) {
+            streamed.extend(
+                converter
+                    .process(&AudioBuffer::new(chunk.to_vec(), 48_000, 1, false).unwrap())
+                    .samples()
+                    .iter()
+                    .copied(),
+            );
+        }
+        assert!(streamed.len() > 1_500);
+        for (actual, expected) in streamed.iter().zip(full.samples()) {
+            assert!((actual - expected).abs() < 1.0e-5);
+        }
     }
 
     #[test]
