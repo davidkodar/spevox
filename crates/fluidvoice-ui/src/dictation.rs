@@ -5,14 +5,16 @@ use std::{
 };
 
 use fluidvoice_audio::{AudioBuffer, CaptureStopToken, MonoAudioBuffer, PipeWireCapture};
+use fluidvoice_delivery::ClipboardDelivery;
 use fluidvoice_transcription::{LocalSpeechServer, Transcript};
+use tokio::sync::mpsc;
 
 use crate::{
     ai::{self, AiConfig},
     parakeet, whisper_cache,
 };
 
-use super::{ParakeetBackend, native_language_for_model};
+use super::{DesktopCommand, ParakeetBackend, native_language_for_model};
 
 pub(super) struct FinalAsrRequest<'a> {
     pub(super) audio: &'a MonoAudioBuffer,
@@ -61,6 +63,23 @@ pub(super) fn capture_audio(
         on_stream_chunk,
     )
     .map_err(|error| error.to_string())
+}
+
+pub(super) fn deliver_transcript(
+    clipboard: &mut Option<ClipboardDelivery>,
+    desktop_sender: Option<&mpsc::UnboundedSender<DesktopCommand>>,
+    text: &str,
+) -> bool {
+    if clipboard.is_none() {
+        *clipboard = ClipboardDelivery::connect().ok();
+    }
+    let delivered = clipboard
+        .as_mut()
+        .is_some_and(|delivery| delivery.copy_transcript(text).is_ok());
+    if delivered && let Some(sender) = desktop_sender {
+        sender.send(DesktopCommand::Paste).ok();
+    }
+    delivered
 }
 
 pub(super) fn enhance_transcript(

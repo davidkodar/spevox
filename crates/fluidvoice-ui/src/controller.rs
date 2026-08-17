@@ -3858,21 +3858,11 @@ impl ffi::FluidVoiceController {
                                 )));
                             }
                             let rust = controller.as_mut().rust_mut().get_mut();
-                            if rust.clipboard.is_none() {
-                                rust.clipboard = ClipboardDelivery::connect().ok();
-                            }
-                            let delivery_result = rust
-                                .clipboard
-                                .as_mut()
-                                .ok_or(())
-                                .and_then(|delivery| {
-                                    delivery.copy_transcript(&processed).map_err(|_| ())
-                                });
-                            if delivery_result.is_ok()
-                                && let Some(sender) = controller.as_ref().rust().desktop_sender.as_ref()
-                            {
-                                sender.send(DesktopCommand::Paste).ok();
-                            }
+                            let delivery_succeeded = deliver_transcript(
+                                &mut rust.clipboard,
+                                rust.desktop_sender.as_ref(),
+                                &processed,
+                            );
                             let ai_status = if ai_config.enabled {
                                 if ai_error.is_some() { "fallback" } else { "enhanced" }
                             } else {
@@ -3908,7 +3898,7 @@ impl ffi::FluidVoiceController {
                                 format!(
                                     "Native speech engine failed · Whisper fallback delivered · {error}"
                                 )
-                            } else if delivery_result.is_ok() {
+                            } else if delivery_succeeded {
                                 format!("Dictated {:.1}s · {detected_language} · pasted or copied", duration.as_secs_f32())
                             } else {
                                 format!("Transcribed {:.1}s · {detected_language} · clipboard unavailable", duration.as_secs_f32())
@@ -4326,8 +4316,8 @@ mod dictation;
 #[path = "speech_runtime.rs"]
 mod speech_runtime;
 use dictation::{
-    EnhancementResult, FinalAsrRequest, FinalAsrResult, capture_audio, enhance_transcript,
-    transcribe_final,
+    EnhancementResult, FinalAsrRequest, FinalAsrResult, capture_audio, deliver_transcript,
+    enhance_transcript, transcribe_final,
 };
 #[cfg(test)]
 use dictionary::parse_csv_record;
