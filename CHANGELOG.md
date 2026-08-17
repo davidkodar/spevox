@@ -10,6 +10,9 @@ All notable changes to FluidVoice Linux are documented here. The project uses
   persistent interruption. Users can opt into keeping the final result popup.
 - Replaced the result popup's permanent action-button row with a compact
   upstream-style actions menu for copy, raw recovery, AI undo, and reprocessing.
+- Corrected the Standard overlay's constrained geometry and made appearance
+  previews start from a deterministic listening state rather than stale result
+  state.
 
 - Began the 0.5 intelligent-cleanup milestone with one conservative,
   language-aware editing contract for local and cloud providers. It explicitly

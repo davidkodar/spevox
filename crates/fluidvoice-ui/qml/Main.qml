@@ -2455,14 +2455,15 @@ ApplicationWindow {
     Window {
         id: overlay
         readonly property int listeningWidth: controller.selectedOverlaySize === 0 ? 300 : controller.selectedOverlaySize === 2 ? 560 : 380
+        readonly property int listeningHeight: controller.selectedOverlaySize === 0
+                                               ? (controller.overlayShowText ? 120 : 88)
+                                               : controller.selectedOverlaySize === 2
+                                                 ? (controller.overlayShowText ? 240 : 132)
+                                                 : (controller.overlayShowText ? 184 : 116)
         width: controller.overlayResultAvailable ? Math.max(listeningWidth, 420) : listeningWidth
         height: controller.overlayResultAvailable
                 ? (controller.overlayShowText ? 174 : 126)
-                : controller.selectedOverlaySize === 0
-                  ? (controller.overlayShowText ? 112 : 84)
-                  : controller.selectedOverlaySize === 2
-                    ? (controller.overlayShowText ? 240 : 128)
-                    : (controller.overlayShowText ? 156 : 104)
+                : listeningHeight
         x: Math.round((Screen.width - width) / 2)
         y: controller.selectedOverlayPosition === 1 ? Screen.height - height - 54 : controller.selectedOverlayPosition === 2 ? Math.round((Screen.height - height) / 2) : 42
         visible: controller.overlayVisible

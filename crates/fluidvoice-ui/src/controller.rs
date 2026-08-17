@@ -3551,6 +3551,12 @@ impl ffi::FluidVoiceController {
     }
 
     pub fn set_overlay_preview(mut self: Pin<&mut Self>, visible: bool) {
+        if visible {
+            self.as_mut().set_overlay_result_available(false);
+            self.as_mut().set_live_transcript(QString::from(
+                "Live transcription appears here while you speak.",
+            ));
+        }
         self.as_mut().set_overlay_visible(visible);
         if !visible && *self.as_ref().recording() {
             if let Some(token) = self.as_ref().rust().stop_token.as_ref() {
