@@ -2044,10 +2044,23 @@ ApplicationWindow {
                     }
                     Text { visible: controller.historyEntries.length === 0; text: qsTr("No transcripts yet. Completed dictation and file transcripts appear here."); color: root.secondaryText; font.pixelSize: 13 }
                     Text { visible: controller.historyEntries.length > 0 && root.cachedFilteredHistory.length === 0; text: qsTr("No results. Try a different search term."); color: root.secondaryText; font.pixelSize: 13 }
-                    Repeater {
+                    ListView {
+                        id: historyList
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: Math.max(360, settingsFlick.height - 430)
+                        clip: true
+                        spacing: 12
+                        cacheBuffer: 240
+                        boundsBehavior: Flickable.StopAtBounds
+                        ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
                         model: root.cachedFilteredHistory
                         delegate: Rectangle {
-                            required property string modelData; Layout.fillWidth: true; implicitHeight: historyContent.implicitHeight + 28; radius: 10; color: root.panel; border.color: root.hairline
+                            required property string modelData
+                            width: ListView.view.width
+                            height: historyContent.implicitHeight + 28
+                            radius: 10
+                            color: root.panel
+                            border.color: root.hairline
                             ColumnLayout {
                                 id: historyContent; anchors.fill: parent; anchors.margins: 14; spacing: 8
                                 RowLayout {

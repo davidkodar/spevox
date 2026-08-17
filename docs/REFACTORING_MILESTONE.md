@@ -13,6 +13,8 @@ reviewable.
 
 ## Phase 1 — Real controller boundaries
 
+Status: complete.
+
 - Replace the controller's `include!` source sections with real Rust modules
   using explicit `pub(super)` APIs and imports.
 - Keep Qt property mutation and signal emission in the CXX-Qt controller;
@@ -32,6 +34,8 @@ Done when:
   or deterministic seams.
 
 ## Phase 2 — Keep blocking work off the Qt thread
+
+Status: complete.
 
 - Move remaining synchronous `secret-tool` and KWin configuration processes
   (`save_ai_api_key`, profile-script configuration) to bounded workers.

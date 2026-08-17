@@ -27,6 +27,8 @@ All notable changes to FluidVoice Linux are documented here. The project uses
   negotiated rate/channel format, added core-level failure reporting, and
   limited Parakeet and Sortformer download updates to the same 50 ms UI cadence
   as Whisper downloads.
+- Virtualized the searchable History results so large transcript collections
+  create only the visible cards instead of eagerly instantiating every row.
 - Closed follow-up audit regressions in meeting-file retry, local AI proxy
   isolation, IPv6 loopback ASR, Write Mode retry semantics, cancellable Whisper
   previews, model integrity checks, local API lifecycle handling, and native
