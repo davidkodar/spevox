@@ -87,6 +87,7 @@ pub mod ffi {
         #[qproperty(QString, ai_prompt, cxx_name = "aiPrompt")]
         #[qproperty(QString, ai_status, cxx_name = "aiStatus")]
         #[qproperty(i32, write_mode_activation, cxx_name = "writeModeActivation")]
+        #[qproperty(bool, write_mode_retry_available, cxx_name = "writeModeRetryAvailable")]
         #[qproperty(bool, ai_key_configured, cxx_name = "aiKeyConfigured")]
         #[qproperty(QStringList, ai_local_models, cxx_name = "aiLocalModels")]
         #[qproperty(bool, ai_local_endpoint, cxx_name = "aiLocalEndpoint")]
@@ -594,6 +595,7 @@ pub struct FluidVoiceControllerRust {
     ai_prompt: QString,
     ai_status: QString,
     write_mode_activation: i32,
+    write_mode_retry_available: bool,
     ai_key_configured: bool,
     ai_api_key: String,
     ai_local_models: QStringList,
@@ -857,6 +859,7 @@ impl Default for FluidVoiceControllerRust {
                 "Off · raw transcription stays fully local"
             }),
             write_mode_activation: 0,
+            write_mode_retry_available: false,
             ai_key_configured,
             ai_api_key,
             ai_local_models: QStringList::default(),
@@ -1423,10 +1426,12 @@ impl ffi::FluidVoiceController {
         let model = whisper_model_catalog()[usize::try_from(index).unwrap_or_default()];
         let path = managed_model_directory().join(model.file_name);
         if path.is_file() {
-            match fs::remove_file(path) {
-                Ok(()) => self
-                    .as_mut()
-                    .set_status_text(QString::from("Downloaded model deleted")),
+            match fs::remove_file(&path) {
+                Ok(()) => {
+                    fs::remove_file(path.with_extension("bin.sha256")).ok();
+                    self.as_mut()
+                        .set_status_text(QString::from("Downloaded model deleted"));
+                }
                 Err(error) => self
                     .as_mut()
                     .set_status_text(QString::from(&format!("Could not delete model: {error}"))),
@@ -1769,14 +1774,8 @@ impl ffi::FluidVoiceController {
             .set_ai_model(QString::from(provider.default_model));
         self.as_mut()
             .set_ai_base_url(QString::from(provider.default_url));
-        let api_key = ai::load_api_key(provider.id);
-        self.as_mut()
-            .rust_mut()
-            .get_mut()
-            .ai_api_key
-            .clone_from(&api_key);
-        self.as_mut()
-            .set_ai_key_configured(provider.local || !api_key.is_empty());
+        self.as_mut().rust_mut().get_mut().ai_api_key.clear();
+        self.as_mut().set_ai_key_configured(provider.local);
         self.as_mut().set_ai_local_models(QStringList::default());
         self.as_mut().set_ai_local_endpoint(provider.local);
         self.as_mut()
@@ -1786,6 +1785,23 @@ impl ffi::FluidVoiceController {
                 "Cloud provider · transcript is sent only when enhancement is enabled"
             }));
         self.as_ref().rust().save_preferences();
+        if !provider.local {
+            let qt_thread = self.qt_thread();
+            std::thread::spawn(move || {
+                let api_key = ai::load_api_key(provider.id);
+                qt_thread
+                    .queue(move |mut controller| {
+                        // Ignore a late keyring result if the user selected a
+                        // different provider while the worker was running.
+                        if *controller.as_ref().selected_ai_provider() == index {
+                            let configured = !api_key.is_empty();
+                            controller.as_mut().rust_mut().get_mut().ai_api_key = api_key;
+                            controller.as_mut().set_ai_key_configured(configured);
+                        }
+                    })
+                    .ok();
+            });
+        }
     }
 
     pub fn update_ai_model(mut self: Pin<&mut Self>, value: &QString) {
@@ -2346,6 +2362,7 @@ impl ffi::FluidVoiceController {
                                     instruction: instruction.clone(),
                                     selected: selected.clone(),
                                 });
+                            controller.as_mut().set_write_mode_retry_available(true);
                             controller.as_mut().set_last_raw_text(QString::from(&selected));
                             let rust = controller.as_mut().rust_mut().get_mut();
                             if rust.clipboard.is_none() {
@@ -2400,6 +2417,7 @@ impl ffi::FluidVoiceController {
         self.as_mut().rust_mut().get_mut().last_write_job = Some(WriteModeJob::Draft {
             instruction: instruction.clone(),
         });
+        self.as_mut().set_write_mode_retry_available(true);
         let qt_thread = self.qt_thread();
         self.as_mut().set_assistant_busy(true);
         self.as_mut().set_ai_status(QString::from("Writing draft…"));
@@ -2456,19 +2474,22 @@ impl ffi::FluidVoiceController {
             return;
         };
         let mut config = self.as_ref().rust().ai_config();
-        let input = match job {
+        let (input, paste_result) = match job {
             WriteModeJob::Rewrite {
                 instruction,
                 selected,
             } => {
                 "Rewrite the selected text according to the user's instruction. Preserve meaning unless the instruction asks otherwise. Output only the replacement text, with no explanation or markdown fences."
                     .clone_into(&mut config.prompt);
-                format!("User instruction: {instruction}\n\nSelected text:\n{selected}")
+                (
+                    format!("User instruction: {instruction}\n\nSelected text:\n{selected}"),
+                    true,
+                )
             }
             WriteModeJob::Draft { instruction } => {
                 "Write the requested text. Follow the user's instruction precisely. Output only the finished text, with no explanation or markdown fences."
                     .clone_into(&mut config.prompt);
-                instruction
+                (instruction, false)
             }
         };
         let qt_thread = self.qt_thread();
@@ -2491,8 +2512,9 @@ impl ffi::FluidVoiceController {
                                 .as_mut()
                                 .is_some_and(|clipboard| clipboard.copy_transcript(&text).is_ok());
                             if copied {
-                                if let Some(sender) =
-                                    controller.as_ref().rust().desktop_sender.as_ref()
+                                if paste_result
+                                    && let Some(sender) =
+                                        controller.as_ref().rust().desktop_sender.as_ref()
                                 {
                                     sender.send(DesktopCommand::Paste).ok();
                                 }
@@ -2506,9 +2528,13 @@ impl ffi::FluidVoiceController {
                                 if *controller.as_ref().overlay_enabled() {
                                     controller.as_mut().set_overlay_visible(true);
                                 }
-                                controller.as_mut().set_ai_status(QString::from(
-                                    "Write Mode retry pasted or left on clipboard",
-                                ));
+                                controller
+                                    .as_mut()
+                                    .set_ai_status(QString::from(if paste_result {
+                                        "Rewrite retry pasted or left on clipboard"
+                                    } else {
+                                        "Draft retry copied to the clipboard"
+                                    }));
                             } else {
                                 controller.as_mut().set_ai_status(QString::from(
                                     "Write Mode retry completed but clipboard delivery failed",
@@ -2992,7 +3018,6 @@ impl ffi::FluidVoiceController {
     pub fn import_dictionary(mut self: Pin<&mut Self>, path: &QString, conflict_mode: i32) {
         let source = path.to_string();
         let path = PathBuf::from(decode_file_url(&source));
-        self.as_mut().rust_mut().get_mut().last_meeting_source = QString::from(&source);
         let imported = match read_dictionary_import(&path) {
             Ok(entries) if !entries.is_empty() => entries,
             Ok(_) => {
@@ -3237,7 +3262,9 @@ impl ffi::FluidVoiceController {
             ));
             return;
         };
-        let path = PathBuf::from(decode_file_url(&path.to_string()));
+        let source = path.to_string();
+        let path = PathBuf::from(decode_file_url(&source));
+        self.as_mut().rust_mut().get_mut().last_meeting_source = QString::from(&source);
         self.as_mut()
             .set_last_meeting_file(QString::from(path.to_string_lossy().as_ref()));
         let language = selected_language_code(self.as_ref().rust());
@@ -3613,7 +3640,7 @@ impl ffi::FluidVoiceController {
                 }
                 let Some(model) = preview_model else { return };
                 let automatic_language = preview_language.is_empty();
-                let Ok(transcriber) = whisper_cache::get(&model, &preview_language, use_gpu) else {
+                let Ok(transcriber) = whisper_cache::get(&model, use_gpu) else {
                     return;
                 };
                 while let Ok(audio) = preview_receiver.recv() {
@@ -3630,7 +3657,11 @@ impl ffi::FluidVoiceController {
                     }
                     let mono = audio.to_asr_mono();
                     let preview_audio = mono.amplified(asr_gain(mono.peak(), gain));
-                    let Ok(transcript) = transcriber.transcribe(&preview_audio) else {
+                    let Ok(transcript) = transcriber.transcribe_cancellable(
+                        &preview_audio,
+                        (!preview_language.is_empty()).then_some(preview_language.as_str()),
+                        Arc::clone(&preview_worker_stop),
+                    ) else {
                         continue;
                     };
                     if preview_worker_stop.load(Ordering::Acquire) {
@@ -3716,7 +3747,7 @@ impl ffi::FluidVoiceController {
                 })
                 .ok();
             preview_stop.store(true, Ordering::Release);
-            drop(preview_worker);
+            preview_worker.join().ok();
             if let Some(worker) = native_preview_worker {
                 worker.join().ok();
             }
@@ -3731,8 +3762,11 @@ impl ffi::FluidVoiceController {
                     .as_deref()
                     .ok_or_else(|| "No Whisper model is installed".to_owned())
                     .and_then(|model| {
-                        whisper_cache::get(model, &language, use_gpu)?
-                            .transcribe(&asr_audio)
+                        whisper_cache::get(model, use_gpu)?
+                            .transcribe_in_language(
+                                &asr_audio,
+                                (!language.is_empty()).then_some(language.as_str()),
+                            )
                             .map_err(|error| error.to_string())
                     })
             };
@@ -4228,6 +4262,8 @@ fn ollama_config() -> AiConfig {
 fn ollama_server_responds() -> bool {
     let agent = ureq::Agent::config_builder()
         .timeout_global(Some(Duration::from_secs(2)))
+        .proxy(None)
+        .max_redirects(0)
         .build()
         .new_agent();
     agent

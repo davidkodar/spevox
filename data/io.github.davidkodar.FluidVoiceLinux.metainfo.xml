@@ -17,7 +17,7 @@
   <content_rating type="oars-1.1"/>
   <releases>
     <release version="0.4.0" date="2026-08-16">
-      <description><p>Adds privacy-safe audio history, configurable overlays, complete Write Mode, stronger Wayland delivery, automatic application profiles, advanced dictionary workflows, richer statistics, segmented meeting transcription, a secure loopback API, signed Arch and Flatpak release infrastructure, and an experimental local speech-server bridge.</p></description>
+      <description><p>Adds privacy-safe audio history, configurable overlays, complete Write Mode, stronger Wayland delivery, automatic application profiles, advanced dictionary workflows, richer statistics, segmented meeting transcription, a secure loopback API, signed release archives, Arch packaging, a developer-preview Flatpak manifest, and an experimental local speech-server bridge.</p></description>
     </release>
     <release version="0.3.0" date="2026-08-16">
       <description><p>Adds optional local and cloud AI enhancement, guided Ollama setup and model downloads, local-only privacy controls, streaming cleanup, application profiles, selected-text rewriting, safe Command Mode actions, richer history exports, and broad local audio decoding.</p></description>

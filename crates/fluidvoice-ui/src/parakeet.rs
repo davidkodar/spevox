@@ -548,7 +548,7 @@ impl Supervisor {
             child: None,
             executable: None,
             model: None,
-            port: reserve_loopback_port().unwrap_or(8179),
+            port: 0,
         }
     }
 
@@ -574,6 +574,9 @@ impl Supervisor {
             return Ok(());
         }
         self.stop();
+        // Select the ephemeral port immediately before spawning. Never fall
+        // back to a shared fixed port that could belong to another service.
+        self.port = reserve_loopback_port()?;
         let log_dir = data_directory().join("logs");
         fs::create_dir_all(&log_dir).map_err(|error| error.to_string())?;
         let stdout =

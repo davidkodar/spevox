@@ -85,8 +85,8 @@ For a development run without installation:
 QMAKE=/usr/bin/qmake6 cargo run -p fluidvoice-ui
 ```
 
-Release tags publish a checksummed binary archive, an Arch `PKGBUILD`, stable
-or beta update metadata, and Sigstore keyless signatures/certificates. Verify a
+Release tags publish a checksummed binary archive, an Arch `PKGBUILD`, and
+Sigstore keyless signatures/certificates. Verify a
 download with `cosign verify-blob --certificate-identity-regexp
 'github.com/davidkodar/fluidvoice-linux' --certificate-oidc-issuer
 'https://token.actions.githubusercontent.com' --certificate FILE.pem
@@ -126,7 +126,7 @@ usable but does not yet match the depth of the current macOS implementation.
 | Parakeet, Nemotron, Cohere, Apple Speech | Partial | Available | Linux provides one-click managed Parakeet TDT v3, Nemotron 3.5 multilingual, Nemotron Streaming English, and Parakeet CTC 1.1B engines through native NeMo-Speech.cpp, plus a custom loopback ASR bridge. CoreML-only Cohere/Parakeet Flash and Apple Speech are not Linux runtimes. |
 | Vulkan GPU acceleration | Available | Not applicable | Linux supports cross-vendor Vulkan with CPU fallback. |
 | Automatic/fixed language | Available | Available | All 99 Whisper languages are exposed. |
-| Model download and deletion | Available | Available | Downloads are size-validated and remain `.part` until complete. |
+| Model download and deletion | Available | Available | Downloads are SHA-256 verified, remain `.part` until complete, and retain an integrity marker for subsequent loads. |
 | Custom dictionary | Available | Available | Linux supports persistent spoken-to-preferred words and phrases, legacy capitalization entries, CSV/TSV import, CSV export, and explicit merge/overwrite/replace conflict policies. Dictionary replacements run deterministically after transcription. |
 | Spoken formatting | Available | Available | Linux handles newline, paragraph, comma, period, question mark, and exclamation mark. |
 | Command Mode system actions | Partial | Available | Linux provides provider-backed KDE assistance plus confirmed allowlisted actions for System Settings, Konsole, Dolphin, and screen locking; arbitrary shell execution is deliberately prohibited. |
@@ -136,11 +136,11 @@ usable but does not yet match the depth of the current macOS implementation.
 | File and meeting transcription | Available | Available | Linux accepts MP3, FLAC, Ogg/Opus, M4A/AAC, WebM, MP4, and varied WAV through FFmpeg, then runs bounded timestamped Whisper segments with progress/cancellation and TXT, Markdown, SRT, WebVTT, or JSON export. Optional experimental Sortformer v2 diarization labels up to four speakers locally; detected speakers can be renamed consistently in the current result, History, and exports, and the last file can be retried after changing settings. |
 | Transcript history | Partial | Available | Linux provides search, timestamps, raw/final visual diffs, change counts, copy/undo actions, optional retained audio, AI metadata, word counts, and JSON/CSV/ZIP export; app/window metadata and feedback reports remain missing. |
 | Usage statistics | Available | Available | Linux provides today/all-time totals, estimated time saved, configurable typing speed, weekend-aware streaks, 7/30-day charts, milestones, insights, records, and AI enhancement impact/provider activity. |
-| Per-application configuration | Available | Available | Linux provides persistent named prompt profiles and opt-in automatic matching through a packaged KWin script. Only application class and window title cross the local session bus; the bridge is disabled by default. |
+| Per-application configuration | Available | Available | Linux provides persistent named prompt profiles and opt-in automatic matching through a packaged KWin script. Only application class and window title cross the local session bus; the reporting KWin script is disabled by default. |
 | Audio recording history | Available | Available | Optional and off by default; Linux retains local mono WAV recordings within a configurable budget, supports playback and deletion, and exports audio plus metadata as ZIP. |
 | Adaptive themes and accents | Available | Available | System/KDE defaults plus explicit FluidVoice themes and colors. |
 | Tray/menu-bar integration | Available | Available | Plasma tray is the Linux equivalent of the macOS menu bar item. |
-| Automatic updates / beta channel | Partial | Available | Tagged Linux releases publish separate stable/beta metadata plus checksummed, keyless-signed artifacts. The app checks releases but does not yet install updates unattended; feeds remain unavailable while the repository is private. |
+| Automatic updates / beta channel | Partial | Available | The app checks GitHub releases but does not yet install updates unattended or provide a separate beta feed; release checks remain unavailable while the repository is private. |
 
 The macOS feature set changes quickly. This matrix reflects the upstream source
 and README reviewed during 0.4.0 development; it is not a promise of identical

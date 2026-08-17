@@ -16,6 +16,15 @@ async fn main() {
     let arguments = std::env::args().skip(1).collect::<Vec<_>>();
     if arguments
         .first()
+        .is_some_and(|argument| matches!(argument.as_str(), "--help" | "-h"))
+    {
+        println!(
+            "FluidVoice diagnostics:\n  --diagnose-audio [SECONDS] [PIPEWIRE_NODE]\n  --diagnose-transcription MODEL [SECONDS] [PIPEWIRE_NODE]\n  --diagnose-transcription-file MODEL WAV\n  --diagnose-clipboard [TEXT]\n  --diagnose-text-delivery\n  --diagnose-shortcut\n  --diagnose-workflow MODEL [SECONDS] [PIPEWIRE_NODE]"
+        );
+        return;
+    }
+    if arguments
+        .first()
         .is_some_and(|argument| argument == "--diagnose-text-delivery")
     {
         let clipboard = ClipboardDelivery::connect().map(|_| ());

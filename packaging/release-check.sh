@@ -12,11 +12,15 @@ test "${ALLOW_DIRTY:-0}" = 1 || test -z "$(git status --porcelain)" || {
 }
 
 cargo fmt --all --check
+QMAKE="${QMAKE:-/usr/bin/qmake6}" cargo clippy --workspace --all-targets --locked -- -D warnings
+if command -v cargo-audit >/dev/null; then
+    cargo audit
+fi
 qmllint crates/fluidvoice-ui/qml/Main.qml
 find packaging -type f -name '*.sh' -exec bash -n {} +
 # Keep localhost mock-provider integration tests deterministic. They are tiny,
 # while serial execution avoids transient socket races on heavily loaded CI.
-QMAKE="${QMAKE:-/usr/bin/qmake6}" cargo test --workspace --locked -- --test-threads=1
+QMAKE="${QMAKE:-/usr/bin/qmake6}" dbus-run-session -- cargo test --workspace --locked -- --test-threads=1
 QMAKE="${QMAKE:-/usr/bin/qmake6}" cargo build --release --locked -p fluidvoice-ui
 
 if command -v appstreamcli >/dev/null; then

@@ -366,7 +366,9 @@ impl PipeWireCapture {
             .into_result()
             .map_err(AudioCaptureError::pw)?;
         main_loop.run();
-        stream.disconnect().map_err(AudioCaptureError::pw)?;
+        // Captured samples remain valid if PipeWire reports a teardown error;
+        // do not discard a completed recording during best-effort disconnect.
+        stream.disconnect().ok();
 
         if let Some(error) = capture_error.borrow().as_ref() {
             return Err(AudioCaptureError::new(format!(

@@ -14,6 +14,14 @@ use std::time::{Duration, Instant};
 const MAX_REQUEST_BYTES: usize = 16 * 1024;
 const MAX_CONNECTIONS: usize = 8;
 
+struct ConnectionSlot(Arc<AtomicUsize>);
+
+impl Drop for ConnectionSlot {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::AcqRel);
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LocalApiAction {
     ToggleDictation,
@@ -55,6 +63,9 @@ pub fn rotate_token(path: &Path) -> Result<String, String> {
             token
         });
     let temporary = parent.join(format!(".local-api.token.{}.tmp", std::process::id()));
+    // A crash can leave this same-process-name temporary behind; PID reuse
+    // must not permanently prevent secure token rotation.
+    fs::remove_file(&temporary).ok();
     let mut file = OpenOptions::new()
         .create_new(true)
         .write(true)
@@ -101,8 +112,8 @@ pub fn start(port: u16, actions: Sender<LocalApiAction>) -> Result<(), String> {
                     let token = token.clone();
                     let actions = actions.clone();
                     std::thread::spawn(move || {
+                        let _slot = ConnectionSlot(active);
                         handle_connection(stream, &token, &actions);
-                        active.fetch_sub(1, Ordering::AcqRel);
                     });
                 }
                 Err(error) => eprintln!("Local API connection failed: {error}"),
@@ -112,6 +123,9 @@ pub fn start(port: u16, actions: Sender<LocalApiAction>) -> Result<(), String> {
     Ok(())
 }
 
+// Keeps parsing, authentication, and routing in one bounded request lifecycle;
+// splitting it would require carrying partially validated HTTP state.
+#[allow(clippy::too_many_lines)]
 fn handle_connection(mut stream: TcpStream, token_path: &Path, actions: &Sender<LocalApiAction>) {
     let deadline = Instant::now() + Duration::from_secs(3);
     stream.set_write_timeout(Some(Duration::from_secs(3))).ok();
@@ -124,7 +138,20 @@ fn handle_connection(mut stream: TcpStream, token_path: &Path, actions: &Sender<
         };
         stream.set_read_timeout(Some(remaining)).ok();
         match stream.read(&mut buffer) {
-            Ok(0) | Err(_) => break,
+            Ok(0) => break,
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock
+                ) =>
+            {
+                respond(&mut stream, 408, r#"{"error":"request timed out"}"#);
+                return;
+            }
+            Err(_) => {
+                respond(&mut stream, 400, r#"{"error":"request could not be read"}"#);
+                return;
+            }
             Ok(count) => {
                 request.extend_from_slice(&buffer[..count]);
                 if request.windows(4).any(|part| part == b"\r\n\r\n") {

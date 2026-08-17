@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-pub fn check_latest_release(current: &str) -> String {
+pub(crate) fn check_latest_release(current: &str) -> String {
     let agent = ureq::Agent::config_builder()
         .timeout_global(Some(Duration::from_secs(15)))
         .timeout_recv_body(Some(Duration::from_secs(10)))

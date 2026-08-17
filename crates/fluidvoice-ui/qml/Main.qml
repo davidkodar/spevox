@@ -1853,7 +1853,7 @@ ApplicationWindow {
                                 Button { text: controller.assistantBusy ? qsTr("Writing…") : qsTr("Create draft"); enabled: !controller.assistantBusy && rewriteInstruction.text.trim().length > 0; onClicked: controller.writeFromInstruction(rewriteInstruction.text) }
                                 Button { text: controller.assistantBusy ? qsTr("Rewriting…") : qsTr("Rewrite selection"); enabled: !controller.assistantBusy && rewriteInstruction.text.trim().length > 0; onClicked: { rewriteDelay.instruction = rewriteInstruction.text; root.hide(); rewriteDelay.restart() } }
                                 Item { Layout.fillWidth: true }
-                                Button { text: qsTr("Retry"); enabled: !controller.assistantBusy && controller.lastRawText.length > 0; onClicked: controller.retryWriteMode() }
+                                Button { text: qsTr("Retry"); enabled: !controller.assistantBusy && controller.writeModeRetryAvailable; onClicked: controller.retryWriteMode() }
                                 Button { text: qsTr("Undo"); enabled: controller.lastRawText.length > 0; onClicked: controller.undoLastAi() }
                                 Button { text: qsTr("Copy result"); enabled: controller.transcriptText.length > 0; onClicked: controller.copyLastResult(false) }
                             }
@@ -2366,7 +2366,7 @@ ApplicationWindow {
                             Text { text: qsTr("NEW"); color: root.accent; font.pixelSize: 11; font.weight: Font.DemiBold }
                             Text { Layout.fillWidth: true; text: qsTr("• Privacy-safe audio history and richer local statistics\n• Complete Write Mode, recovery controls, and automatic application profiles\n• Segmented meeting transcription with five export formats\n• Secure loopback API and experimental local speech-server bridge"); color: root.secondaryText; font.pixelSize: 13; lineHeight: 1.25; wrapMode: Text.Wrap }
                             Text { text: qsTr("FEATURES"); color: root.accent; font.pixelSize: 11; font.weight: Font.DemiBold; Layout.topMargin: 4 }
-                            Text { Layout.fillWidth: true; text: qsTr("• Downloadable multilingual Whisper models with Vulkan acceleration\n• Advanced spoken-to-preferred dictionary import and export\n• Native Plasma tray, global shortcuts, configurable overlay, and diagnosed Wayland delivery\n• Local/cloud AI cleanup with a local-only privacy lock\n• Signed release archives plus Arch and Flatpak packaging infrastructure"); color: root.secondaryText; font.pixelSize: 13; lineHeight: 1.25; wrapMode: Text.Wrap }
+                            Text { Layout.fillWidth: true; text: qsTr("• Downloadable multilingual Whisper models with Vulkan acceleration\n• Advanced spoken-to-preferred dictionary import and export\n• Native Plasma tray, global shortcuts, configurable overlay, and diagnosed Wayland delivery\n• Local/cloud AI cleanup with a local-only privacy lock\n• Signed release archives plus Arch packaging and a developer-preview Flatpak manifest"); color: root.secondaryText; font.pixelSize: 13; lineHeight: 1.25; wrapMode: Text.Wrap }
                             RowLayout { Layout.fillWidth: true
                                 Button { text: controller.updateBusy ? qsTr("Checking…") : qsTr("Check for updates"); enabled: !controller.updateBusy; onClicked: controller.checkForUpdates() }
                                 Text { Layout.fillWidth: true; text: controller.updateStatus; color: root.secondaryText; font.pixelSize: 11; wrapMode: Text.Wrap }

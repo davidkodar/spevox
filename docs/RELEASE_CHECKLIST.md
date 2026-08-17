@@ -52,5 +52,4 @@
 - Confirm `THIRD_PARTY_NOTICES.md`, README feature parity, limitations, model
   licenses, and `CHANGELOG.md` match the actual build.
 - Create the signed release from the tested commit, upload checksummed artifacts,
-  validate stable/beta update metadata, and download the published artifact on
-  a clean system before announcing it.
+  and download the published artifact on a clean system before announcing it.

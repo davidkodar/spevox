@@ -5,12 +5,22 @@ use std::{
 
 use fluidvoice_transcription::{TranscriptionConfig, WhisperTranscriber};
 
-pub type SharedTranscriber = Arc<WhisperTranscriber>;
+pub(crate) type SharedTranscriber = Arc<WhisperTranscriber>;
 
 static CACHE: OnceLock<Mutex<Option<(String, SharedTranscriber)>>> = OnceLock::new();
 
-pub fn get(model: &Path, language: &str, use_gpu: bool) -> Result<SharedTranscriber, String> {
-    let key = format!("{}\u{1f}{}\u{1f}{use_gpu}", model.display(), language);
+pub(crate) fn get(model: &Path, use_gpu: bool) -> Result<SharedTranscriber, String> {
+    let metadata = model.metadata().map_err(|error| error.to_string())?;
+    let modified = metadata
+        .modified()
+        .ok()
+        .and_then(|value| value.duration_since(std::time::UNIX_EPOCH).ok())
+        .map_or(0, |value| value.as_nanos());
+    let key = format!(
+        "{}\u{1f}{use_gpu}\u{1f}{}\u{1f}{modified}",
+        model.display(),
+        metadata.len()
+    );
     let cache = CACHE.get_or_init(|| Mutex::new(None));
     let mut cached = cache
         .lock()
@@ -23,9 +33,7 @@ pub fn get(model: &Path, language: &str, use_gpu: bool) -> Result<SharedTranscri
         return Ok(transcriber);
     }
 
-    let config = TranscriptionConfig::default()
-        .with_language(Some(language.to_owned()))
-        .with_gpu(use_gpu);
+    let config = TranscriptionConfig::default().with_gpu(use_gpu);
     let transcriber =
         Arc::new(WhisperTranscriber::load(model, config).map_err(|error| error.to_string())?);
     cached.replace((key, Arc::clone(&transcriber)));

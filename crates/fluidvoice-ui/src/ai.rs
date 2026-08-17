@@ -44,6 +44,16 @@ impl AiConfig {
     }
 }
 
+fn provider_agent(config: &AiConfig, timeout: Duration) -> ureq::Agent {
+    let mut builder = ureq::Agent::config_builder().timeout_global(Some(timeout));
+    if config.is_local() {
+        // Local-only means local at the transport layer too: never inherit an
+        // HTTP proxy and never permit a redirect away from loopback.
+        builder = builder.proxy(None).max_redirects(0);
+    }
+    builder.build().new_agent()
+}
+
 pub fn enhance(config: &AiConfig, transcript: &str) -> Result<String, String> {
     if !config.enabled {
         return Ok(transcript.to_owned());
@@ -69,12 +79,10 @@ pub fn enhance(config: &AiConfig, transcript: &str) -> Result<String, String> {
     } else {
         config.prompt.trim()
     };
-    let agent = ureq::Agent::config_builder()
-        .timeout_global(Some(Duration::from_secs(
-            config.timeout_seconds.clamp(5, 120),
-        )))
-        .build()
-        .new_agent();
+    let agent = provider_agent(
+        config,
+        Duration::from_secs(config.timeout_seconds.clamp(5, 120)),
+    );
     let response = if is_anthropic(config) {
         let endpoint = format!("{}/messages", config.base_url.trim_end_matches('/'));
         let body = json!({
@@ -132,12 +140,10 @@ pub fn enhance_streaming(
 ) -> Result<String, String> {
     validate_config(config)?;
     let prompt = effective_prompt(config);
-    let agent = ureq::Agent::config_builder()
-        .timeout_global(Some(Duration::from_secs(
-            config.timeout_seconds.clamp(5, 120),
-        )))
-        .build()
-        .new_agent();
+    let agent = provider_agent(
+        config,
+        Duration::from_secs(config.timeout_seconds.clamp(5, 120)),
+    );
     let mut response = if is_anthropic(config) {
         let endpoint = format!("{}/messages", config.base_url.trim_end_matches('/'));
         let body = json!({
@@ -212,10 +218,7 @@ pub fn discover_local_models(config: &AiConfig) -> Result<Vec<String>, String> {
         return Err("Model discovery is restricted to local endpoints".to_owned());
     }
     let endpoint = models_url(&config.base_url);
-    let agent = ureq::Agent::config_builder()
-        .timeout_global(Some(Duration::from_secs(8)))
-        .build()
-        .new_agent();
+    let agent = provider_agent(config, Duration::from_secs(8));
     let mut response = agent
         .get(&endpoint)
         .call()

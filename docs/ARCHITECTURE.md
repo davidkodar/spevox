@@ -23,15 +23,17 @@ crates/fluidvoice-app/      command-line diagnostics and integration checks
 crates/fluidvoice-audio/    PipeWire devices, capture, conversion, buffering
 crates/fluidvoice-transcription/ whisper.cpp and local-server ASR adapters
 crates/fluidvoice-portal/   XDG Global Shortcuts and permission adapters
-crates/fluidvoice-delivery/ consented input and clipboard recovery
+crates/fluidvoice-delivery/ clipboard validation and recovery
 crates/fluidvoice-ui/       CXX-Qt bridge, Qt Quick tray, overlay, settings
 ```
 
-Within `fluidvoice-ui`, the CXX-Qt controller is limited to Qt-facing state and
-workflow composition. Pure Rust responsibilities live in focused source
-boundaries for settings and profiles, private storage, dictionary processing,
-history, meeting transcription, speech-model catalogs, update checks, speech
-runtime helpers, and the bounded Whisper context cache.
+Within `fluidvoice-ui`, the CXX-Qt controller owns Qt-facing state and workflow
+composition. Its larger implementation is organized across included Rust
+source sections for settings and profiles, private storage, dictionary
+processing, history, meeting transcription, speech-model catalogs, and speech
+runtime helpers. These sections improve navigation but intentionally share the
+controller module namespace; update checks and the bounded Whisper context
+cache are independent Rust modules.
 
 The UI controller also coordinates provider streaming, application/workflow
 prompt profiles, selected-text rewriting, allowlisted Command Mode actions,

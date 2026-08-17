@@ -1,9 +1,19 @@
 //! Offline speech-to-text through `whisper.cpp`.
 
-use std::{error::Error, fmt, path::Path, thread, time::Duration};
+use std::{
+    error::Error,
+    fmt,
+    path::Path,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+    thread,
+    time::Duration,
+};
 
 use fluidvoice_audio::MonoAudioBuffer;
-use url::Url;
+use url::{Host, Url};
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -88,12 +98,12 @@ impl LocalSpeechServer {
     pub fn new(base_url: &str) -> Result<Self, TranscriptionError> {
         let mut base = Url::parse(base_url.trim())
             .map_err(|_| TranscriptionError::new("external speech server URL is invalid"))?;
-        let host_is_loopback = base.host_str().is_some_and(|host| {
-            host.eq_ignore_ascii_case("localhost")
-                || host
-                    .parse::<std::net::IpAddr>()
-                    .is_ok_and(|address| address.is_loopback())
-        });
+        let host_is_loopback = match base.host() {
+            Some(Host::Domain(host)) => host.eq_ignore_ascii_case("localhost"),
+            Some(Host::Ipv4(address)) => address.is_loopback(),
+            Some(Host::Ipv6(address)) => address.is_loopback(),
+            None => false,
+        };
         if base.scheme() != "http"
             || !base.username().is_empty()
             || base.password().is_some()
@@ -261,6 +271,42 @@ impl WhisperTranscriber {
     /// # Errors
     /// Returns an error if the input is empty or inference fails.
     pub fn transcribe(&self, audio: &MonoAudioBuffer) -> Result<Transcript, TranscriptionError> {
+        self.transcribe_with_options(audio, self.config.language(), None)
+    }
+
+    /// Transcribes with a per-call language without reloading model weights.
+    ///
+    /// # Errors
+    /// Returns an error if the input is empty or inference fails.
+    pub fn transcribe_in_language(
+        &self,
+        audio: &MonoAudioBuffer,
+        language: Option<&str>,
+    ) -> Result<Transcript, TranscriptionError> {
+        self.transcribe_with_options(audio, language, None)
+    }
+
+    /// Transcribes while allowing a preview pass to be cancelled before the
+    /// final, latency-sensitive pass starts.
+    ///
+    /// # Errors
+    /// Returns an error if the input is empty, inference fails, or cancellation
+    /// is requested while Whisper is running.
+    pub fn transcribe_cancellable(
+        &self,
+        audio: &MonoAudioBuffer,
+        language: Option<&str>,
+        abort: Arc<AtomicBool>,
+    ) -> Result<Transcript, TranscriptionError> {
+        self.transcribe_with_options(audio, language, Some(abort))
+    }
+
+    fn transcribe_with_options(
+        &self,
+        audio: &MonoAudioBuffer,
+        language: Option<&str>,
+        abort: Option<Arc<AtomicBool>>,
+    ) -> Result<Transcript, TranscriptionError> {
         if audio.samples().is_empty() {
             return Err(TranscriptionError::new("cannot transcribe empty audio"));
         }
@@ -270,7 +316,7 @@ impl WhisperTranscriber {
             .map_err(TranscriptionError::whisper)?;
         let mut parameters = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
         parameters.set_n_threads(self.config.thread_count);
-        parameters.set_language(self.config.language());
+        parameters.set_language(language.filter(|value| !value.trim().is_empty()));
         // A null language already asks whisper.cpp to auto-detect and then
         // continue decoding. Its separate detect_language flag means "detect
         // only" and returns before creating transcript segments.
@@ -283,6 +329,11 @@ impl WhisperTranscriber {
         parameters.set_print_progress(false);
         parameters.set_print_realtime(false);
         parameters.set_print_timestamps(false);
+        if let Some(abort) = abort {
+            let callback: Box<dyn FnMut() -> bool> =
+                Box::new(move || abort.load(Ordering::Acquire));
+            parameters.set_abort_callback_safe::<_, Box<dyn FnMut() -> bool>>(Some(callback));
+        }
         state
             .full(parameters, audio.samples())
             .map_err(TranscriptionError::whisper)?;
@@ -382,6 +433,7 @@ mod tests {
         assert!(LocalSpeechServer::new("http://127.0.0.1:8080").is_ok());
         assert!(LocalSpeechServer::new("http://localhost").is_ok());
         assert!(LocalSpeechServer::new("http://LOCALHOST:8080").is_ok());
+        assert!(LocalSpeechServer::new("http://[::1]:8080").is_ok());
         assert!(LocalSpeechServer::new("http://localhost:8080/v1/audio/transcriptions").is_ok());
         assert!(LocalSpeechServer::new("https://example.com").is_err());
         assert!(LocalSpeechServer::new("http://127.0.0.1.example.com").is_err());

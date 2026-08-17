@@ -202,8 +202,34 @@ fn model_ui_lists(paths: &[PathBuf]) -> (QStringList, QStringList) {
 }
 
 fn model_file_valid(path: &PathBuf, model: &WhisperModel) -> bool {
-    fs::metadata(path)
+    if !fs::metadata(path)
         .is_ok_and(|metadata| metadata.is_file() && metadata.len() == model.expected_bytes)
+    {
+        return false;
+    }
+    let marker = path.with_extension("bin.sha256");
+    if fs::read_to_string(&marker).is_ok_and(|value| value.trim() == model.sha256) {
+        return true;
+    }
+    let Ok(mut file) = fs::File::open(path) else {
+        return false;
+    };
+    let mut hasher = Sha256::new();
+    let mut buffer = vec![0_u8; 64 * 1024];
+    loop {
+        let Ok(count) = file.read(&mut buffer) else {
+            return false;
+        };
+        if count == 0 {
+            break;
+        }
+        hasher.update(&buffer[..count]);
+    }
+    let valid = format!("{:x}", hasher.finalize()) == model.sha256;
+    if valid {
+        fs::write(marker, format!("{}\n", model.sha256)).ok();
+    }
+    valid
 }
 
 fn download_whisper_model(
@@ -262,5 +288,10 @@ fn download_whisper_model(
         ));
     }
     fs::rename(&partial, destination).map_err(|error| error.to_string())?;
+    fs::write(
+        destination.with_extension("bin.sha256"),
+        format!("{}\n", model.sha256),
+    )
+    .map_err(|error| error.to_string())?;
     Ok(())
 }
