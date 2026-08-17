@@ -1,5 +1,11 @@
+use super::{
+    AtomicBool, Duration, Ordering, PathBuf, QString, QStringList, Read, Sha256, Write,
+    data_directory, fs, progress_ratio,
+};
+use sha2::Digest;
+
 #[allow(clippy::too_many_lines)] // Static ISO/Whisper catalog, not control flow.
-fn supported_languages() -> &'static [(&'static str, &'static str)] {
+pub(super) fn supported_languages() -> &'static [(&'static str, &'static str)] {
     &[
         ("Automatic detection", ""),
         ("Afrikaans", "af"),
@@ -105,15 +111,15 @@ fn supported_languages() -> &'static [(&'static str, &'static str)] {
 }
 
 #[derive(Clone, Copy)]
-struct WhisperModel {
-    display_name: &'static str,
-    file_name: &'static str,
-    expected_bytes: u64,
-    sha256: &'static str,
-    description: &'static str,
+pub(super) struct WhisperModel {
+    pub(super) display_name: &'static str,
+    pub(super) file_name: &'static str,
+    pub(super) expected_bytes: u64,
+    pub(super) sha256: &'static str,
+    pub(super) description: &'static str,
 }
 
-fn whisper_model_catalog() -> &'static [WhisperModel] {
+pub(super) fn whisper_model_catalog() -> &'static [WhisperModel] {
     &[
         WhisperModel {
             display_name: "Whisper Tiny",
@@ -160,7 +166,7 @@ fn whisper_model_catalog() -> &'static [WhisperModel] {
     ]
 }
 
-fn managed_model_directory() -> PathBuf {
+pub(super) fn managed_model_directory() -> PathBuf {
     if let Some(directory) = std::env::var_os("XDG_DATA_HOME") {
         return PathBuf::from(directory).join("fluidvoice/models");
     }
@@ -174,7 +180,7 @@ fn model_search_directories() -> Vec<PathBuf> {
     vec![managed_model_directory()]
 }
 
-fn resolve_model_path(model: &WhisperModel) -> PathBuf {
+pub(super) fn resolve_model_path(model: &WhisperModel) -> PathBuf {
     model_search_directories()
         .into_iter()
         .map(|directory| directory.join(model.file_name))
@@ -182,7 +188,7 @@ fn resolve_model_path(model: &WhisperModel) -> PathBuf {
         .unwrap_or_else(|| managed_model_directory().join(model.file_name))
 }
 
-fn model_ui_lists(paths: &[PathBuf]) -> (QStringList, QStringList) {
+pub(super) fn model_ui_lists(paths: &[PathBuf]) -> (QStringList, QStringList) {
     let states = paths
         .iter()
         .zip(whisper_model_catalog())
@@ -201,7 +207,7 @@ fn model_ui_lists(paths: &[PathBuf]) -> (QStringList, QStringList) {
     (states, details)
 }
 
-fn model_file_valid(path: &PathBuf, model: &WhisperModel) -> bool {
+pub(super) fn model_file_valid(path: &PathBuf, model: &WhisperModel) -> bool {
     if !fs::metadata(path)
         .is_ok_and(|metadata| metadata.is_file() && metadata.len() == model.expected_bytes)
     {
@@ -216,7 +222,7 @@ fn model_file_valid(path: &PathBuf, model: &WhisperModel) -> bool {
     true
 }
 
-fn verify_unmarked_whisper_models() {
+pub(super) fn verify_unmarked_whisper_models() {
     for model in whisper_model_catalog() {
         let path = managed_model_directory().join(model.file_name);
         let marker = path.with_extension("bin.sha256");
@@ -246,7 +252,7 @@ fn verify_unmarked_whisper_models() {
     }
 }
 
-fn download_whisper_model(
+pub(super) fn download_whisper_model(
     model: WhisperModel,
     destination: &PathBuf,
     cancel: &AtomicBool,

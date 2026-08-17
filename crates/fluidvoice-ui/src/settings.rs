@@ -1,49 +1,54 @@
+use super::{
+    PathBuf, ai_profiles_path, atomic_write_private, escape_setting, fs, preferences_path,
+    unescape_setting,
+};
+
 // Persisted feature switches are independent user choices rather than one
 // state machine, so explicit booleans make migrations and defaults auditable.
 #[allow(clippy::struct_excessive_bools)]
-struct Preferences {
-    onboarding_completed: bool,
-    language: String,
-    model: PathBuf,
-    shortcut: String,
-    input: String,
-    gain_db: f32,
-    overlay_enabled: bool,
-    overlay_size: i32,
-    overlay_position: i32,
-    overlay_show_text: bool,
-    overlay_opacity: f32,
-    command_mode_enabled: bool,
-    compute_backend: i32,
-    theme: i32,
-    accent: i32,
-    ai_enabled: bool,
-    ai_provider: i32,
-    ai_model: String,
-    ai_base_url: String,
-    ai_prompt: String,
-    ai_local_only: bool,
-    auto_profiles_enabled: bool,
-    typing_wpm: i32,
-    skip_weekends: bool,
-    audio_history_enabled: bool,
-    audio_history_budget_mb: i32,
-    local_api_enabled: bool,
-    local_api_port: i32,
-    speech_engine: i32,
-    local_speech_url: String,
-    diarization_enabled: bool,
+pub(super) struct Preferences {
+    pub(super) onboarding_completed: bool,
+    pub(super) language: String,
+    pub(super) model: PathBuf,
+    pub(super) shortcut: String,
+    pub(super) input: String,
+    pub(super) gain_db: f32,
+    pub(super) overlay_enabled: bool,
+    pub(super) overlay_size: i32,
+    pub(super) overlay_position: i32,
+    pub(super) overlay_show_text: bool,
+    pub(super) overlay_opacity: f32,
+    pub(super) command_mode_enabled: bool,
+    pub(super) compute_backend: i32,
+    pub(super) theme: i32,
+    pub(super) accent: i32,
+    pub(super) ai_enabled: bool,
+    pub(super) ai_provider: i32,
+    pub(super) ai_model: String,
+    pub(super) ai_base_url: String,
+    pub(super) ai_prompt: String,
+    pub(super) ai_local_only: bool,
+    pub(super) auto_profiles_enabled: bool,
+    pub(super) typing_wpm: i32,
+    pub(super) skip_weekends: bool,
+    pub(super) audio_history_enabled: bool,
+    pub(super) audio_history_budget_mb: i32,
+    pub(super) local_api_enabled: bool,
+    pub(super) local_api_port: i32,
+    pub(super) speech_engine: i32,
+    pub(super) local_speech_url: String,
+    pub(super) diarization_enabled: bool,
 }
 
 #[derive(Clone)]
-struct AiProfile {
-    name: String,
-    prompt: String,
-    application_match: String,
+pub(super) struct AiProfile {
+    pub(super) name: String,
+    pub(super) prompt: String,
+    pub(super) application_match: String,
 }
 
 #[derive(Clone)]
-enum WriteModeJob {
+pub(super) enum WriteModeJob {
     Rewrite {
         instruction: String,
         selected: String,
@@ -53,7 +58,7 @@ enum WriteModeJob {
     },
 }
 
-fn load_ai_profiles() -> Vec<AiProfile> {
+pub(super) fn load_ai_profiles() -> Vec<AiProfile> {
     let Ok(contents) = fs::read_to_string(ai_profiles_path()) else {
         return Vec::new();
     };
@@ -77,7 +82,7 @@ fn load_ai_profiles() -> Vec<AiProfile> {
         .collect()
 }
 
-fn save_ai_profiles(profiles: &[AiProfile]) -> Result<(), String> {
+pub(super) fn save_ai_profiles(profiles: &[AiProfile]) -> Result<(), String> {
     let values = profiles
         .iter()
         .map(|profile| {
@@ -101,7 +106,10 @@ fn save_ai_profiles(profiles: &[AiProfile]) -> Result<(), String> {
     )
 }
 
-fn profile_matches_application(profile: &AiProfile, lowercase_window_identity: &str) -> bool {
+pub(super) fn profile_matches_application(
+    profile: &AiProfile,
+    lowercase_window_identity: &str,
+) -> bool {
     let matcher = profile.application_match.trim().to_lowercase();
     !matcher.is_empty()
         && matcher
@@ -150,7 +158,7 @@ impl Default for Preferences {
 }
 
 impl Preferences {
-    fn load() -> Self {
+    pub(super) fn load() -> Self {
         let Ok(contents) = fs::read_to_string(preferences_path()) else {
             return Self::default();
         };
@@ -230,7 +238,7 @@ impl Preferences {
         preferences
     }
 
-    fn save(&self) -> Result<(), String> {
+    pub(super) fn save(&self) -> Result<(), String> {
         let path = preferences_path();
         let parent = path
             .parent()

@@ -1,4 +1,6 @@
-fn process_transcript(text: &str, command_mode: bool, dictionary: &[String]) -> String {
+use super::{PathBuf, QString, QStringList, dictionary_path, fs, load_lines, save_lines};
+
+pub(super) fn process_transcript(text: &str, command_mode: bool, dictionary: &[String]) -> String {
     let mut processed = text.trim().to_owned();
     if command_mode {
         for (spoken, replacement) in [
@@ -27,9 +29,9 @@ fn process_transcript(text: &str, command_mode: bool, dictionary: &[String]) -> 
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-struct DictionaryEntry {
-    spoken: String,
-    preferred: String,
+pub(super) struct DictionaryEntry {
+    pub(super) spoken: String,
+    pub(super) preferred: String,
 }
 
 impl DictionaryEntry {
@@ -48,7 +50,7 @@ impl DictionaryEntry {
     }
 }
 
-fn sanitize_dictionary_field(value: &str) -> String {
+pub(super) fn sanitize_dictionary_field(value: &str) -> String {
     value
         .replace(['\t', '\r', '\n'], " ")
         .split_whitespace()
@@ -56,7 +58,7 @@ fn sanitize_dictionary_field(value: &str) -> String {
         .join(" ")
 }
 
-fn load_dictionary_entries() -> Vec<DictionaryEntry> {
+pub(super) fn load_dictionary_entries() -> Vec<DictionaryEntry> {
     load_lines(&dictionary_path())
         .iter()
         .map(|line| DictionaryEntry::from_storage(line))
@@ -64,7 +66,7 @@ fn load_dictionary_entries() -> Vec<DictionaryEntry> {
         .collect()
 }
 
-fn save_dictionary_entries(entries: &[DictionaryEntry]) -> Result<(), String> {
+pub(super) fn save_dictionary_entries(entries: &[DictionaryEntry]) -> Result<(), String> {
     let mut entries = entries.to_vec();
     entries.sort_by_key(|entry| entry.spoken.to_lowercase());
     entries.dedup_by(|left, right| left.spoken.eq_ignore_ascii_case(&right.spoken));
@@ -77,7 +79,7 @@ fn save_dictionary_entries(entries: &[DictionaryEntry]) -> Result<(), String> {
     )
 }
 
-fn dictionary_display(line: &str) -> String {
+pub(super) fn dictionary_display(line: &str) -> String {
     let entry = DictionaryEntry::from_storage(line);
     if entry.spoken == entry.preferred {
         entry.preferred
@@ -86,7 +88,7 @@ fn dictionary_display(line: &str) -> String {
     }
 }
 
-fn dictionary_ui_list(entries: &[DictionaryEntry]) -> QStringList {
+pub(super) fn dictionary_ui_list(entries: &[DictionaryEntry]) -> QStringList {
     let mut entries = entries.to_vec();
     entries.sort_by_key(|entry| entry.spoken.to_lowercase());
     entries
@@ -95,7 +97,7 @@ fn dictionary_ui_list(entries: &[DictionaryEntry]) -> QStringList {
         .collect()
 }
 
-fn read_dictionary_import(path: &PathBuf) -> Result<Vec<DictionaryEntry>, String> {
+pub(super) fn read_dictionary_import(path: &PathBuf) -> Result<Vec<DictionaryEntry>, String> {
     let contents = fs::read_to_string(path).map_err(|error| error.to_string())?;
     let mut entries = Vec::new();
     for (index, line) in contents.lines().enumerate() {
@@ -127,7 +129,7 @@ fn read_dictionary_import(path: &PathBuf) -> Result<Vec<DictionaryEntry>, String
     Ok(entries)
 }
 
-fn parse_csv_record(line: &str) -> Vec<String> {
+pub(super) fn parse_csv_record(line: &str) -> Vec<String> {
     let mut fields = vec![String::new()];
     let mut quoted = false;
     let mut characters = line.chars().peekable();
@@ -145,7 +147,10 @@ fn parse_csv_record(line: &str) -> Vec<String> {
     fields
 }
 
-fn write_dictionary_csv(path: &PathBuf, entries: &[DictionaryEntry]) -> Result<(), String> {
+pub(super) fn write_dictionary_csv(
+    path: &PathBuf,
+    entries: &[DictionaryEntry],
+) -> Result<(), String> {
     use std::fmt::Write as _;
 
     let mut output = "spoken,preferred\n".to_owned();
@@ -161,7 +166,7 @@ fn write_dictionary_csv(path: &PathBuf, entries: &[DictionaryEntry]) -> Result<(
     fs::write(path, output).map_err(|error| error.to_string())
 }
 
-fn spreadsheet_safe(value: &str) -> String {
+pub(super) fn spreadsheet_safe(value: &str) -> String {
     if value.starts_with(['=', '+', '-', '@']) {
         format!("'{value}")
     } else {

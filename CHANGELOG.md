@@ -5,6 +5,9 @@ All notable changes to FluidVoice Linux are documented here. The project uses
 
 ## 0.4.0 - 2026-08-16
 
+- Began the post-0.4 structural milestone by replacing all seven controller
+  `include!` sections with real Rust modules, explicit imports, and constrained
+  `pub(super)` interfaces.
 - Closed follow-up audit regressions in meeting-file retry, local AI proxy
   isolation, IPv6 loopback ASR, Write Mode retry semantics, cancellable Whisper
   previews, model integrity checks, local API lifecycle handling, and native

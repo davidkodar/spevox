@@ -498,7 +498,7 @@ use fluidvoice_portal::{
     TextInputSession, run_profile_bridge,
 };
 use fluidvoice_transcription::{LocalSpeechServer, TranscriptionConfig, WhisperTranscriber};
-use sha2::{Digest, Sha256};
+use sha2::Sha256;
 use tokio::sync::mpsc;
 
 use crate::ai::{self, AiConfig};
@@ -4071,7 +4071,12 @@ impl FluidVoiceControllerRust {
     }
 }
 
-include!("settings.rs");
+#[path = "settings.rs"]
+mod settings;
+use settings::{
+    AiProfile, Preferences, WriteModeJob, load_ai_profiles, profile_matches_application,
+    save_ai_profiles,
+};
 enum DesktopCommand {
     Paste,
     CopySelection(std::sync::mpsc::Sender<Result<(), String>>),
@@ -4332,12 +4337,55 @@ fn preferences_path() -> PathBuf {
     )
 }
 
-include!("storage.rs");
-include!("dictionary.rs");
-include!("history.rs");
-include!("meeting.rs");
-include!("models.rs");
-include!("speech_runtime.rs");
+#[path = "storage.rs"]
+mod storage;
+use storage::{
+    LifetimeStats, ai_profiles_path, append_command_history, atomic_write_private,
+    audio_history_directory, audio_history_summary, clear_missing_audio_history_references,
+    command_history_path, data_directory, dictionary_path, history_path, load_lines,
+    prune_audio_history, save_audio_history, save_lines, write_audio_history_zip,
+};
+#[path = "dictionary.rs"]
+mod dictionary;
+use dictionary::{
+    DictionaryEntry, dictionary_display, dictionary_ui_list, load_dictionary_entries,
+    process_transcript, read_dictionary_import, sanitize_dictionary_field, save_dictionary_entries,
+    spreadsheet_safe, write_dictionary_csv,
+};
+#[path = "history.rs"]
+mod history;
+use history::{
+    HistoryContext, ai_provider_name, decode_file_url, history_clipboard_text, history_field,
+    history_value, record_history, write_history_export,
+};
+#[path = "meeting.rs"]
+mod meeting;
+use meeting::{
+    MeetingSegment, meeting_segment_qstring, meeting_speaker_names,
+    rename_latest_file_history_speaker, transcribe_long_audio_file, write_meeting_export,
+};
+#[path = "models.rs"]
+mod models;
+use models::{
+    download_whisper_model, managed_model_directory, model_file_valid, model_ui_lists,
+    resolve_model_path, supported_languages, verify_unmarked_whisper_models, whisper_model_catalog,
+};
+#[path = "speech_runtime.rs"]
+mod speech_runtime;
+#[cfg(test)]
+use dictionary::parse_csv_record;
+#[cfg(test)]
+use meeting::{
+    assign_speakers, decode_audio_file, rename_latest_file_history_speaker_entries, timestamp_srt,
+};
+pub(crate) use speech_runtime::progress_ratio;
+use speech_runtime::{
+    asr_gain, compute_backend_summary, display_ratio, dump_asr_audio, effective_parakeet_backend,
+    friendly_runtime_error, language_display_name, meter_level, native_language_for_model,
+    native_model_for_engine, parakeet_backend, parakeet_runtime_available, pcm_i16, peak_db,
+    selected_language_code, selected_model_path, selected_shortcut_trigger, shortcut_triggers,
+    suspicious_single_word, valid_index,
+};
 #[cfg(test)]
 mod tests {
     use std::{fs, time::Duration};

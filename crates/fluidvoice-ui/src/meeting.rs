@@ -1,21 +1,28 @@
+use super::{
+    AtomicBool, AudioBuffer, Command, HISTORY_IO_LOCK, OpenOptions, OpenOptionsExt, Ordering,
+    ParakeetBackend, PathBuf, PermissionsExt, QString, Read, TranscriptionConfig,
+    WhisperTranscriber, display_ratio, fs, history_field, history_path, history_value, load_lines,
+    parakeet, progress_ratio, save_lines,
+};
+
 #[derive(Clone, Debug, Eq, PartialEq)]
-struct MeetingSegment {
-    start_milliseconds: u64,
-    end_milliseconds: u64,
-    speaker: Option<String>,
-    text: String,
+pub(super) struct MeetingSegment {
+    pub(super) start_milliseconds: u64,
+    pub(super) end_milliseconds: u64,
+    pub(super) speaker: Option<String>,
+    pub(super) text: String,
 }
 
-struct MeetingTranscript {
-    text: String,
-    segments: Vec<MeetingSegment>,
-    diarization_warning: Option<String>,
+pub(super) struct MeetingTranscript {
+    pub(super) text: String,
+    pub(super) segments: Vec<MeetingSegment>,
+    pub(super) diarization_warning: Option<String>,
 }
 
 // The worker boundary takes an immutable snapshot of every relevant setting;
 // a parameter object would only move these one-shot values behind indirection.
 #[allow(clippy::too_many_arguments)]
-fn transcribe_long_audio_file(
+pub(super) fn transcribe_long_audio_file(
     path: &std::path::Path,
     model: &std::path::Path,
     language: String,
@@ -148,7 +155,7 @@ fn write_temporary_diarization_wav(
     Ok(path)
 }
 
-fn assign_speakers(
+pub(super) fn assign_speakers(
     transcript: &mut [MeetingSegment],
     diarization: &[parakeet::DiarizationSegment],
 ) {
@@ -167,7 +174,7 @@ fn assign_speakers(
     }
 }
 
-fn meeting_speaker_names(segments: &[MeetingSegment]) -> Vec<String> {
+pub(super) fn meeting_speaker_names(segments: &[MeetingSegment]) -> Vec<String> {
     let mut speakers = Vec::new();
     for speaker in segments
         .iter()
@@ -180,7 +187,10 @@ fn meeting_speaker_names(segments: &[MeetingSegment]) -> Vec<String> {
     speakers
 }
 
-fn rename_latest_file_history_speaker(current: &str, replacement: &str) -> Result<(), String> {
+pub(super) fn rename_latest_file_history_speaker(
+    current: &str,
+    replacement: &str,
+) -> Result<(), String> {
     let _history_guard = HISTORY_IO_LOCK
         .lock()
         .map_err(|_| "history lock was poisoned".to_owned())?;
@@ -190,7 +200,7 @@ fn rename_latest_file_history_speaker(current: &str, replacement: &str) -> Resul
     save_lines(&path, &history)
 }
 
-fn rename_latest_file_history_speaker_entries(
+pub(super) fn rename_latest_file_history_speaker_entries(
     history: &mut [String],
     current: &str,
     replacement: &str,
@@ -213,7 +223,7 @@ fn rename_latest_file_history_speaker_entries(
     Ok(())
 }
 
-fn meeting_segment_qstring(segment: &MeetingSegment) -> QString {
+pub(super) fn meeting_segment_qstring(segment: &MeetingSegment) -> QString {
     QString::from(&format!(
         "{}\t{}\t{}\t{}",
         segment.start_milliseconds,
@@ -223,7 +233,7 @@ fn meeting_segment_qstring(segment: &MeetingSegment) -> QString {
     ))
 }
 
-fn timestamp_srt(milliseconds: u64, decimal: char) -> String {
+pub(super) fn timestamp_srt(milliseconds: u64, decimal: char) -> String {
     let hours = milliseconds / 3_600_000;
     let minutes = (milliseconds / 60_000) % 60;
     let seconds = (milliseconds / 1_000) % 60;
@@ -231,7 +241,7 @@ fn timestamp_srt(milliseconds: u64, decimal: char) -> String {
     format!("{hours:02}:{minutes:02}:{seconds:02}{decimal}{millis:03}")
 }
 
-fn write_meeting_export(
+pub(super) fn write_meeting_export(
     path: &PathBuf,
     format: &str,
     segments: &[MeetingSegment],
@@ -325,7 +335,9 @@ fn write_meeting_export(
     fs::write(path, contents).map_err(|error| error.to_string())
 }
 
-fn decode_audio_file(path: &std::path::Path) -> Result<fluidvoice_audio::MonoAudioBuffer, String> {
+pub(super) fn decode_audio_file(
+    path: &std::path::Path,
+) -> Result<fluidvoice_audio::MonoAudioBuffer, String> {
     const MAX_DECODED_BYTES: u64 = 16_000 * 4 * 60 * 60 * 2;
     let mut command = Command::new("ffmpeg");
     command

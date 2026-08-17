@@ -1,14 +1,19 @@
-struct HistoryContext<'a> {
-    raw_text: &'a str,
-    provider: &'a str,
-    model: &'a str,
-    ai_status: &'a str,
-    ai_duration_ms: u128,
-    source: &'a str,
-    audio_path: &'a str,
+use super::{
+    AiConfig, HISTORY_IO_LOCK, LifetimeStats, PathBuf, Pin, QString, ffi, fs, history_path,
+    load_lines, save_lines, spreadsheet_safe,
+};
+
+pub(super) struct HistoryContext<'a> {
+    pub(super) raw_text: &'a str,
+    pub(super) provider: &'a str,
+    pub(super) model: &'a str,
+    pub(super) ai_status: &'a str,
+    pub(super) ai_duration_ms: u128,
+    pub(super) source: &'a str,
+    pub(super) audio_path: &'a str,
 }
 
-fn record_history(
+pub(super) fn record_history(
     mut controller: Pin<&mut ffi::FluidVoiceController>,
     text: &str,
     context: &HistoryContext<'_>,
@@ -53,15 +58,15 @@ fn record_history(
         .set_dictated_word_count(lifetime_stats.dictated_word_count_i32());
 }
 
-fn history_value(value: &str) -> String {
+pub(super) fn history_value(value: &str) -> String {
     value.replace(['\n', '\r', '\t'], " ")
 }
 
-fn history_field(entry: &str, index: usize) -> Option<&str> {
+pub(super) fn history_field(entry: &str, index: usize) -> Option<&str> {
     entry.split('\t').nth(index)
 }
 
-fn history_clipboard_text(entry: &str, mode: i32) -> (String, &'static str) {
+pub(super) fn history_clipboard_text(entry: &str, mode: i32) -> (String, &'static str) {
     let final_text = history_field(entry, 1).unwrap_or(entry);
     let raw_text = history_field(entry, 2).unwrap_or(final_text);
     match mode {
@@ -84,11 +89,15 @@ fn history_clipboard_text(entry: &str, mode: i32) -> (String, &'static str) {
     }
 }
 
-fn ai_provider_name(config: &AiConfig) -> &str {
+pub(super) fn ai_provider_name(config: &AiConfig) -> &str {
     if config.enabled { &config.provider } else { "" }
 }
 
-fn write_history_export(path: &PathBuf, format: &str, history: &[String]) -> Result<(), String> {
+pub(super) fn write_history_export(
+    path: &PathBuf,
+    format: &str,
+    history: &[String],
+) -> Result<(), String> {
     let records = history
         .iter()
         .map(|entry| {
@@ -138,20 +147,21 @@ fn write_history_export(path: &PathBuf, format: &str, history: &[String]) -> Res
     fs::write(path, contents).map_err(|error| error.to_string())
 }
 
-fn decode_file_url(value: &str) -> String {
+pub(super) fn decode_file_url(value: &str) -> String {
     let value = value.strip_prefix("file://").unwrap_or(value);
     let bytes = value.as_bytes();
     let mut result = Vec::with_capacity(bytes.len());
     let mut index = 0;
     while index < bytes.len() {
-        if bytes[index] == b'%' && index + 2 < bytes.len()
+        if bytes[index] == b'%'
+            && index + 2 < bytes.len()
             && let (Some(high), Some(low)) =
                 (hex_digit(bytes[index + 1]), hex_digit(bytes[index + 2]))
         {
-                let decoded = high * 16 + low;
-                result.push(decoded);
-                index += 3;
-                continue;
+            let decoded = high * 16 + low;
+            result.push(decoded);
+            index += 3;
+            continue;
         }
         result.push(bytes[index]);
         index += 1;

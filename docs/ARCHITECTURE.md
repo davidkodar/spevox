@@ -28,12 +28,11 @@ crates/fluidvoice-ui/       CXX-Qt bridge, Qt Quick tray, overlay, settings
 ```
 
 Within `fluidvoice-ui`, the CXX-Qt controller owns Qt-facing state and workflow
-composition. Its larger implementation is organized across included Rust
-source sections for settings and profiles, private storage, dictionary
-processing, history, meeting transcription, speech-model catalogs, and speech
-runtime helpers. These sections improve navigation but intentionally share the
-controller module namespace; update checks and the bounded Whisper context
-cache are independent Rust modules.
+composition. Settings and profiles, private storage, dictionary processing,
+history, meeting transcription, speech-model catalogs, speech-runtime helpers,
+update checks, and the bounded Whisper context cache are real Rust modules with
+explicit imports and parent-visible APIs rather than shared `include!`
+namespaces.
 
 The UI controller also coordinates provider streaming, application/workflow
 prompt profiles, selected-text rewriting, allowlisted Command Mode actions,

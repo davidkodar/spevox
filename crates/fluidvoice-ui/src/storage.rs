@@ -1,4 +1,9 @@
-fn data_directory() -> PathBuf {
+use super::{
+    HISTORY_IO_LOCK, OpenOptions, OpenOptionsExt, PathBuf, PermissionsExt, Pin, QString, Write,
+    display_ratio, ffi, fs, history_field, history_value, pcm_i16,
+};
+
+pub(super) fn data_directory() -> PathBuf {
     if let Some(directory) = std::env::var_os("XDG_DATA_HOME") {
         return PathBuf::from(directory).join("fluidvoice");
     }
@@ -8,26 +13,26 @@ fn data_directory() -> PathBuf {
     )
 }
 
-fn dictionary_path() -> PathBuf {
+pub(super) fn dictionary_path() -> PathBuf {
     data_directory().join("dictionary.txt")
 }
 
-fn history_path() -> PathBuf {
+pub(super) fn history_path() -> PathBuf {
     data_directory().join("history.tsv")
 }
 
-fn lifetime_stats_path() -> PathBuf {
+pub(super) fn lifetime_stats_path() -> PathBuf {
     data_directory().join("lifetime-stats.json")
 }
 
 #[derive(Default)]
-struct LifetimeStats {
-    transcript_count: u64,
-    dictated_word_count: u64,
+pub(super) struct LifetimeStats {
+    pub(super) transcript_count: u64,
+    pub(super) dictated_word_count: u64,
 }
 
 impl LifetimeStats {
-    fn load_or_migrate(history: &[String]) -> Self {
+    pub(super) fn load_or_migrate(history: &[String]) -> Self {
         if let Ok(contents) = fs::read_to_string(lifetime_stats_path())
             && let Ok(value) = serde_json::from_str::<serde_json::Value>(&contents)
             && let (Some(transcript_count), Some(dictated_word_count)) = (
@@ -64,7 +69,7 @@ impl LifetimeStats {
         stats
     }
 
-    fn save(&self) -> Result<(), String> {
+    pub(super) fn save(&self) -> Result<(), String> {
         atomic_write_private(
             &lifetime_stats_path(),
             serde_json::to_string_pretty(&serde_json::json!({
@@ -76,20 +81,20 @@ impl LifetimeStats {
         )
     }
 
-    fn transcript_count_i32(&self) -> i32 {
+    pub(super) fn transcript_count_i32(&self) -> i32 {
         i32::try_from(self.transcript_count).unwrap_or(i32::MAX)
     }
 
-    fn dictated_word_count_i32(&self) -> i32 {
+    pub(super) fn dictated_word_count_i32(&self) -> i32 {
         i32::try_from(self.dictated_word_count).unwrap_or(i32::MAX)
     }
 }
 
-fn audio_history_directory() -> PathBuf {
+pub(super) fn audio_history_directory() -> PathBuf {
     data_directory().join("audio-history")
 }
 
-fn audio_history_summary() -> String {
+pub(super) fn audio_history_summary() -> String {
     let Ok(entries) = fs::read_dir(audio_history_directory()) else {
         return "No retained recordings · retention is off by default".to_owned();
     };
@@ -106,7 +111,7 @@ fn audio_history_summary() -> String {
     )
 }
 
-fn save_audio_history(
+pub(super) fn save_audio_history(
     audio: &fluidvoice_audio::MonoAudioBuffer,
     budget_bytes: u64,
 ) -> Result<PathBuf, String> {
@@ -135,7 +140,7 @@ fn save_audio_history(
     Ok(path)
 }
 
-fn prune_audio_history(budget_bytes: u64) -> Result<(), String> {
+pub(super) fn prune_audio_history(budget_bytes: u64) -> Result<(), String> {
     let directory = audio_history_directory();
     let Ok(entries) = fs::read_dir(&directory) else {
         return Ok(());
@@ -162,7 +167,7 @@ fn prune_audio_history(budget_bytes: u64) -> Result<(), String> {
     Ok(())
 }
 
-fn clear_missing_audio_history_references() -> Result<(), String> {
+pub(super) fn clear_missing_audio_history_references() -> Result<(), String> {
     let _history_guard = HISTORY_IO_LOCK
         .lock()
         .map_err(|_| "history lock was poisoned".to_owned())?;
@@ -187,7 +192,7 @@ fn clear_missing_audio_history_references() -> Result<(), String> {
     Ok(())
 }
 
-fn write_audio_history_zip(output_path: &PathBuf) -> Result<usize, String> {
+pub(super) fn write_audio_history_zip(output_path: &PathBuf) -> Result<usize, String> {
     let parent = output_path
         .parent()
         .ok_or_else(|| "export path has no parent".to_owned())?;
@@ -236,15 +241,15 @@ fn write_audio_history_zip(output_path: &PathBuf) -> Result<usize, String> {
     Ok(count)
 }
 
-fn ai_profiles_path() -> PathBuf {
+pub(super) fn ai_profiles_path() -> PathBuf {
     data_directory().join("ai-profiles.json")
 }
 
-fn command_history_path() -> PathBuf {
+pub(super) fn command_history_path() -> PathBuf {
     data_directory().join("command-history.tsv")
 }
 
-fn append_command_history(
+pub(super) fn append_command_history(
     mut controller: Pin<&mut ffi::FluidVoiceController>,
     role: &str,
     text: &str,
@@ -260,7 +265,7 @@ fn append_command_history(
         .set_command_history(history.iter().rev().map(QString::from).collect());
 }
 
-fn load_lines(path: &PathBuf) -> Vec<String> {
+pub(super) fn load_lines(path: &PathBuf) -> Vec<String> {
     fs::read_to_string(path)
         .map(|contents| {
             contents
@@ -273,7 +278,7 @@ fn load_lines(path: &PathBuf) -> Vec<String> {
         .unwrap_or_default()
 }
 
-fn save_lines(path: &std::path::Path, lines: &[String]) -> Result<(), String> {
+pub(super) fn save_lines(path: &std::path::Path, lines: &[String]) -> Result<(), String> {
     let mut contents = lines.join("\n");
     if !contents.is_empty() {
         contents.push('\n');
@@ -281,7 +286,7 @@ fn save_lines(path: &std::path::Path, lines: &[String]) -> Result<(), String> {
     atomic_write_private(path, contents.as_bytes())
 }
 
-fn atomic_write_private(path: &std::path::Path, contents: &[u8]) -> Result<(), String> {
+pub(super) fn atomic_write_private(path: &std::path::Path, contents: &[u8]) -> Result<(), String> {
     use std::time::{SystemTime, UNIX_EPOCH};
     let parent = path
         .parent()

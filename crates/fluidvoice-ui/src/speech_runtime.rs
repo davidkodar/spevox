@@ -6,17 +6,17 @@ pub(crate) fn progress_ratio(numerator: u64, denominator: u64) -> f32 {
 }
 
 #[allow(clippy::cast_precision_loss)]
-fn display_ratio(numerator: u64, denominator: u64) -> f64 {
+pub(super) fn display_ratio(numerator: u64, denominator: u64) -> f64 {
     numerator as f64 / denominator.max(1) as f64
 }
 
 /// Input is clamped and rounded into the complete i16 range before conversion.
 #[allow(clippy::cast_possible_truncation)]
-fn pcm_i16(sample: f32) -> i16 {
+pub(super) fn pcm_i16(sample: f32) -> i16 {
     (sample.clamp(-1.0, 1.0) * f32::from(i16::MAX)).round() as i16
 }
 
-fn shortcut_triggers() -> &'static [(&'static str, &'static str)] {
+pub(super) fn shortcut_triggers() -> &'static [(&'static str, &'static str)] {
     &[
         ("Ctrl  Alt  D", "CTRL+ALT+D"),
         ("Ctrl  Alt  Space", "CTRL+ALT+SPACE"),
@@ -25,7 +25,7 @@ fn shortcut_triggers() -> &'static [(&'static str, &'static str)] {
     ]
 }
 
-fn selected_language_code(controller: &FluidVoiceControllerRust) -> String {
+pub(super) fn selected_language_code(controller: &FluidVoiceControllerRust) -> String {
     usize::try_from(controller.selected_language)
         .ok()
         .and_then(|index| controller.language_codes.get(index))
@@ -33,7 +33,7 @@ fn selected_language_code(controller: &FluidVoiceControllerRust) -> String {
         .unwrap_or_else(|| "en".to_owned())
 }
 
-fn parakeet_backend(compute_backend: i32) -> ParakeetBackend {
+pub(super) fn parakeet_backend(compute_backend: i32) -> ParakeetBackend {
     if compute_backend == 2 {
         ParakeetBackend::Cpu
     } else {
@@ -41,7 +41,7 @@ fn parakeet_backend(compute_backend: i32) -> ParakeetBackend {
     }
 }
 
-fn compute_backend_summary(compute_backend: i32) -> String {
+pub(super) fn compute_backend_summary(compute_backend: i32) -> String {
     let cpu = parakeet::runtime_installed(ParakeetBackend::Cpu);
     let vulkan = parakeet::runtime_installed(ParakeetBackend::Vulkan);
     let runtime = match (vulkan, cpu) {
@@ -62,7 +62,7 @@ fn compute_backend_summary(compute_backend: i32) -> String {
     }
 }
 
-fn native_model_for_engine(engine: i32) -> Option<parakeet::Model> {
+pub(super) fn native_model_for_engine(engine: i32) -> Option<parakeet::Model> {
     match engine {
         1 => Some(parakeet::PARAKEET_V3),
         2 => Some(parakeet::NEMOTRON_35),
@@ -72,7 +72,7 @@ fn native_model_for_engine(engine: i32) -> Option<parakeet::Model> {
     }
 }
 
-fn native_language_for_model(model: parakeet::Model, language: &str) -> String {
+pub(super) fn native_language_for_model(model: parakeet::Model, language: &str) -> String {
     if model == parakeet::NEMOTRON_EN || model == parakeet::PARAKEET_CTC {
         return "en-US".to_owned();
     }
@@ -124,7 +124,7 @@ fn native_language_for_model(model: parakeet::Model, language: &str) -> String {
     locale.to_owned()
 }
 
-fn effective_parakeet_backend(compute_backend: i32) -> ParakeetBackend {
+pub(super) fn effective_parakeet_backend(compute_backend: i32) -> ParakeetBackend {
     if compute_backend == 0
         && !parakeet::runtime_installed(ParakeetBackend::Vulkan)
         && parakeet::runtime_installed(ParakeetBackend::Cpu)
@@ -135,11 +135,11 @@ fn effective_parakeet_backend(compute_backend: i32) -> ParakeetBackend {
     }
 }
 
-fn parakeet_runtime_available(compute_backend: i32) -> bool {
+pub(super) fn parakeet_runtime_available(compute_backend: i32) -> bool {
     parakeet::runtime_installed(effective_parakeet_backend(compute_backend))
 }
 
-fn friendly_runtime_error(error: &str) -> String {
+pub(super) fn friendly_runtime_error(error: &str) -> String {
     if error.contains("SPIRV-Headers") || error.contains("spirv-headers") {
         "Vulkan development package SPIRV-Headers is missing".to_owned()
     } else if error.contains("glslc") {
@@ -149,19 +149,19 @@ fn friendly_runtime_error(error: &str) -> String {
     }
 }
 
-fn language_display_name(code: &str) -> Option<&'static str> {
+pub(super) fn language_display_name(code: &str) -> Option<&'static str> {
     supported_languages()
         .iter()
         .find_map(|(name, candidate)| (*candidate == code).then_some(*name))
 }
 
-fn selected_model_path(controller: &FluidVoiceControllerRust) -> Option<PathBuf> {
+pub(super) fn selected_model_path(controller: &FluidVoiceControllerRust) -> Option<PathBuf> {
     let index = usize::try_from(controller.selected_model).ok()?;
     let path = controller.model_paths.get(index)?;
     model_file_valid(path, whisper_model_catalog().get(index)?).then(|| path.clone())
 }
 
-fn selected_shortcut_trigger(controller: &FluidVoiceControllerRust) -> String {
+pub(super) fn selected_shortcut_trigger(controller: &FluidVoiceControllerRust) -> String {
     usize::try_from(controller.selected_shortcut)
         .ok()
         .and_then(|index| shortcut_triggers().get(index))
@@ -169,11 +169,11 @@ fn selected_shortcut_trigger(controller: &FluidVoiceControllerRust) -> String {
         .to_owned()
 }
 
-fn valid_index(index: i32, length: usize) -> bool {
+pub(super) fn valid_index(index: i32, length: usize) -> bool {
     usize::try_from(index).is_ok_and(|index| index < length)
 }
 
-fn dump_asr_audio(audio: &fluidvoice_audio::MonoAudioBuffer) -> Result<(), String> {
+pub(super) fn dump_asr_audio(audio: &fluidvoice_audio::MonoAudioBuffer) -> Result<(), String> {
     let Some(path) = std::env::var_os("FLUIDVOICE_ASR_DUMP").map(PathBuf::from) else {
         return Ok(());
     };
@@ -194,21 +194,21 @@ fn dump_asr_audio(audio: &fluidvoice_audio::MonoAudioBuffer) -> Result<(), Strin
     writer.finalize().map_err(|error| error.to_string())
 }
 
-fn meter_level(peak: f32) -> f32 {
+pub(super) fn meter_level(peak: f32) -> f32 {
     if !peak.is_finite() || peak <= 0.0 {
         return 0.0;
     }
     ((20.0 * peak.log10() + 60.0) / 60.0).clamp(0.0, 1.0)
 }
 
-fn peak_db(peak: f32) -> f32 {
+pub(super) fn peak_db(peak: f32) -> f32 {
     if !peak.is_finite() || peak <= 0.0 {
         return -60.0;
     }
     (20.0 * peak.log10()).clamp(-60.0, 0.0)
 }
 
-fn asr_gain(peak: f32, user_gain: f32) -> f32 {
+pub(super) fn asr_gain(peak: f32, user_gain: f32) -> f32 {
     if !peak.is_finite() || peak <= 0.000_5 {
         return 1.0;
     }
@@ -221,7 +221,7 @@ fn asr_gain(peak: f32, user_gain: f32) -> f32 {
     requested.min(headroom_limit).max(1.0)
 }
 
-fn suspicious_single_word(text: &str, duration: Duration) -> bool {
+pub(super) fn suspicious_single_word(text: &str, duration: Duration) -> bool {
     if duration < Duration::from_secs(2) {
         return false;
     }
@@ -231,3 +231,7 @@ fn suspicious_single_word(text: &str, duration: Duration) -> bool {
         .to_ascii_lowercase();
     matches!(normalized.as_str(), "you" | "thanks" | "thank you")
 }
+use super::{
+    Duration, FluidVoiceControllerRust, ParakeetBackend, PathBuf, model_file_valid, parakeet,
+    supported_languages, whisper_model_catalog,
+};
