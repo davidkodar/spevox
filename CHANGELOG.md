@@ -5,6 +5,9 @@ All notable changes to FluidVoice Linux are documented here. The project uses
 
 ## 0.4.0 - 2026-08-16
 
+- Isolated the application-profile D-Bus integration test under a unique bus
+  name with bounded waits, preventing the full validation suite from hanging
+  when a real FluidVoice instance is already running during local release QA.
 - Added a persistent four-step first-run onboarding wizard covering microphone
   and privacy expectations, practical Whisper speed/accuracy/size guidance,
   cross-vendor Vulkan behavior, experimental-engine limitations, and a final
