@@ -5,9 +5,15 @@ Native, local-first voice dictation for KDE Plasma on Wayland.
 > [!IMPORTANT]
 > This is an unofficial Linux port inspired by
 > [FluidVoice for macOS](https://github.com/altic-dev/FluidVoice). It is not
-> sponsored or endorsed by Altic or the upstream maintainers. Development
-> version 0.5.0 remains a private preview and is not yet
-> packaged for general distribution.
+> sponsored or endorsed by Altic or the upstream maintainers. FluidVoice Linux
+> is an independent Linux implementation by David Bolin, informed by the
+> upstream GPLv3 source and user experience. It remains a prerelease preview.
+
+Credit belongs to Altic and the upstream FluidVoice contributors for the
+original macOS project and visual identity. This port reuses the upstream
+application and menu-bar artwork under GPLv3 from the exact revision recorded
+in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). See
+[CREDITS.md](CREDITS.md) for authorship and relationship details.
 
 FluidVoice Linux combines a Rust 2024 core, Qt Quick/CXX-Qt interface,
 PipeWire capture, XDG desktop portals, and local whisper.cpp inference. The
@@ -90,8 +96,9 @@ For a development run without installation:
 QMAKE=/usr/bin/qmake6 cargo run -p fluidvoice-ui
 ```
 
-Release tags publish a checksummed binary archive, an Arch `PKGBUILD`, and
-Sigstore keyless signatures/certificates. Verify a
+Release tags publish a checksummed binary archive and an Arch `PKGBUILD`.
+Automated release runs also publish Sigstore keyless signatures/certificates.
+Verify a signed
 download with `cosign verify-blob --certificate-identity-regexp
 'github.com/davidkodar/fluidvoice-linux' --certificate-oidc-issuer
 'https://token.actions.githubusercontent.com' --certificate FILE.pem
@@ -152,7 +159,7 @@ usable but does not yet match the depth of the current macOS implementation.
 | Audio recording history | Available | Available | Optional and off by default; Linux retains local mono WAV recordings within a configurable budget, supports playback and deletion, and exports audio plus metadata as ZIP. |
 | Adaptive themes and accents | Available | Available | System/KDE defaults plus explicit FluidVoice themes and colors. |
 | Tray/menu-bar integration | Available | Available | Plasma tray is the Linux equivalent of the macOS menu bar item. |
-| Automatic updates / beta channel | Partial | Available | The app checks GitHub releases but does not yet install updates unattended or provide a separate beta feed; release checks remain unavailable while the repository is private. |
+| Automatic updates / beta channel | Partial | Available | The app checks public GitHub releases but does not yet install updates unattended or provide a separate beta feed. Hosted release automation remains manually triggered while CI capacity is limited. |
 
 The macOS feature set changes quickly. This matrix reflects the upstream source
 and README reviewed during 0.5.0 development; it is not a promise of identical
@@ -347,9 +354,8 @@ models, settings, history, or other user data.
 
 Tagged releases are built by GitHub Actions as versioned `x86_64.tar.gz`
 archives with SHA-256 checksum files. `packaging/package-tarball.sh` reproduces
-that artifact locally. The in-app update check reads GitHub Releases and will
-remain unavailable while this repository is private; releases are not installed
-silently.
+that artifact locally. The in-app update check reads public GitHub Releases;
+releases are never installed silently.
 
 Embedded whisper.cpp remains the conservative default and automatic fallback.
 The four managed NVIDIA engines are optional native KDE/Linux backends. Apple
@@ -375,9 +381,10 @@ More detail is available in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 The core KDE Wayland dictation workflow, broad audio decoding, rich local
 history, streamed AI cleanup, explicit application profiles, and checksummed
-release packaging are operational. Before a general public release, priorities
-are guided local-model setup, accessibility review, signed distribution-native
-packages, and wider testing across Plasma distributions and GPU vendors.
+release packaging are operational. The public preview remains prerelease
+software while guided local-model setup, accessibility review, signed
+distribution-native packages, and testing across more Plasma distributions and
+GPU vendors continue.
 
 ### Completed in 0.5.0
 
@@ -399,16 +406,21 @@ packages, and wider testing across Plasma distributions and GPU vendors.
   maintained Fluid Intelligence model.
 
 Please use [GitHub Issues](https://github.com/davidkodar/fluidvoice-linux/issues)
-for reproducible bugs and feature proposals once the repository is public.
+for reproducible bugs and focused feature proposals.
 
 ## Upstream relationship and licensing
 
-This project is GPLv3 and is based on the GPLv3-licensed
-[FluidVoice](https://github.com/altic-dev/FluidVoice) macOS application. It
-reuses upstream application and menu-bar icons under GPLv3. See [LICENSE](LICENSE)
-and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for license and asset
-provenance details.
+This independent Linux implementation is GPLv3 and is based on the
+GPLv3-licensed [FluidVoice](https://github.com/altic-dev/FluidVoice) macOS
+project created by Altic and the upstream contributors. FluidVoice Linux is
+authored and maintained by David Bolin. It reuses upstream application and
+menu-bar icons under GPLv3. See [LICENSE](LICENSE), [CREDITS.md](CREDITS.md), and
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for authorship, license, and
+exact asset-provenance details. The generated
+[THIRD_PARTY_LICENSES.html](THIRD_PARTY_LICENSES.html) bundles the license texts
+and crate attribution for the locked Rust dependency graph.
 
 Fluid Intelligence is a separate, privately maintained component and is not
 part of this repository. FluidVoice names and artwork remain associated with
-their respective owners; this Linux port clearly identifies itself as unofficial.
+their respective owners; no trademark license or upstream endorsement is
+claimed, and this Linux port clearly identifies itself as unofficial.

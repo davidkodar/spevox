@@ -16,6 +16,9 @@
   <categories><category>Utility</category><category>Accessibility</category></categories>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="0.5.1" date="2026-08-17">
+      <description><p>Adds public-preview attribution and legal notices, a complete generated Rust dependency-license bundle, locked license and source-origin policy, portable release checksums, build-path-redacted binaries, and stronger release archive validation.</p></description>
+    </release>
     <release version="0.5.0" date="2026-08-17">
       <description><p>Adds conservative language-aware AI cleanup, deterministic preprocessing, model quality and privacy guidance, cleanup policy and language metadata in History exports, real controller module boundaries, responsive background I/O, consolidated runtime and delivery policies, hardened private storage and local-provider networking, expanded regression coverage, and complete release validation.</p></description>
     </release>
@@ -29,7 +32,7 @@
       <description><p>Adds Vulkan acceleration, KDE-aware appearance settings, upstream-style navigation, model management, and local productivity features.</p></description>
     </release>
     <release version="0.1.0" date="2026-08-15">
-      <description><p>Initial private preview with native KDE Wayland dictation, PipeWire capture, local Whisper transcription, and clipboard delivery.</p></description>
+      <description><p>Initial development preview with native KDE Wayland dictation, PipeWire capture, local Whisper transcription, and clipboard delivery.</p></description>
     </release>
   </releases>
 </component>

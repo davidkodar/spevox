@@ -1,5 +1,10 @@
 # Third-party notices
 
+FluidVoice Linux is an independent Linux implementation authored and maintained
+by David Bolin. The original FluidVoice macOS project and the artwork identified
+below are the work of Altic and the upstream FluidVoice contributors. This port
+is not sponsored or endorsed by them.
+
 ## FluidVoice artwork
 
 This unofficial Linux port includes copies of the application icon and menu-bar
@@ -7,6 +12,8 @@ icon from the upstream FluidVoice project:
 
 - Source: https://github.com/altic-dev/FluidVoice
 - Upstream revision: `ac9b3ad3cef4a669bf8a1345f313bbc57e5b1442`
+- Revision date: 2026-08-16
+- License file at that revision: GPL-3.0 (`f288702d2fa16d3cdf0035b15a9fcbc552cd88e7` Git blob)
 - Original paths:
   - `Sources/Fluid/Assets.xcassets/AppIcon.appiconset/`
   - `Sources/Fluid/Assets.xcassets/MenuBarIcon.imageset/`
@@ -15,7 +22,12 @@ icon from the upstream FluidVoice project:
 
 The assets are redistributed for use by this modified, unofficial Linux port.
 FluidVoice and its artwork may identify the upstream project; this project does
-not claim sponsorship or endorsement by Altic or the upstream maintainers.
+not claim sponsorship, endorsement, or a trademark license from Altic or the
+upstream maintainers. The copied files match these upstream Git blobs:
+
+- 256 px application icon: `34864dc292dbd56417f6feb963c7ed62050f64bf`
+- 512 px application icon: `c1d8af8a72808c87d7ec16c5b520702eeee68444`
+- 3x menu-bar/tray icon: `c7364d2c0f7be55180ceba1dd4759d723d781e1c`
 
 The complete GPLv3 license is provided in [`LICENSE`](LICENSE).
 

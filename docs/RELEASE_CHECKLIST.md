@@ -5,7 +5,8 @@
 - Work from a clean `main` worktree with the intended version and changelog.
 - Run `./packaging/release-check.sh` on KDE Plasma Wayland.
 - Confirm the locked workspace tests, release build, QML validation, AppStream
-  metadata, Flatpak YAML, staged installation, archive contents, and checksum
+  metadata, dependency-license policy and bundle, Flatpak YAML, staged
+  installation, archive contents, portable checksum, and build-path redaction
   all pass.
 - Build optional model assets only with their documented pinned conversion
   scripts; compare the generated SHA-256 with the application catalog.
@@ -49,7 +50,18 @@
 
 ## Publish
 
-- Confirm `THIRD_PARTY_NOTICES.md`, README feature parity, limitations, model
+- Confirm `CREDITS.md`, `THIRD_PARTY_NOTICES.md`,
+  `THIRD_PARTY_LICENSES.html`, README feature parity, limitations, model
   licenses, and `CHANGELOG.md` match the actual build.
-- Create the signed release from the tested commit, upload checksummed artifacts,
-  and download the published artifact on a clean system before announcing it.
+- Run Gitleaks against all refs and confirm no credentials or private data exist
+  anywhere in Git history.
+- Confirm copied upstream artwork matches the pinned Git blobs and that the
+  license at the pinned revision is still documented accurately.
+- Create the release from the tested commit, upload checksummed artifacts and,
+  when the automated release workflow is used, Sigstore signatures. Download
+  the published artifacts into a new directory and verify them by basename.
+- Confirm the release archive contains corresponding source, credit, notices,
+  dependency licenses, and no local build paths before announcing it.
+- For the first public release, enable deletion and force-push protection on
+  `main`, private vulnerability reporting, and GitHub secret scanning as soon as
+  repository visibility changes.

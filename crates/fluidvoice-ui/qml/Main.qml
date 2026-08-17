@@ -28,7 +28,7 @@ ApplicationWindow {
         qsTr("Settings"), qsTr("Voice Engine"), qsTr("AI Enhancement"),
         qsTr("Custom Dictionary"), qsTr("Command Mode"), qsTr("File Transcription"),
         qsTr("History"), qsTr("Stats"), qsTr("Getting Started"),
-        qsTr("Change logs"), qsTr("Feedback")
+        qsTr("Change logs"), qsTr("Feedback"), qsTr("About & License")
     ]
     readonly property var destinationDescriptions: [
         qsTr("Manage FluidVoice behavior, shortcuts, and appearance."),
@@ -41,7 +41,8 @@ ApplicationWindow {
         qsTr("See how you use FluidVoice over time."),
         qsTr("Learn the essentials and complete initial setup."),
         qsTr("See what changed in recent versions."),
-        qsTr("Share feedback about this unofficial Linux port.")
+        qsTr("Share feedback about this unofficial Linux port."),
+        qsTr("View authorship, upstream credit, warranty, and license information.")
     ]
 
     function showSettingsSection(index) {
@@ -740,7 +741,8 @@ ApplicationWindow {
                         { "header": true, "name": qsTr("HELP") },
                         { "name": qsTr("Getting Started"), "symbol": "⌂", "page": 8 },
                         { "name": qsTr("Change logs"), "symbol": "≡", "page": 9 },
-                        { "name": qsTr("Feedback"), "symbol": "✉", "page": 10 }
+                        { "name": qsTr("Feedback"), "symbol": "✉", "page": 10 },
+                        { "name": qsTr("About & License"), "symbol": "ⓘ", "page": 11 }
                     ]
                     delegate: Rectangle {
                         required property var modelData
@@ -2456,6 +2458,28 @@ ApplicationWindow {
                             Text { text: qsTr("HELP IMPROVE FLUIDVOICE LINUX"); color: root.tertiaryText; font.pixelSize: 11; font.weight: Font.Medium }
                             Text { Layout.fillWidth: true; text: qsTr("Report a bug or share an idea through GitHub. The browser opens outside FluidVoice; nothing is submitted automatically."); color: root.secondaryText; font.pixelSize: 13; wrapMode: Text.Wrap }
                             Button { text: qsTr("Open GitHub issues"); onClicked: Qt.openUrlExternally("https://github.com/davidkodar/fluidvoice-linux/issues") }
+                        }
+                    }
+                }
+
+                ColumnLayout {
+                    visible: root.settingsSection === 11
+                    spacing: 14
+                    Text { text: qsTr("About & License"); color: root.primaryText; font.pixelSize: 22; font.weight: Font.Bold }
+                    Text { Layout.fillWidth: true; text: root.destinationDescriptions[11]; color: root.secondaryText; font.pixelSize: 14; wrapMode: Text.Wrap }
+                    Rectangle {
+                        Layout.fillWidth: true; implicitHeight: legalContent.implicitHeight + 40; radius: 16; color: root.panel; border.color: root.hairline
+                        ColumnLayout {
+                            id: legalContent; anchors.fill: parent; anchors.margins: 20; spacing: 12
+                            Text { text: qsTr("FLUIDVOICE LINUX %1").arg(controller.appVersion); color: root.tertiaryText; font.pixelSize: 11; font.weight: Font.Medium }
+                            Text { Layout.fillWidth: true; text: qsTr("Copyright © 2026 David Bolin. Licensed under the GNU General Public License, version 3 only."); color: root.primaryText; font.pixelSize: 14; wrapMode: Text.Wrap }
+                            Text { Layout.fillWidth: true; text: qsTr("This program comes with absolutely no warranty. You may copy, modify, and redistribute it under GPLv3. The complete license and corresponding source are available from the project repository."); color: root.secondaryText; font.pixelSize: 13; lineHeight: 1.2; wrapMode: Text.Wrap }
+                            Rectangle { Layout.fillWidth: true; height: 1; color: root.hairline }
+                            Text { Layout.fillWidth: true; text: qsTr("This is an independent, unofficial Linux implementation based on the GPLv3 FluidVoice project for macOS by Altic and the upstream contributors. It is not sponsored or endorsed by them. The application and tray artwork are credited to the upstream contributors; exact provenance is recorded in THIRD_PARTY_NOTICES.md."); color: root.secondaryText; font.pixelSize: 13; lineHeight: 1.2; wrapMode: Text.Wrap }
+                            RowLayout {
+                                Button { text: qsTr("Project source & GPLv3"); onClicked: Qt.openUrlExternally("https://github.com/davidkodar/fluidvoice-linux") }
+                                Button { text: qsTr("Upstream FluidVoice"); onClicked: Qt.openUrlExternally("https://github.com/altic-dev/FluidVoice") }
+                            }
                         }
                     }
                 }

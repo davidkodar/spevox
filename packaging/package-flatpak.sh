@@ -17,5 +17,8 @@ git -C "$project_dir" archive HEAD | tar -x -C "$source_dir"
 flatpak-builder --force-clean --repo="$repo_dir" "$build_dir" \
   "$project_dir/packaging/flatpak/io.github.davidkodar.FluidVoiceLinux.yml"
 flatpak build-bundle "$repo_dir" "$bundle" io.github.davidkodar.FluidVoiceLinux
-sha256sum "$bundle" > "$bundle.sha256"
+(
+    cd "$(dirname "$bundle")"
+    sha256sum "$(basename "$bundle")" > "$(basename "$bundle").sha256"
+)
 echo "$bundle"

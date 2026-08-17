@@ -6,7 +6,7 @@ therefore handled privately until a fix is available.
 
 ## Supported versions
 
-The project is currently a private preview. Only the newest published prerelease
+The project is currently a public prerelease preview. Only the newest published prerelease
 and the current `main` branch receive security fixes. Older prereleases should
 be upgraded rather than patched independently.
 
@@ -31,4 +31,3 @@ exposure, credential disclosure, command or path injection, insecure package or
 model verification, privilege-boundary errors, and access to another user's
 private application data. General support questions and model-quality concerns
 without a security impact belong in the normal issue tracker.
-

@@ -16,6 +16,13 @@ QMAKE="${QMAKE:-/usr/bin/qmake6}" cargo clippy --workspace --all-targets --locke
 if command -v cargo-audit >/dev/null; then
     cargo audit
 fi
+if command -v cargo-deny >/dev/null; then
+    cargo deny check advisories licenses sources
+fi
+if cargo about --version >/dev/null 2>&1; then
+    cargo about generate about.hbs --workspace --locked --fail --output-file "${smoke_root}/THIRD_PARTY_LICENSES.html"
+    cmp THIRD_PARTY_LICENSES.html "${smoke_root}/THIRD_PARTY_LICENSES.html"
+fi
 qmllint crates/fluidvoice-ui/qml/Main.qml
 find packaging -type f -name '*.sh' -exec bash -n {} +
 # Keep localhost mock-provider integration tests deterministic. They are tiny,
@@ -38,7 +45,9 @@ test -f "${smoke_root}/install/usr/share/metainfo/io.github.davidkodar.FluidVoic
 test -f "${smoke_root}/install/usr/share/icons/hicolor/256x256/apps/io.github.davidkodar.FluidVoiceLinux.png"
 test -f "${smoke_root}/install/usr/share/icons/hicolor/512x512/apps/io.github.davidkodar.FluidVoiceLinux.png"
 test -f "${smoke_root}/install/usr/share/doc/fluidvoice-linux/README.md"
+test -f "${smoke_root}/install/usr/share/doc/fluidvoice-linux/CREDITS.md"
 test -f "${smoke_root}/install/usr/share/doc/fluidvoice-linux/THIRD_PARTY_NOTICES.md"
+test -f "${smoke_root}/install/usr/share/doc/fluidvoice-linux/THIRD_PARTY_LICENSES.html"
 
 ./packaging/package-tarball.sh
 version=$(awk -F '"' '/^version = "/ { print $2; exit }' Cargo.toml)
@@ -49,7 +58,9 @@ tar -tzf "${archive}" > "${archive_listing}"
 grep -q '/target/release/fluidvoice-ui$' "${archive_listing}"
 grep -q '/data/icons/hicolor/512x512/apps/io.github.davidkodar.FluidVoiceLinux.png$' "${archive_listing}"
 grep -q '/README.md$' "${archive_listing}"
+grep -q '/CREDITS.md$' "${archive_listing}"
 grep -q '/THIRD_PARTY_NOTICES.md$' "${archive_listing}"
+grep -q '/THIRD_PARTY_LICENSES.html$' "${archive_listing}"
 archive_install="${smoke_root}/archive-install"
 archive_extract="${smoke_root}/archive-extract"
 mkdir -p "${archive_extract}"
@@ -59,6 +70,12 @@ test -x "${extracted_root}/packaging/install.sh"
 DESTDIR="${archive_install}" PREFIX=/usr "${extracted_root}/packaging/install.sh"
 test -x "${archive_install}/usr/bin/fluidvoice-ui"
 test -f "${archive_install}/usr/share/icons/hicolor/512x512/apps/io.github.davidkodar.FluidVoiceLinux.png"
+test -f "${archive_install}/usr/share/doc/fluidvoice-linux/CREDITS.md"
 test -f "${archive_install}/usr/share/doc/fluidvoice-linux/THIRD_PARTY_NOTICES.md"
-sha256sum "${archive}"
+test -f "${archive_install}/usr/share/doc/fluidvoice-linux/THIRD_PARTY_LICENSES.html"
+(cd "$(dirname "${archive}")" && sha256sum --check "$(basename "${archive}").sha256")
+if strings "${extracted_root}/target/release/fluidvoice-ui" | grep -Fq -- "${repo_root}"; then
+    echo "release binary contains the local repository path" >&2
+    exit 1
+fi
 echo "Release candidate validation passed."

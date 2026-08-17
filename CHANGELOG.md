@@ -1,7 +1,20 @@
 # Changelog
 
 All notable changes to FluidVoice Linux are documented here. The project uses
-[Semantic Versioning](https://semver.org/) while it remains in private preview.
+[Semantic Versioning](https://semver.org/) while it remains a prerelease preview.
+
+## 0.5.1 - 2026-08-17
+
+- Prepared the repository for a public prerelease with prominent upstream
+  credit, exact GPLv3 artwork provenance, an in-app legal-notices page, public
+  security/support policies, and a generated Rust dependency-license bundle.
+- Added a locked cargo-deny policy covering advisories, accepted licenses, and
+  dependency source origins to the release gate.
+- Made release checksum files portable after download and removed local source,
+  Cargo-home, and compiler paths from prebuilt release binaries.
+- Extended archive validation to install credits and dependency licenses, verify
+  checksums by basename, and reject binaries containing the local repository
+  path.
 
 ## 0.5.0 - 2026-08-17
 

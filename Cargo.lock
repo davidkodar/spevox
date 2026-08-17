@@ -718,7 +718,7 @@ dependencies = [
 
 [[package]]
 name = "fluidvoice-app"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "fluidvoice-audio",
  "fluidvoice-delivery",
@@ -730,21 +730,21 @@ dependencies = [
 
 [[package]]
 name = "fluidvoice-audio"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "pipewire",
 ]
 
 [[package]]
 name = "fluidvoice-delivery"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "arboard",
 ]
 
 [[package]]
 name = "fluidvoice-portal"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "ashpd",
  "futures-util",
@@ -754,7 +754,7 @@ dependencies = [
 
 [[package]]
 name = "fluidvoice-transcription"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "fluidvoice-audio",
  "serde_json",
@@ -765,7 +765,7 @@ dependencies = [
 
 [[package]]
 name = "fluidvoice-ui"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "cxx",
  "cxx-qt",

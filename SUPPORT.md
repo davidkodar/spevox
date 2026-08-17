@@ -1,6 +1,6 @@
 # Support
 
-FluidVoice Linux is an unofficial Linux port in private preview. Support is
+FluidVoice Linux is an unofficial Linux port in public prerelease preview. Support is
 best-effort and currently targets KDE Plasma on Wayland.
 
 ## Where to ask

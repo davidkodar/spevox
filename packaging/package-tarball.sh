@@ -7,6 +7,11 @@ stage="$project_dir/target/package/fluidvoice-linux-$version"
 archive="$project_dir/target/package/fluidvoice-linux-$version-x86_64.tar.gz"
 
 cd "$project_dir"
+build_root="/usr/src/fluidvoice-linux"
+cargo_home="${CARGO_HOME:-${HOME:-/tmp}/.cargo}"
+export RUSTFLAGS="${RUSTFLAGS:-} --remap-path-prefix=${project_dir}=${build_root} --remap-path-prefix=${cargo_home}=/usr/src/cargo"
+export CFLAGS="${CFLAGS:-} -ffile-prefix-map=${project_dir}=${build_root} -ffile-prefix-map=${cargo_home}=/usr/src/cargo"
+export CXXFLAGS="${CXXFLAGS:-} -ffile-prefix-map=${project_dir}=${build_root} -ffile-prefix-map=${cargo_home}=/usr/src/cargo"
 QMAKE=${QMAKE:-/usr/bin/qmake6} cargo build --release --locked -p fluidvoice-ui
 rm -rf "$stage"
 install -Dm755 target/release/fluidvoice-ui "$stage/target/release/fluidvoice-ui"
@@ -20,7 +25,12 @@ install -Dm644 packaging/kwin-script/metadata.json "$stage/packaging/kwin-script
 install -Dm644 packaging/kwin-script/contents/code/main.js "$stage/packaging/kwin-script/contents/code/main.js"
 install -Dm644 LICENSE "$stage/LICENSE"
 install -Dm644 README.md "$stage/README.md"
+install -Dm644 CREDITS.md "$stage/CREDITS.md"
 install -Dm644 THIRD_PARTY_NOTICES.md "$stage/THIRD_PARTY_NOTICES.md"
+install -Dm644 THIRD_PARTY_LICENSES.html "$stage/THIRD_PARTY_LICENSES.html"
 tar -C "$(dirname "$stage")" -czf "$archive" "$(basename "$stage")"
-sha256sum "$archive" > "$archive.sha256"
+(
+    cd "$(dirname "$archive")"
+    sha256sum "$(basename "$archive")" > "$(basename "$archive").sha256"
+)
 echo "$archive"

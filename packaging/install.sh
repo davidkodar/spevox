@@ -42,7 +42,9 @@ fi
 "${installer[@]}" -Dm644 data/icons/hicolor/512x512/apps/io.github.davidkodar.FluidVoiceLinux.png "$destination$prefix/share/icons/hicolor/512x512/apps/io.github.davidkodar.FluidVoiceLinux.png"
 "${installer[@]}" -Dm644 LICENSE "$destination$prefix/share/licenses/fluidvoice-linux/LICENSE"
 "${installer[@]}" -Dm644 README.md "$destination$prefix/share/doc/fluidvoice-linux/README.md"
+"${installer[@]}" -Dm644 CREDITS.md "$destination$prefix/share/doc/fluidvoice-linux/CREDITS.md"
 "${installer[@]}" -Dm644 THIRD_PARTY_NOTICES.md "$destination$prefix/share/doc/fluidvoice-linux/THIRD_PARTY_NOTICES.md"
+"${installer[@]}" -Dm644 THIRD_PARTY_LICENSES.html "$destination$prefix/share/doc/fluidvoice-linux/THIRD_PARTY_LICENSES.html"
 "${installer[@]}" -Dm644 packaging/kwin-script/metadata.json "$destination$prefix/share/kwin/scripts/fluidvoiceprofiles/metadata.json"
 "${installer[@]}" -Dm644 packaging/kwin-script/contents/code/main.js "$destination$prefix/share/kwin/scripts/fluidvoiceprofiles/contents/code/main.js"
 
