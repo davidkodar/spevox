@@ -15,7 +15,10 @@ sha256sums=('@SOURCE_SHA256@')
 
 build() {
   cd "$pkgname-$pkgver"
-  QMAKE=/usr/bin/qmake6 cargo build --release --locked -p spevox-ui
+  # Several native dependencies generate Bindgen macro-evaluation files with
+  # the same temporary name. Serialize this clean package build to avoid their
+  # upstream race; normal incremental developer builds remain parallel.
+  QMAKE=/usr/bin/qmake6 cargo build --release --locked --jobs 1 -p spevox-ui
 }
 
 check() {
