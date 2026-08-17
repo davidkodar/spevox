@@ -1,6 +1,6 @@
 use super::{
-    AiConfig, HISTORY_IO_LOCK, LifetimeStats, PathBuf, Pin, QString, ffi, fs, history_path,
-    load_lines, save_lines, spreadsheet_safe,
+    AiConfig, HISTORY_IO_LOCK, LifetimeStats, PathBuf, fs, history_path, load_lines, save_lines,
+    spreadsheet_safe,
 };
 
 pub(super) struct HistoryContext<'a> {
@@ -13,11 +13,13 @@ pub(super) struct HistoryContext<'a> {
     pub(super) audio_path: &'a str,
 }
 
-pub(super) fn record_history(
-    mut controller: Pin<&mut ffi::FluidVoiceController>,
-    text: &str,
-    context: &HistoryContext<'_>,
-) {
+pub(super) struct HistoryUpdate {
+    pub(super) entries: Vec<String>,
+    pub(super) transcript_count: i32,
+    pub(super) dictated_word_count: i32,
+}
+
+pub(super) fn record_history(text: &str, context: &HistoryContext<'_>) -> HistoryUpdate {
     use std::time::{SystemTime, UNIX_EPOCH};
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -47,15 +49,11 @@ pub(super) fn record_history(
             .saturating_add(u64::try_from(text.split_whitespace().count()).unwrap_or(u64::MAX));
         lifetime_stats.save().ok();
     }
-    controller
-        .as_mut()
-        .set_history_entries(history.iter().rev().map(QString::from).collect());
-    controller
-        .as_mut()
-        .set_transcript_count(lifetime_stats.transcript_count_i32());
-    controller
-        .as_mut()
-        .set_dictated_word_count(lifetime_stats.dictated_word_count_i32());
+    HistoryUpdate {
+        entries: history.into_iter().rev().collect(),
+        transcript_count: lifetime_stats.transcript_count_i32(),
+        dictated_word_count: lifetime_stats.dictated_word_count_i32(),
+    }
 }
 
 pub(super) fn history_value(value: &str) -> String {

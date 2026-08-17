@@ -3385,8 +3385,7 @@ impl ffi::FluidVoiceController {
                             } else {
                                 "disabled"
                             };
-                            record_history(
-                                controller.as_mut(),
+                            let history_update = record_history(
                                 &history_text,
                                 &HistoryContext {
                                     raw_text: &raw_text,
@@ -3398,6 +3397,7 @@ impl ffi::FluidVoiceController {
                                     audio_path: "",
                                 },
                             );
+                            apply_history_update(controller.as_mut(), history_update);
                             controller
                                 .as_mut()
                                 .set_transcript_text(QString::from(&processed));
@@ -3927,8 +3927,7 @@ impl ffi::FluidVoiceController {
                             } else {
                                 "disabled"
                             };
-                            record_history(
-                                controller.as_mut(),
+                            let history_update = record_history(
                                 &processed,
                                 &HistoryContext {
                                     raw_text: &transcript.text,
@@ -3943,6 +3942,7 @@ impl ffi::FluidVoiceController {
                                         .unwrap_or(""),
                                 },
                             );
+                            apply_history_update(controller.as_mut(), history_update);
                             controller.as_mut().set_audio_history_status(QString::from(
                                 audio_history_summary(),
                             ));
@@ -4355,8 +4355,8 @@ use dictionary::{
 #[path = "history.rs"]
 mod history;
 use history::{
-    HistoryContext, ai_provider_name, decode_file_url, history_clipboard_text, history_field,
-    history_value, record_history, write_history_export,
+    HistoryContext, HistoryUpdate, ai_provider_name, decode_file_url, history_clipboard_text,
+    history_field, history_value, record_history, write_history_export,
 };
 #[path = "meeting.rs"]
 mod meeting;
@@ -4386,6 +4386,27 @@ use speech_runtime::{
     selected_language_code, selected_model_path, selected_shortcut_trigger, shortcut_triggers,
     suspicious_single_word, valid_index,
 };
+
+fn apply_history_update(
+    mut controller: Pin<&mut ffi::FluidVoiceController>,
+    update: HistoryUpdate,
+) {
+    let HistoryUpdate {
+        entries,
+        transcript_count,
+        dictated_word_count,
+    } = update;
+    controller.as_mut().set_history_entries(
+        entries
+            .into_iter()
+            .map(|entry| QString::from(entry.as_str()))
+            .collect(),
+    );
+    controller.as_mut().set_transcript_count(transcript_count);
+    controller
+        .as_mut()
+        .set_dictated_word_count(dictated_word_count);
+}
 #[cfg(test)]
 mod tests {
     use std::{fs, time::Duration};
