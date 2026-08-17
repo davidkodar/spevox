@@ -1,6 +1,18 @@
 use cxx_qt_build::{CxxQtBuilder, QmlModule};
 
 fn main() {
+    // CXX-Qt embeds these files in the executable's Qt resource collection.
+    // Track them explicitly so replacing branding assets cannot leave a stale
+    // icon inside an otherwise up-to-date binary.
+    for resource in [
+        "assets/spevox-app.png",
+        "assets/spevox-tray.png",
+        "assets/trash.svg",
+        "qml/Main.qml",
+    ] {
+        println!("cargo:rerun-if-changed={resource}");
+    }
+
     let builder = CxxQtBuilder::new_qml_module(
         QmlModule::new("io.github.davidkodar.Spevox").qml_file("qml/Main.qml"),
     )

@@ -27,8 +27,8 @@ modules:
       - install -Dm755 target/release/spevox /app/bin/spevox
       - install -Dm644 data/io.github.davidkodar.Spevox.desktop /app/share/applications/io.github.davidkodar.Spevox.desktop
       - install -Dm644 data/io.github.davidkodar.Spevox.metainfo.xml /app/share/metainfo/io.github.davidkodar.Spevox.metainfo.xml
-      - install -Dm644 crates/spevox-ui/assets/spevox-app.png /app/share/icons/hicolor/256x256/apps/io.github.davidkodar.Spevox.png
-      - install -Dm644 data/icons/hicolor/512x512/apps/io.github.davidkodar.Spevox.png /app/share/icons/hicolor/512x512/apps/io.github.davidkodar.Spevox.png
+      - install -Dm644 crates/spevox-ui/assets/spevox-app.png /app/share/icons/hicolor/256x256/apps/spevox-app.png
+      - install -Dm644 data/icons/hicolor/512x512/apps/io.github.davidkodar.Spevox.png /app/share/icons/hicolor/512x512/apps/spevox-app.png
       - install -Dm644 LICENSE /app/share/licenses/spevox/LICENSE
       - install -Dm644 packaging/kwin-script/metadata.json /app/share/kwin/scripts/spevoxprofiles/metadata.json
       - install -Dm644 packaging/kwin-script/contents/code/main.js /app/share/kwin/scripts/spevoxprofiles/contents/code/main.js

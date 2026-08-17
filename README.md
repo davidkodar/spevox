@@ -1,6 +1,6 @@
-# Spevox
-
-![Spevox logo](data/branding/spevox-logo.png)
+<p align="center">
+  <img src="data/branding/spevox-logo.png" alt="Spevox" width="360">
+</p>
 
 Native, local-first voice dictation for KDE Plasma on Wayland.
 

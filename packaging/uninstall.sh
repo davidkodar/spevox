@@ -9,6 +9,8 @@ files=(
   "$destination$prefix/share/metainfo/io.github.davidkodar.Spevox.metainfo.xml"
   "$destination$prefix/share/icons/hicolor/256x256/apps/io.github.davidkodar.Spevox.png"
   "$destination$prefix/share/icons/hicolor/512x512/apps/io.github.davidkodar.Spevox.png"
+  "$destination$prefix/share/icons/hicolor/256x256/apps/spevox-app.png"
+  "$destination$prefix/share/icons/hicolor/512x512/apps/spevox-app.png"
   "$destination$prefix/share/licenses/spevox/LICENSE"
   "$destination$prefix/share/doc/spevox/README.md"
   "$destination$prefix/share/doc/spevox/CREDITS.md"

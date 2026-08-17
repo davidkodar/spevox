@@ -40,9 +40,9 @@ fi
 "${install_command[@]}" -Dm644 data/io.github.davidkodar.Spevox.metainfo.xml \
   "$destination$prefix/share/metainfo/io.github.davidkodar.Spevox.metainfo.xml"
 "${install_command[@]}" -Dm644 crates/spevox-ui/assets/spevox-app.png \
-  "$destination$prefix/share/icons/hicolor/256x256/apps/io.github.davidkodar.Spevox.png"
+  "$destination$prefix/share/icons/hicolor/256x256/apps/spevox-app.png"
 "${install_command[@]}" -Dm644 data/icons/hicolor/512x512/apps/io.github.davidkodar.Spevox.png \
-  "$destination$prefix/share/icons/hicolor/512x512/apps/io.github.davidkodar.Spevox.png"
+  "$destination$prefix/share/icons/hicolor/512x512/apps/spevox-app.png"
 "${install_command[@]}" -Dm644 LICENSE "$destination$prefix/share/licenses/spevox/LICENSE"
 "${install_command[@]}" -Dm644 packaging/kwin-script/metadata.json \
   "$destination$prefix/share/kwin/scripts/spevoxprofiles/metadata.json"
@@ -57,7 +57,9 @@ if [[ -z "$destination" ]]; then
   install -Dm644 data/io.github.davidkodar.Spevox.desktop \
     "$user_data_home/applications/io.github.davidkodar.Spevox.desktop"
   if command -v kbuildsycoca6 >/dev/null; then
-    kbuildsycoca6 --noincremental
+    if ! kbuildsycoca6 --noincremental; then
+      echo "Warning: Plasma's application cache could not be refreshed automatically; log out and back in if Spevox is not immediately visible in the launcher." >&2
+    fi
   fi
 fi
 

@@ -17,7 +17,7 @@ SpevoxApplication::SpevoxApplication(int &argc, char **argv)
     setApplicationDisplayName("Spevox");
     setOrganizationName("Spevox");
     setDesktopFileName("io.github.davidkodar.Spevox");
-    QIcon applicationIcon = QIcon::fromTheme("io.github.davidkodar.Spevox");
+    QIcon applicationIcon = QIcon::fromTheme("spevox-app");
     if (applicationIcon.isNull()) {
         applicationIcon = QIcon(":/qt/qml/io/github/davidkodar/Spevox/assets/spevox-app.png");
     }
@@ -102,7 +102,7 @@ void SpevoxApplication::refreshApplicationIcon() {
     }
     setWindowIcon(icon);
     if (trayIcon) {
-        trayIcon->setIcon(icon);
+        trayIcon->setIcon(QIcon(":/qt/qml/io/github/davidkodar/Spevox/assets/spevox-tray.png"));
     }
     for (QWindow *window : topLevelWindows()) {
         window->setIcon(icon);

@@ -806,7 +806,7 @@ ApplicationWindow {
 
                 Text {
                     Layout.alignment: Qt.AlignHCenter
-                    text: qsTr("Unofficial Linux port · %1").arg(controller.appVersion)
+                    text: qsTr("Private preview · %1").arg(controller.appVersion)
                     color: root.tertiaryText
                     font.pixelSize: 11
                 }

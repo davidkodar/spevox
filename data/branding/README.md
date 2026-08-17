@@ -6,9 +6,11 @@ abstract “S” and two written-text lines.
 
 Copyright © 2026 David Bolin. Distributed with Spevox under GPL-3.0-only.
 
-- `spevox-icon-512.png` is the full-resolution application mark.
-- `spevox-logo.png` is the horizontal wordmark for documentation and project
-  pages.
+- `spevox-icon.svg` is the flat application-icon master.
+- `spevox-symbolic.svg` is the transparent monochrome tray-icon master.
+- `spevox-logo.svg` is the horizontal wordmark master.
+- The PNG files are reproducible raster exports for desktop metadata, QML, and
+  documentation.
 
 The runtime-sized application and tray assets are generated from the master
 icon and live under `crates/spevox-ui/assets/`; the freedesktop 512 px copy is

@@ -15,10 +15,16 @@ command -v ldd >/dev/null || {
   echo "ldd is required to verify the prebuilt binary's runtime libraries." >&2
   exit 2
 }
-if [[ ! -x target/release/spevox ]]; then
-  command -v cargo >/dev/null || { echo "Cargo is required to build from source." >&2; exit 2; }
+if [[ -f Cargo.toml ]]; then
+  command -v cargo >/dev/null || {
+    echo "Cargo is required to build this source checkout." >&2
+    exit 2
+  }
   [[ -f /usr/include/vulkan/vulkan.h ]] || { echo "Vulkan development headers are required." >&2; exit 2; }
   QMAKE=${QMAKE:-/usr/bin/qmake6} cargo build --release --locked -p spevox-ui
+elif [[ ! -x target/release/spevox ]]; then
+  echo "This package does not contain a usable prebuilt Spevox binary." >&2
+  exit 2
 fi
 
 if missing_libraries=$(ldd target/release/spevox 2>/dev/null | awk '/not found/ { print $1 }') && [[ -n "$missing_libraries" ]]; then
@@ -38,8 +44,8 @@ fi
 "${installer[@]}" -Dm755 target/release/spevox "$destination$prefix/bin/spevox"
 "${installer[@]}" -Dm644 data/io.github.davidkodar.Spevox.desktop "$destination$prefix/share/applications/io.github.davidkodar.Spevox.desktop"
 "${installer[@]}" -Dm644 data/io.github.davidkodar.Spevox.metainfo.xml "$destination$prefix/share/metainfo/io.github.davidkodar.Spevox.metainfo.xml"
-"${installer[@]}" -Dm644 crates/spevox-ui/assets/spevox-app.png "$destination$prefix/share/icons/hicolor/256x256/apps/io.github.davidkodar.Spevox.png"
-"${installer[@]}" -Dm644 data/icons/hicolor/512x512/apps/io.github.davidkodar.Spevox.png "$destination$prefix/share/icons/hicolor/512x512/apps/io.github.davidkodar.Spevox.png"
+"${installer[@]}" -Dm644 crates/spevox-ui/assets/spevox-app.png "$destination$prefix/share/icons/hicolor/256x256/apps/spevox-app.png"
+"${installer[@]}" -Dm644 data/icons/hicolor/512x512/apps/io.github.davidkodar.Spevox.png "$destination$prefix/share/icons/hicolor/512x512/apps/spevox-app.png"
 "${installer[@]}" -Dm644 LICENSE "$destination$prefix/share/licenses/spevox/LICENSE"
 "${installer[@]}" -Dm644 README.md "$destination$prefix/share/doc/spevox/README.md"
 "${installer[@]}" -Dm644 CREDITS.md "$destination$prefix/share/doc/spevox/CREDITS.md"
@@ -55,6 +61,8 @@ if [[ -z "$destination" ]]; then
     "$prefix/share/metainfo/io.github.davidkodar.FluidVoiceLinux.metainfo.xml"
     "$prefix/share/icons/hicolor/256x256/apps/io.github.davidkodar.FluidVoiceLinux.png"
     "$prefix/share/icons/hicolor/512x512/apps/io.github.davidkodar.FluidVoiceLinux.png"
+    "$prefix/share/icons/hicolor/256x256/apps/io.github.davidkodar.Spevox.png"
+    "$prefix/share/icons/hicolor/512x512/apps/io.github.davidkodar.Spevox.png"
   )
   legacy_remover=(rm -f)
   if [[ "$prefix" == /usr || "$prefix" == /usr/* ]]; then
@@ -66,7 +74,9 @@ if [[ -z "$destination" ]]; then
 fi
 
 if [[ -z "$destination" ]] && command -v kbuildsycoca6 >/dev/null; then
-  kbuildsycoca6 --noincremental
+  if ! kbuildsycoca6 --noincremental; then
+    echo "Warning: Plasma's application cache could not be refreshed automatically; log out and back in if Spevox is not immediately visible in the launcher." >&2
+  fi
 fi
 if [[ -z "$destination" ]] && ! command -v ffmpeg >/dev/null; then
   echo "Note: install ffmpeg to enable audio/video file transcription." >&2
