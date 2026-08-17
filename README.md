@@ -371,8 +371,10 @@ packages, and wider testing across Plasma distributions and GPU vendors.
 
 ### Completed in 0.5.0
 
-- **Structural refactoring and hardening:** the ordered
-  [post-0.4 refactoring milestone](docs/REFACTORING_MILESTONE.md) is complete.
+- **Structural refactoring and hardening:** controller responsibilities now use
+  explicit Rust modules, blocking startup and persistence work is bounded or
+  moved off the Qt thread, duplicated policies have been consolidated, and the
+  release gate covers security, packaging, QML, and regression checks.
 
 - **Multilingual intelligent dictation cleanup:** expanded the compact AI
   prompt into a constrained, upstream-inspired cleanup pipeline covering
@@ -385,9 +387,6 @@ packages, and wider testing across Plasma distributions and GPU vendors.
   languages. It targets reliable behavior with local and cloud providers; it
   does not claim compatibility with or reproduction of the privately
   maintained Fluid Intelligence model.
-
-The implementation and current local-provider evaluation are documented in
-[the 0.5 intelligent cleanup milestone](docs/INTELLIGENT_CLEANUP_MILESTONE.md).
 
 Please use [GitHub Issues](https://github.com/davidkodar/fluidvoice-linux/issues)
 for reproducible bugs and feature proposals once the repository is public.
