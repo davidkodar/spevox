@@ -81,6 +81,12 @@ pub(super) fn persist_dictation_result(
             ai_duration_ms,
             source: "dictation",
             audio_path,
+            cleanup_mode: if ai_config.enabled {
+                "conservative-v1"
+            } else {
+                "deterministic"
+            },
+            language: &ai_config.language,
         },
     );
     PersistedDictationResult::Complete(PersistedDictation {

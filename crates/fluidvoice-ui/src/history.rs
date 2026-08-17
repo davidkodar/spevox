@@ -14,6 +14,8 @@ pub(super) struct HistoryContext<'a> {
     pub(super) ai_duration_ms: u128,
     pub(super) source: &'a str,
     pub(super) audio_path: &'a str,
+    pub(super) cleanup_mode: &'a str,
+    pub(super) language: &'a str,
 }
 
 pub(super) struct HistoryUpdate {
@@ -30,7 +32,7 @@ pub(super) fn record_history(text: &str, context: &HistoryContext<'_>) -> Histor
     let _history_guard = HISTORY_IO_LOCK.lock().ok();
     let path = history_path();
     let entry = format!(
-        "{timestamp}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+        "{timestamp}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
         history_value(text),
         history_value(context.raw_text),
         history_value(context.provider),
@@ -38,7 +40,9 @@ pub(super) fn record_history(text: &str, context: &HistoryContext<'_>) -> Histor
         history_value(context.ai_status),
         context.ai_duration_ms,
         history_value(context.source),
-        history_value(context.audio_path)
+        history_value(context.audio_path),
+        history_value(context.cleanup_mode),
+        history_value(context.language)
     );
     let appended = append_private_line(&path, &entry).is_ok();
     let mut history = load_lines(&path);
@@ -135,12 +139,14 @@ pub(super) fn write_history_export(
                 "ai_duration_ms": history_field(entry, 6).and_then(|value| value.parse::<u128>().ok()).unwrap_or(0),
                 "source": history_field(entry, 7).unwrap_or("dictation"),
                 "audio_path": history_field(entry, 8).unwrap_or(""),
+                "cleanup_mode": history_field(entry, 9).unwrap_or("legacy"),
+                "language": history_field(entry, 10).unwrap_or(""),
             })
         })
         .collect::<Vec<_>>();
     let contents = if format.eq_ignore_ascii_case("csv") {
         let mut output =
-            "timestamp,text,raw_text,ai_provider,ai_model,ai_status,ai_duration_ms,source,audio_path\n"
+            "timestamp,text,raw_text,ai_provider,ai_model,ai_status,ai_duration_ms,source,audio_path,cleanup_mode,language\n"
                 .to_owned();
         for record in &records {
             let fields = [
@@ -156,6 +162,11 @@ pub(super) fn write_history_export(
                 record["ai_duration_ms"].to_string(),
                 record["source"].as_str().unwrap_or_default().to_owned(),
                 record["audio_path"].as_str().unwrap_or_default().to_owned(),
+                record["cleanup_mode"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_owned(),
+                record["language"].as_str().unwrap_or_default().to_owned(),
             ];
             output.push_str(
                 &fields

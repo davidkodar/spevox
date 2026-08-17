@@ -1,7 +1,18 @@
 use super::{PathBuf, QString, QStringList, dictionary_path, fs, load_lines, save_lines};
 
 pub(super) fn process_transcript(text: &str, command_mode: bool, dictionary: &[String]) -> String {
-    let mut processed = text.trim().to_owned();
+    let mut processed = preprocess_for_cleanup(text, command_mode);
+    for line in dictionary {
+        let entry = DictionaryEntry::from_storage(line);
+        processed = replace_ascii_case_insensitive(&processed, &entry.spoken, &entry.preferred);
+    }
+    processed
+}
+
+/// Applies only deterministic, meaning-preserving transforms before optional AI.
+/// It intentionally does not guess sentence endings, delete fillers, or rewrite grammar.
+pub(super) fn preprocess_for_cleanup(text: &str, command_mode: bool) -> String {
+    let mut processed = text.split_whitespace().collect::<Vec<_>>().join(" ");
     if command_mode {
         for (spoken, replacement) in [
             ("new paragraph", "\n\n"),
@@ -20,10 +31,6 @@ pub(super) fn process_transcript(text: &str, command_mode: bool, dictionary: &[S
             .replace(" !", "!")
             .replace(" \n", "\n")
             .replace("\n ", "\n");
-    }
-    for line in dictionary {
-        let entry = DictionaryEntry::from_storage(line);
-        processed = replace_ascii_case_insensitive(&processed, &entry.spoken, &entry.preferred);
     }
     processed
 }

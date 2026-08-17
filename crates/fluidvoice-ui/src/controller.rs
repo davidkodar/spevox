@@ -3331,6 +3331,12 @@ impl ffi::FluidVoiceController {
                                     ai_duration_ms,
                                     source: "file",
                                     audio_path: "",
+                                    cleanup_mode: if ai_config.enabled {
+                                        "conservative-v1"
+                                    } else {
+                                        "deterministic"
+                                    },
+                                    language: &ai_config.language,
                                 },
                             );
                             apply_history_update(controller.as_mut(), history_update);
@@ -3862,8 +3868,8 @@ use storage::{
 mod dictionary;
 use dictionary::{
     DictionaryEntry, dictionary_display, dictionary_ui_list, load_dictionary_entries,
-    process_transcript, read_dictionary_import, sanitize_dictionary_field, save_dictionary_entries,
-    spreadsheet_safe, write_dictionary_csv,
+    preprocess_for_cleanup, process_transcript, read_dictionary_import, sanitize_dictionary_field,
+    save_dictionary_entries, spreadsheet_safe, write_dictionary_csv,
 };
 #[path = "history.rs"]
 mod history;
@@ -4144,7 +4150,10 @@ fn process_dictation_audio(
             result: None,
             duration_ms: 0,
         },
-        |transcript| enhance_for_dictation(&job.ai_config, &transcript.text, qt_thread),
+        |transcript| {
+            let input = preprocess_for_cleanup(&transcript.text, job.command_mode_enabled);
+            enhance_for_dictation(&job.ai_config, &input, qt_thread)
+        },
     );
     let retained_audio = if job.retain_audio
         && transcription
@@ -4248,10 +4257,10 @@ mod tests {
         ai_provider_catalog, asr_gain, assign_speakers, decode_audio_file, decode_file_url,
         history_clipboard_text, meeting_speaker_names, meter_level, native_language_for_model,
         native_model_for_engine, parse_csv_record, parse_desktop_action, peak_db,
-        process_transcript, profile_matches_application, read_dictionary_import,
-        rename_latest_file_history_speaker_entries, supported_languages, suspicious_single_word,
-        timestamp_srt, valid_ollama_model_name, whisper_model_catalog, write_dictionary_csv,
-        write_history_export, write_meeting_export,
+        preprocess_for_cleanup, process_transcript, profile_matches_application,
+        read_dictionary_import, rename_latest_file_history_speaker_entries, supported_languages,
+        suspicious_single_word, timestamp_srt, valid_ollama_model_name, whisper_model_catalog,
+        write_dictionary_csv, write_history_export, write_meeting_export,
     };
     use crate::parakeet;
 
@@ -4279,6 +4288,26 @@ mod tests {
                 index
             );
         }
+    }
+
+    #[test]
+    fn deterministic_cleanup_is_conservative_across_languages() {
+        assert_eq!(
+            preprocess_for_cleanup("  hello   world  ", false),
+            "hello world"
+        );
+        assert_eq!(
+            preprocess_for_cleanup("hej   världen", false),
+            "hej världen"
+        );
+        assert_eq!(
+            preprocess_for_cleanup("Rust API och svenska ord", false),
+            "Rust API och svenska ord"
+        );
+        assert_eq!(
+            preprocess_for_cleanup("is this safe question mark", true),
+            "is this safe?"
+        );
     }
 
     #[test]

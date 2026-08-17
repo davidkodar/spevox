@@ -381,6 +381,9 @@ packages, and wider testing across Plasma distributions and GPU vendors.
   does not claim compatibility with or reproduction of the privately
   maintained Fluid Intelligence model.
 
+The implementation and current local-provider evaluation are documented in
+[the 0.5 intelligent cleanup milestone](docs/INTELLIGENT_CLEANUP_MILESTONE.md).
+
 Please use [GitHub Issues](https://github.com/davidkodar/fluidvoice-linux/issues)
 for reproducible bugs and feature proposals once the repository is public.
 

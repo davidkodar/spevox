@@ -9,6 +9,9 @@ All notable changes to FluidVoice Linux are documented here. The project uses
   language-aware editing contract for local and cloud providers. It explicitly
   preserves meaning and code-switching, applies punctuation and minimal repair,
   and forbids answering the dictation, translating it, or inventing content.
+- Added bounded deterministic preprocessing before optional AI, model-quality
+  and privacy guidance, and backward-compatible cleanup-mode/language metadata
+  in History and JSON/CSV exports.
 
 ## 0.4.0 - 2026-08-16
 

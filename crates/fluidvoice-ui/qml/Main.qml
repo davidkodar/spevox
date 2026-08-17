@@ -167,6 +167,12 @@ ApplicationWindow {
         var fields = entry.split("\t")
         return fields.length > 8 ? fields[8] : ""
     }
+    function historyCleanupMode(entry) {
+        var fields = entry.split("\t")
+        var mode = fields.length > 9 ? fields[9] : "legacy"
+        var language = fields.length > 10 && fields[10].length > 0 ? " · " + fields[10] : ""
+        return mode + language
+    }
     function meetingSegmentField(entry, index) {
         var fields = entry.split("\t")
         return fields.length > index ? fields[index] : ""
@@ -1713,6 +1719,20 @@ ApplicationWindow {
                                 color: controller.aiLocalEndpoint ? root.accent : "#d9a441"; font.pixelSize: 11; wrapMode: Text.Wrap
                             }
                         }
+                        Rectangle {
+                            Layout.fillWidth: true; implicitHeight: cleanupGuidance.implicitHeight + 24; radius: 10
+                            color: root.panelRaised; border.color: root.hairline
+                            ColumnLayout {
+                                id: cleanupGuidance; anchors.fill: parent; anchors.margins: 12; spacing: 4
+                                Text { text: qsTr("MODEL QUALITY GUIDANCE"); color: root.tertiaryText; font.pixelSize: 10; font.weight: Font.DemiBold }
+                                Text {
+                                    Layout.fillWidth: true; wrapMode: Text.Wrap; color: root.secondaryText; font.pixelSize: 11
+                                    text: controller.aiLocalEndpoint
+                                          ? qsTr("Small local models are faster but may miss punctuation, self-corrections, or less common languages. A capable 7B-class instruct model is the recommended baseline; larger models usually follow cleanup constraints more reliably but use more memory and add latency.")
+                                          : qsTr("Cloud model quality and privacy vary by provider. FluidVoice sends only the cleanup prompt and transcript, uses raw text if enhancement fails, and never uploads microphone audio.")
+                                }
+                            }
+                        }
                         Text { text: qsTr("APPLICATION PROFILE"); color: root.tertiaryText; font.pixelSize: 11; font.weight: Font.Medium }
                         ComboBox {
                             Layout.fillWidth: true; model: controller.aiProfileNames
@@ -2093,7 +2113,7 @@ ApplicationWindow {
                                         }
                                     }
                                 }
-                                Text { Layout.fillWidth: true; text: root.historySource(modelData) + " · " + root.historyAiSummary(modelData); color: root.tertiaryText; font.pixelSize: 10; elide: Text.ElideRight }
+                                Text { Layout.fillWidth: true; text: root.historySource(modelData) + " · " + root.historyAiSummary(modelData) + " · " + root.historyCleanupMode(modelData); color: root.tertiaryText; font.pixelSize: 10; elide: Text.ElideRight }
                                 RowLayout {
                                     visible: root.historyAudioPath(modelData).length > 0
                                     Layout.fillWidth: true
