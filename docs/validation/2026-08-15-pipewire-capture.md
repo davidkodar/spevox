@@ -4,7 +4,7 @@
 
 - KDE Plasma on Wayland
 - PipeWire 1.6.8
-- Audio interface: Focusrite Scarlett Solo (3rd Gen.)
+- Audio interface: USB audio interface
 - Native negotiated format: F32LE, 48 kHz, mono
 
 ## Results
@@ -28,5 +28,5 @@ Follow-up testing against Reaper revealed that Input 1 was known to be active wh
 
 ```bash
 cargo run -p spevox-cli -- --diagnose-audio 5
-cargo run -p spevox-cli -- --diagnose-audio 5 alsa_input.usb-Focusrite_Scarlett_Solo_USB_XXXXXXXXXXXXXX-00.HiFi__Mic1__source
+cargo run -p spevox-cli -- --diagnose-audio 5 alsa_input.usb-<vendor>_<model>_<serial>-00.HiFi__Mic1__source
 ```

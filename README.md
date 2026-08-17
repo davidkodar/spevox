@@ -348,8 +348,7 @@ initialized by the model runtime.
 
 Before cutting a release candidate, run `packaging/release-check.sh` for the
 automated formatting, QML, test, release-build, staged-install, and package
-checks. The manual fresh-user, accessibility, and optional-runtime acceptance
-steps are documented in `docs/RELEASE_CHECKLIST.md`.
+checks.
 
 The application ID is `io.github.davidkodar.Spevox`. The matching
 desktop entry, icon, AppStream metadata, and GPL license are installed by

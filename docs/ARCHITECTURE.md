@@ -10,12 +10,6 @@ Ollama, LM Studio, and compatible servers support fully local cleanup. The
 default local-only lock prevents accidental cloud selection. Fluid-1 remains a
 separate closed component and is not reproduced here.
 
-## Experience parity
-
-Qt Quick/QML will reproduce the macOS client's visual language rather than defaulting to a generic utility UI. Shared design tokens will cover color, type scale, spacing, radii, shadows, translucency, animation curves, and status colors. Reference views will be compared at fixed sizes during UI review.
-
-Platform metaphors are translated rather than copied blindly: the notch overlay becomes a non-focusable Plasma overlay, the macOS menu-bar experience becomes a StatusNotifierItem tray experience, and permission prompts follow KDE/portal conventions. Visual parity must never require bypassing Wayland security or breaking Plasma window behavior.
-
 ## Implemented modules
 
 ```text
@@ -67,10 +61,3 @@ busy properties keep ASR, assistant, update, and export work independent so an
 unrelated background operation cannot disable dictation. Qt types remain at the
 CXX-Qt/QML boundary and do not enter the audio, transcription, delivery, or
 portal crates.
-
-## First two technical gates
-
-1. Demonstrate portal shortcut, PipeWire capture, whisper.cpp transcription, and clipboard output fully offline. KDE Global Shortcuts produced reliable press/release pairs for `Ctrl+Alt+D`, including release-driven PipeWire shutdown. PipeWire capture has source discovery, bounded native F32 capture, and a mono 16 kHz ASR conversion boundary. CPU-only `whisper.cpp` inference transcribed the official test sample successfully. Clipboard output was read back by both the application and KDE Klipper. A non-empty physical shortcut-to-clipboard run remains pending because the connected Scarlett input supplied silence. Evidence is recorded under `docs/validation/`.
-2. Measure AT-SPI and consented Wayland input behavior across KDE, terminal, browser, Electron, office, GTK, and XWayland applications.
-
-The first Cargo-native Qt Quick shell is now implemented. Runtime integration proceeds without weakening either technical gate.
