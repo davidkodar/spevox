@@ -2285,9 +2285,9 @@ ApplicationWindow {
                     Layout.fillWidth: true
                     spacing: 8
                     Button { Layout.fillWidth: true; Layout.minimumWidth: 0; text: qsTr("Copy"); onClicked: controller.copyLastResult(false) }
-                    Button { Layout.fillWidth: true; Layout.minimumWidth: 0; text: qsTr("Copy raw"); enabled: controller.lastRawText.length > 0; onClicked: controller.copyLastResult(true) }
-                    Button { Layout.fillWidth: true; Layout.minimumWidth: 0; text: qsTr("Undo AI"); enabled: controller.lastRawText.length > 0 && controller.lastRawText !== controller.transcriptText; onClicked: controller.undoLastAi() }
-                    Button { Layout.fillWidth: true; Layout.minimumWidth: 0; text: qsTr("Retry AI"); enabled: controller.lastRawText.length > 0 && !controller.transcribing; onClicked: controller.retryLastAi() }
+                    Button { visible: controller.aiEnabled; Layout.fillWidth: true; Layout.minimumWidth: 0; text: qsTr("Copy raw"); enabled: controller.lastRawText.length > 0; onClicked: controller.copyLastResult(true) }
+                    Button { visible: controller.aiEnabled; Layout.fillWidth: true; Layout.minimumWidth: 0; text: qsTr("Undo AI"); enabled: controller.lastRawText.length > 0 && controller.lastRawText !== controller.transcriptText; onClicked: controller.undoLastAi() }
+                    Button { visible: controller.aiEnabled; Layout.fillWidth: true; Layout.minimumWidth: 0; text: qsTr("Retry AI"); enabled: controller.lastRawText.length > 0 && !controller.transcribing; onClicked: controller.retryLastAi() }
                 }
 
                 RowLayout {

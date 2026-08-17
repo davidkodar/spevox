@@ -5,6 +5,8 @@ All notable changes to FluidVoice Linux are documented here. The project uses
 
 ## 0.4.0 - 2026-08-16
 
+- Made the AI Enhancement master switch authoritative for result retries and
+  hid AI-only popup actions while enhancement is disabled.
 - Restored type-as-you-speak text for the Parakeet engine by retaining the
   embedded Whisper live preview until Parakeet supplies the final transcript.
 - Fixed Parakeet setup on current Arch toolchains by managing its pinned

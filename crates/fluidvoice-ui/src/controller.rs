@@ -1385,14 +1385,19 @@ impl ffi::FluidVoiceController {
         if *self.as_ref().transcribing() {
             return;
         }
+        if !*self.as_ref().ai_enabled() {
+            self.as_mut().set_status_text(QString::from(
+                "AI enhancement is off · enable it before retrying",
+            ));
+            return;
+        }
         let raw = self.as_ref().last_raw_text().to_string();
         if raw.trim().is_empty() {
             self.as_mut()
                 .set_status_text(QString::from("No raw transcript is available to retry"));
             return;
         }
-        let mut config = self.as_ref().rust().ai_config();
-        config.enabled = true;
+        let config = self.as_ref().rust().ai_config();
         let qt_thread = self.qt_thread();
         self.as_mut().set_transcribing(true);
         if *self.as_ref().overlay_enabled() {
