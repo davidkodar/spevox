@@ -334,6 +334,11 @@ ApplicationWindow {
     }
     function bestStreak() {
         var keys = activeDayKeys().sort(function(a, b) { return a - b })
+        if (controller.skipWeekends)
+            keys = keys.filter(function(key) {
+                var day = new Date(key * 86400000).getUTCDay()
+                return day !== 0 && day !== 6
+            })
         if (keys.length === 0)
             return 0
         var best = 1

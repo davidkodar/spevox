@@ -716,11 +716,7 @@ impl Default for FluidVoiceControllerRust {
         let provider_key = provider.id;
         let ai_api_key = ai::load_api_key(provider_key);
         let ai_key_configured = provider.local || !ai_api_key.is_empty();
-        let dictated_word_count = history
-            .iter()
-            .map(|entry| history_field(entry, 1).unwrap_or(entry))
-            .map(|text| text.split_whitespace().count())
-            .sum::<usize>();
+        let lifetime_stats = LifetimeStats::load_or_migrate(&history);
         let ai_profiles = load_ai_profiles();
         Self {
             status_text: QString::from("Ready"),
@@ -784,8 +780,8 @@ impl Default for FluidVoiceControllerRust {
             audio_history_enabled: preferences.audio_history_enabled,
             audio_history_budget_mb: preferences.audio_history_budget_mb,
             audio_history_status: QString::from(audio_history_summary()),
-            transcript_count: i32::try_from(history.len()).unwrap_or(i32::MAX),
-            dictated_word_count: i32::try_from(dictated_word_count).unwrap_or(i32::MAX),
+            transcript_count: lifetime_stats.transcript_count_i32(),
+            dictated_word_count: lifetime_stats.dictated_word_count_i32(),
             typing_wpm: preferences.typing_wpm,
             skip_weekends: preferences.skip_weekends,
             command_mode_enabled: preferences.command_mode_enabled,
@@ -1590,6 +1586,12 @@ impl ffi::FluidVoiceController {
         if command.is_empty() || *self.as_ref().transcribing() {
             return;
         }
+        if !*self.as_ref().ai_enabled() {
+            self.as_mut().set_command_output(QString::from(
+                "AI enhancement is off · enable it before using Command Mode",
+            ));
+            return;
+        }
         append_command_history(self.as_mut(), "user", &command);
         if let Some(action) = parse_desktop_action(&command) {
             let description = action.description();
@@ -1602,7 +1604,6 @@ impl ffi::FluidVoiceController {
             return;
         }
         let mut config = self.as_ref().rust().ai_config();
-        config.enabled = true;
         config.prompt = "You are FluidVoice Command Mode, a concise KDE Plasma assistant. Answer the user's question or explain how to perform the requested task. Do not claim to have executed anything. Never output shell commands unless explicitly asked, and clearly label them as suggestions.".to_owned();
         let qt_thread = self.qt_thread();
         self.as_mut().set_transcribing(true);
@@ -1798,8 +1799,13 @@ impl ffi::FluidVoiceController {
         if *self.as_ref().transcribing() {
             return;
         }
-        let mut config = self.as_ref().rust().ai_config();
-        config.enabled = true;
+        if !*self.as_ref().ai_enabled() {
+            self.as_mut().set_ai_status(QString::from(
+                "AI enhancement is off · enable it before testing a provider",
+            ));
+            return;
+        }
+        let config = self.as_ref().rust().ai_config();
         let qt_thread = self.qt_thread();
         self.as_mut().set_transcribing(true);
         self.as_mut()
@@ -2227,13 +2233,18 @@ impl ffi::FluidVoiceController {
         if instruction.is_empty() || *self.as_ref().transcribing() {
             return;
         }
+        if !*self.as_ref().ai_enabled() {
+            self.as_mut().set_ai_status(QString::from(
+                "AI enhancement is off · enable it before using Write Mode",
+            ));
+            return;
+        }
         let Some(desktop_sender) = self.as_ref().rust().desktop_sender.clone() else {
             self.as_mut()
                 .set_ai_status(QString::from("Desktop integration is not ready"));
             return;
         };
         let mut config = self.as_ref().rust().ai_config();
-        config.enabled = true;
         config.prompt = "Rewrite the selected text according to the user's instruction. Preserve meaning unless the instruction asks otherwise. Output only the replacement text, with no explanation or markdown fences.".to_owned();
         let qt_thread = self.qt_thread();
         self.as_mut().set_transcribing(true);
@@ -2328,8 +2339,13 @@ impl ffi::FluidVoiceController {
         if instruction.is_empty() || *self.as_ref().transcribing() {
             return;
         }
+        if !*self.as_ref().ai_enabled() {
+            self.as_mut().set_ai_status(QString::from(
+                "AI enhancement is off · enable it before using Write Mode",
+            ));
+            return;
+        }
         let mut config = self.as_ref().rust().ai_config();
-        config.enabled = true;
         config.prompt = "Write the requested text. Follow the user's instruction precisely. Output only the finished text, with no explanation or markdown fences.".to_owned();
         self.as_mut().rust_mut().get_mut().last_write_job = Some(WriteModeJob::Draft {
             instruction: instruction.clone(),
@@ -2378,13 +2394,18 @@ impl ffi::FluidVoiceController {
         if *self.as_ref().transcribing() {
             return;
         }
+        if !*self.as_ref().ai_enabled() {
+            self.as_mut().set_ai_status(QString::from(
+                "AI enhancement is off · enable it before retrying Write Mode",
+            ));
+            return;
+        }
         let Some(job) = self.as_ref().rust().last_write_job.clone() else {
             self.as_mut()
                 .set_ai_status(QString::from("No Write Mode result is available to retry"));
             return;
         };
         let mut config = self.as_ref().rust().ai_config();
-        config.enabled = true;
         let input = match job {
             WriteModeJob::Rewrite {
                 instruction,
@@ -3012,8 +3033,6 @@ impl ffi::FluidVoiceController {
             fs::remove_dir_all(audio_history_directory()).ok();
         }
         self.as_mut().set_history_entries(QStringList::default());
-        self.as_mut().set_transcript_count(0);
-        self.as_mut().set_dictated_word_count(0);
         self.as_mut()
             .set_status_text(QString::from("History cleared"));
         self.as_mut()
@@ -3487,6 +3506,8 @@ impl ffi::FluidVoiceController {
             let (stream_sender, stream_receiver) = std::sync::mpsc::channel::<AudioBuffer>();
             let preview_model = model.clone();
             let preview_language = language.clone();
+            let preview_stop = Arc::new(AtomicBool::new(false));
+            let preview_worker_stop = Arc::clone(&preview_stop);
             let stream_thread = qt_thread.clone();
             let stream_supervisor = Arc::clone(&parakeet_supervisor);
             let stream_language = native_model
@@ -3549,6 +3570,9 @@ impl ffi::FluidVoiceController {
                     return;
                 };
                 while let Ok(audio) = preview_receiver.recv() {
+                    if preview_worker_stop.load(Ordering::Acquire) {
+                        return;
+                    }
                     let preview_duration = audio.duration();
                     if automatic_language && preview_duration < Duration::from_millis(2_500) {
                         // Language classification on sub-second phonemes is
@@ -3562,6 +3586,9 @@ impl ffi::FluidVoiceController {
                     let Ok(transcript) = transcriber.transcribe(&preview_audio) else {
                         continue;
                     };
+                    if preview_worker_stop.load(Ordering::Acquire) {
+                        return;
+                    }
                     if transcript.text.is_empty()
                         || suspicious_single_word(&transcript.text, preview_duration)
                     {
@@ -3641,7 +3668,8 @@ impl ffi::FluidVoiceController {
                     controller.set_status_text(QString::from("Transcribing locally…"));
                 })
                 .ok();
-            preview_worker.join().ok();
+            preview_stop.store(true, Ordering::Release);
+            drop(preview_worker);
             if let Some(worker) = native_preview_worker {
                 worker.join().ok();
             }
@@ -4346,8 +4374,8 @@ fn check_latest_release(current: &str) -> String {
         return "Release feed did not include a version tag.".to_owned();
     };
     let latest = tag.trim_start_matches('v');
-    match (version_tuple(current), version_tuple(latest)) {
-        (Some(current), Some(latest_tuple)) if latest_tuple > current => {
+    match (parsed_version(current), parsed_version(latest)) {
+        (Some(current), Some(latest_version)) if latest_version > current => {
             format!("Version {latest} is available on GitHub Releases.")
         }
         (Some(_), Some(_)) => format!("FluidVoice Linux {current} is up to date."),
@@ -4355,13 +4383,26 @@ fn check_latest_release(current: &str) -> String {
     }
 }
 
-fn version_tuple(value: &str) -> Option<(u32, u32, u32)> {
-    let mut parts = value.split('.');
-    Some((
-        parts.next()?.parse().ok()?,
-        parts.next()?.parse().ok()?,
-        parts.next()?.split('-').next()?.parse().ok()?,
-    ))
+#[derive(Debug, Eq, Ord, PartialEq, PartialOrd)]
+struct ParsedVersion {
+    numbers: (u32, u32, u32),
+    stable: bool,
+    prerelease: String,
+}
+
+fn parsed_version(value: &str) -> Option<ParsedVersion> {
+    let (numbers, prerelease) = value.split_once('-').map_or((value, ""), |parts| parts);
+    let mut parts = numbers.split('.');
+    let version = ParsedVersion {
+        numbers: (
+            parts.next()?.parse().ok()?,
+            parts.next()?.parse().ok()?,
+            parts.next()?.parse().ok()?,
+        ),
+        stable: prerelease.is_empty(),
+        prerelease: prerelease.to_owned(),
+    };
+    parts.next().is_none().then_some(version)
 }
 
 #[derive(Clone, Copy)]
@@ -4544,6 +4585,76 @@ fn dictionary_path() -> PathBuf {
 
 fn history_path() -> PathBuf {
     data_directory().join("history.tsv")
+}
+
+fn lifetime_stats_path() -> PathBuf {
+    data_directory().join("lifetime-stats.json")
+}
+
+#[derive(Default)]
+struct LifetimeStats {
+    transcript_count: u64,
+    dictated_word_count: u64,
+}
+
+impl LifetimeStats {
+    fn load_or_migrate(history: &[String]) -> Self {
+        if let Ok(contents) = fs::read_to_string(lifetime_stats_path()) {
+            if let Ok(value) = serde_json::from_str::<serde_json::Value>(&contents) {
+                if let (Some(transcript_count), Some(dictated_word_count)) = (
+                    value
+                        .get("transcript_count")
+                        .and_then(serde_json::Value::as_u64),
+                    value
+                        .get("dictated_word_count")
+                        .and_then(serde_json::Value::as_u64),
+                ) {
+                    return Self {
+                        transcript_count,
+                        dictated_word_count,
+                    };
+                }
+            }
+        }
+        let stats = history
+            .iter()
+            .filter(|entry| history_field(entry, 7) != Some("file"))
+            .fold(Self::default(), |mut stats, entry| {
+                stats.transcript_count = stats.transcript_count.saturating_add(1);
+                stats.dictated_word_count = stats.dictated_word_count.saturating_add(
+                    u64::try_from(
+                        history_field(entry, 1)
+                            .unwrap_or(entry)
+                            .split_whitespace()
+                            .count(),
+                    )
+                    .unwrap_or(u64::MAX),
+                );
+                stats
+            });
+        stats.save().ok();
+        stats
+    }
+
+    fn save(&self) -> Result<(), String> {
+        atomic_write_private(
+            &lifetime_stats_path(),
+            serde_json::to_string_pretty(&serde_json::json!({
+                "transcript_count": self.transcript_count,
+                "dictated_word_count": self.dictated_word_count,
+            }))
+            .map_err(|error| error.to_string())?
+            .as_bytes(),
+        )
+    }
+
+    fn transcript_count_i32(&self) -> i32 {
+        i32::try_from(self.transcript_count).unwrap_or(i32::MAX)
+    }
+
+    fn dictated_word_count_i32(&self) -> i32 {
+        i32::try_from(self.dictated_word_count).unwrap_or(i32::MAX)
+    }
 }
 
 fn audio_history_directory() -> PathBuf {
@@ -5001,20 +5112,23 @@ fn record_history(
         history.drain(..history.len() - 500);
     }
     save_lines(&history_path(), &history).ok();
-    let word_count = history
-        .iter()
-        .map(|entry| history_field(entry, 1).unwrap_or(entry))
-        .map(|value| value.split_whitespace().count())
-        .sum::<usize>();
+    let mut lifetime_stats = LifetimeStats::load_or_migrate(&history[..history.len() - 1]);
+    if context.source != "file" {
+        lifetime_stats.transcript_count = lifetime_stats.transcript_count.saturating_add(1);
+        lifetime_stats.dictated_word_count = lifetime_stats
+            .dictated_word_count
+            .saturating_add(u64::try_from(text.split_whitespace().count()).unwrap_or(u64::MAX));
+        lifetime_stats.save().ok();
+    }
     controller
         .as_mut()
         .set_history_entries(history.iter().rev().map(QString::from).collect());
     controller
         .as_mut()
-        .set_transcript_count(i32::try_from(history.len()).unwrap_or(i32::MAX));
+        .set_transcript_count(lifetime_stats.transcript_count_i32());
     controller
         .as_mut()
-        .set_dictated_word_count(i32::try_from(word_count).unwrap_or(i32::MAX));
+        .set_dictated_word_count(lifetime_stats.dictated_word_count_i32());
 }
 
 fn history_value(value: &str) -> String {
@@ -5470,14 +5584,14 @@ fn decode_audio_file(path: &PathBuf) -> Result<fluidvoice_audio::MonoAudioBuffer
             let output = child
                 .wait_with_output()
                 .map_err(|error| error.to_string())?;
+            if u64::try_from(bytes.len()).unwrap_or(u64::MAX) > MAX_DECODED_BYTES {
+                return Err("Decoded audio exceeds the two-hour safety limit".to_owned());
+            }
             if !output.status.success() {
                 return Err(format!(
                     "FFmpeg could not decode this audio file: {}",
                     String::from_utf8_lossy(&output.stderr).trim()
                 ));
-            }
-            if u64::try_from(bytes.len()).unwrap_or(u64::MAX) > MAX_DECODED_BYTES {
-                return Err("Decoded audio exceeds the two-hour safety limit".to_owned());
             }
             if bytes.len() % 4 != 0 {
                 return Err("FFmpeg returned incomplete audio samples".to_owned());
@@ -6010,10 +6124,11 @@ mod tests {
         AiProfile, DesktopAction, DictionaryEntry, MeetingSegment, asr_gain, assign_speakers,
         decode_audio_file, decode_file_url, history_clipboard_text, meeting_speaker_names,
         meter_level, native_language_for_model, native_model_for_engine, parse_csv_record,
-        parse_desktop_action, peak_db, process_transcript, profile_matches_application,
-        read_dictionary_import, rename_latest_file_history_speaker_entries, supported_languages,
-        suspicious_single_word, timestamp_srt, valid_ollama_model_name, version_tuple,
-        whisper_model_catalog, write_dictionary_csv, write_history_export, write_meeting_export,
+        parse_desktop_action, parsed_version, peak_db, process_transcript,
+        profile_matches_application, read_dictionary_import,
+        rename_latest_file_history_speaker_entries, supported_languages, suspicious_single_word,
+        timestamp_srt, valid_ollama_model_name, whisper_model_catalog, write_dictionary_csv,
+        write_history_export, write_meeting_export,
     };
     use crate::parakeet;
 
@@ -6131,9 +6246,9 @@ mod tests {
 
     #[test]
     fn parses_release_versions_for_update_comparison() {
-        assert_eq!(version_tuple("0.3.0"), Some((0, 3, 0)));
-        assert_eq!(version_tuple("1.2.3-beta.1"), Some((1, 2, 3)));
-        assert_eq!(version_tuple("invalid"), None);
+        assert!(parsed_version("0.4.0") > parsed_version("0.4.0-beta.1"));
+        assert!(parsed_version("1.2.3-beta.2") > parsed_version("0.4.0"));
+        assert_eq!(parsed_version("invalid"), None);
     }
 
     #[test]

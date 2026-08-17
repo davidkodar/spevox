@@ -5,6 +5,10 @@ All notable changes to FluidVoice Linux are documented here. The project uses
 
 ## 0.4.0 - 2026-08-16
 
+- Made the AI master switch authoritative for Command Mode, Write Mode, retries,
+  and provider tests; added persistent lifetime dictation counters that exclude
+  imported files; corrected prerelease update comparisons, weekend streaks,
+  oversized-file diagnostics, and final-ASR latency from preview-worker waits.
 - Hardened local security and failure handling: strict parsed loopback URLs,
   proxy-free/no-redirect audio requests, fail-closed atomic local-API tokens,
   bounded API connections, private atomic user data, private native-ASR ports,
