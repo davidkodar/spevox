@@ -11,6 +11,9 @@ All notable changes to FluidVoice Linux are documented here. The project uses
 - Separated history persistence from Qt state mutation and extracted final ASR
   backend selection, native-engine fallback, and Whisper recovery behind plain
   Rust request/result boundaries.
+- Split dictation capture, live preview, enhancement, persistence, delivery,
+  and Qt presentation into focused stages; `toggle_recording` is now a small
+  composition method without a Clippy line-count suppression.
 - Closed follow-up audit regressions in meeting-file retry, local AI proxy
   isolation, IPv6 loopback ASR, Write Mode retry semantics, cancellable Whisper
   previews, model integrity checks, local API lifecycle handling, and native

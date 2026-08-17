@@ -489,7 +489,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use cxx_qt::{CxxQtType, Threading};
+use cxx_qt::{CxxQtThread, CxxQtType, Threading};
 use cxx_qt_lib::{QString, QStringList};
 use fluidvoice_audio::{AudioBuffer, AudioDevice, CaptureStopToken, PipeWireCapture};
 use fluidvoice_delivery::ClipboardDelivery;
@@ -3533,7 +3533,6 @@ impl ffi::FluidVoiceController {
         self.as_mut().transcribe_file(&path);
     }
 
-    #[allow(clippy::too_many_lines)]
     pub fn toggle_recording(mut self: Pin<&mut Self>) {
         if *self.as_ref().recording() {
             if let Some(token) = self.as_ref().rust().stop_token.as_ref() {
@@ -3548,22 +3547,26 @@ impl ffi::FluidVoiceController {
         }
 
         let stop_token = CaptureStopToken::new();
-        let capture_target = self.as_ref().rust().capture_target.clone();
-        let language = selected_language_code(self.as_ref().rust());
-        let use_gpu = self.as_ref().rust().selected_compute_backend != 2;
-        let model = selected_model_path(self.as_ref().rust());
         let speech_engine = *self.as_ref().selected_speech_engine();
-        let native_model = native_model_for_engine(speech_engine);
-        let local_speech_url = self.as_ref().local_speech_url().to_string();
-        let parakeet_supervisor = Arc::clone(&self.as_ref().rust().parakeet_supervisor);
-        let parakeet_backend =
-            effective_parakeet_backend(*self.as_ref().selected_compute_backend());
-        let ai_config = self.as_ref().rust().ai_config();
-        let command_mode_enabled = self.as_ref().rust().command_mode_enabled;
-        let retain_audio = *self.as_ref().audio_history_enabled();
-        let audio_budget_bytes =
-            u64::try_from(*self.as_ref().audio_history_budget_mb()).unwrap_or(500) * 1_048_576;
-        let gain = 10.0_f32.powf(*self.as_ref().gain_db() / 20.0);
+        let job = DictationJob {
+            stop_token: stop_token.clone(),
+            capture_target: self.as_ref().rust().capture_target.clone(),
+            language: selected_language_code(self.as_ref().rust()),
+            use_gpu: self.as_ref().rust().selected_compute_backend != 2,
+            model: selected_model_path(self.as_ref().rust()),
+            speech_engine,
+            native_model: native_model_for_engine(speech_engine),
+            local_speech_url: self.as_ref().local_speech_url().to_string(),
+            native_supervisor: Arc::clone(&self.as_ref().rust().parakeet_supervisor),
+            native_backend: effective_parakeet_backend(*self.as_ref().selected_compute_backend()),
+            ai_config: self.as_ref().rust().ai_config(),
+            retain_audio: *self.as_ref().audio_history_enabled(),
+            audio_budget_bytes: u64::try_from(*self.as_ref().audio_history_budget_mb())
+                .unwrap_or(500)
+                * 1_048_576,
+            gain: 10.0_f32.powf(*self.as_ref().gain_db() / 20.0),
+            command_mode_enabled: self.as_ref().rust().command_mode_enabled,
+        };
         self.as_mut().rust_mut().get_mut().stop_token = Some(stop_token.clone());
         self.as_mut().set_audio_level(0.0);
         self.as_mut().set_input_db(-60.0);
@@ -3577,191 +3580,7 @@ impl ffi::FluidVoiceController {
         let overlay_enabled = *self.as_ref().overlay_enabled();
         self.as_mut().set_overlay_visible(overlay_enabled);
 
-        let qt_thread = self.qt_thread();
-        std::thread::spawn(move || {
-            let level_thread = qt_thread.clone();
-            let preview_thread = qt_thread.clone();
-            let preview_session = PreviewSession::start(
-                PreviewConfig {
-                    speech_engine,
-                    whisper_model: model.clone(),
-                    language: language.clone(),
-                    use_gpu,
-                    gain,
-                    native_model,
-                    native_backend: parakeet_backend,
-                    native_supervisor: Arc::clone(&parakeet_supervisor),
-                },
-                move |text| {
-                    preview_thread
-                        .queue(move |mut controller| {
-                            if *controller.as_ref().recording() {
-                                controller
-                                    .as_mut()
-                                    .set_live_transcript(QString::from(&text));
-                            }
-                        })
-                        .ok();
-                },
-            );
-            let preview_sender = preview_session.preview_sender();
-            let stream_sender = preview_session.stream_sender();
-            let result = capture_audio(
-                capture_target.as_deref(),
-                &stop_token,
-                move |level| {
-                    level_thread
-                        .queue(move |mut controller| {
-                            let adjusted = level * gain;
-                            controller.as_mut().set_audio_level(meter_level(adjusted));
-                            controller.as_mut().set_input_db(peak_db(adjusted));
-                            let updates = controller.as_ref().audio_updates().saturating_add(1);
-                            controller.set_audio_updates(updates);
-                        })
-                        .ok();
-                },
-                move |audio| {
-                    preview_sender.try_send(audio).ok();
-                },
-                move |audio| {
-                    if let Some(stream_sender) = &stream_sender {
-                        stream_sender.send(audio).ok();
-                    }
-                },
-            );
-            preview_session.stop_and_join();
-
-            let audio = match result {
-                Ok(audio) => audio,
-                Err(error) => {
-                    qt_thread
-                        .queue(move |mut controller| {
-                            controller.as_mut().rust_mut().get_mut().stop_token = None;
-                            controller.as_mut().set_recording(false);
-                            controller.as_mut().set_overlay_visible(false);
-                            controller.as_mut().set_audio_level(0.0);
-                            controller.set_status_text(QString::from(&format!(
-                                "Capture failed: {error}"
-                            )));
-                        })
-                        .ok();
-                    return;
-                }
-            };
-
-            let peak = audio.peak();
-            let duration = audio.duration();
-            qt_thread
-                .queue(move |mut controller| {
-                    controller.as_mut().rust_mut().get_mut().stop_token = None;
-                    controller.as_mut().set_recording(false);
-                    controller.as_mut().set_transcribing(true);
-                    controller
-                        .as_mut()
-                        .set_audio_level(meter_level(peak * gain));
-                    controller.as_mut().set_input_db(peak_db(peak * gain));
-                    controller.set_status_text(QString::from("Transcribing locally…"));
-                })
-                .ok();
-            let mono = audio.to_asr_mono().trim_silence();
-            let combined_gain = asr_gain(mono.peak(), gain);
-            let asr_audio = mono.amplified(combined_gain);
-            let asr_peak = asr_audio.peak();
-            let diagnostic_dump = dump_asr_audio(&asr_audio);
-            let fallback_thread = qt_thread.clone();
-            let FinalAsrResult {
-                transcription,
-                native_fallback_error: parakeet_fallback,
-            } = transcribe_final(
-                &FinalAsrRequest {
-                    audio: &asr_audio,
-                    language: &language,
-                    speech_engine,
-                    whisper_model: model.as_deref(),
-                    use_gpu,
-                    local_speech_url: &local_speech_url,
-                    native_model,
-                    native_backend: parakeet_backend,
-                    native_supervisor: &parakeet_supervisor,
-                },
-                move || {
-                    fallback_thread
-                        .queue(|mut controller| {
-                            controller.as_mut().set_status_text(QString::from(
-                                "Native engine failed · running Whisper fallback…",
-                            ));
-                            controller.as_mut().set_live_transcript(QString::from(
-                                "Native engine failed; recovering with Whisper…",
-                            ));
-                        })
-                        .ok();
-                },
-            );
-            let EnhancementResult {
-                result: enhancement,
-                duration_ms: ai_duration_ms,
-            } = transcription.as_ref().ok().map_or(
-                EnhancementResult {
-                    result: None,
-                    duration_ms: 0,
-                },
-                |transcript| {
-                    let stream_thread = qt_thread.clone();
-                    enhance_transcript(&ai_config, &transcript.text, move |text| {
-                        let text = text.to_owned();
-                        stream_thread
-                            .queue(move |mut controller| {
-                                if *controller.as_ref().overlay_enabled() {
-                                    controller.as_mut().set_overlay_visible(true);
-                                }
-                                controller
-                                    .as_mut()
-                                    .set_live_transcript(QString::from(&text));
-                                controller.set_status_text(QString::from(
-                                    "Enhancing locally or with selected provider…",
-                                ));
-                            })
-                            .ok();
-                    })
-                },
-            );
-            let retained_audio = if retain_audio
-                && transcription
-                    .as_ref()
-                    .is_ok_and(|transcript| !transcript.text.is_empty())
-            {
-                save_audio_history(&asr_audio, audio_budget_bytes).ok()
-            } else {
-                None
-            };
-            let dictionary = load_lines(&dictionary_path());
-            let text_result = resolve_final_text(
-                transcription,
-                enhancement,
-                command_mode_enabled,
-                &dictionary,
-            );
-            let audio_path = retained_audio
-                .as_deref()
-                .and_then(std::path::Path::to_str)
-                .unwrap_or("");
-            let persisted_result =
-                persist_dictation_result(text_result, &ai_config, ai_duration_ms, audio_path);
-            qt_thread
-                .queue(move |mut controller| {
-                    apply_dictation_completion(
-                        controller.as_mut(),
-                        DictationUiContext {
-                            result: persisted_result,
-                            duration,
-                            asr_peak,
-                            native_fallback_error: parakeet_fallback,
-                            diagnostic_dump,
-                        },
-                    );
-                })
-                .ok();
-        });
+        start_dictation_worker(job, self.qt_thread());
     }
 
     pub fn set_overlay_preview(mut self: Pin<&mut Self>, visible: bool) {
@@ -4200,6 +4019,26 @@ struct DictationUiContext {
     diagnostic_dump: Result<(), String>,
 }
 
+type ControllerThread = CxxQtThread<ffi::FluidVoiceController>;
+
+struct DictationJob {
+    stop_token: CaptureStopToken,
+    capture_target: Option<String>,
+    language: String,
+    use_gpu: bool,
+    model: Option<PathBuf>,
+    speech_engine: i32,
+    native_model: Option<parakeet::Model>,
+    local_speech_url: String,
+    native_supervisor: Arc<Mutex<parakeet::Supervisor>>,
+    native_backend: ParakeetBackend,
+    ai_config: AiConfig,
+    retain_audio: bool,
+    audio_budget_bytes: u64,
+    gain: f32,
+    command_mode_enabled: bool,
+}
+
 fn apply_dictation_completion(
     mut controller: Pin<&mut ffi::FluidVoiceController>,
     context: DictationUiContext,
@@ -4279,6 +4118,209 @@ fn apply_dictation_completion(
             controller.set_status_text(QString::from("Transcription failed"));
         }
     }
+}
+
+fn capture_dictation(
+    job: &DictationJob,
+    qt_thread: &ControllerThread,
+) -> Result<AudioBuffer, String> {
+    let level_thread = qt_thread.clone();
+    let preview_thread = qt_thread.clone();
+    let preview_session = PreviewSession::start(
+        PreviewConfig {
+            speech_engine: job.speech_engine,
+            whisper_model: job.model.clone(),
+            language: job.language.clone(),
+            use_gpu: job.use_gpu,
+            gain: job.gain,
+            native_model: job.native_model,
+            native_backend: job.native_backend,
+            native_supervisor: Arc::clone(&job.native_supervisor),
+        },
+        move |text| {
+            preview_thread
+                .queue(move |mut controller| {
+                    if *controller.as_ref().recording() {
+                        controller
+                            .as_mut()
+                            .set_live_transcript(QString::from(&text));
+                    }
+                })
+                .ok();
+        },
+    );
+    let preview_sender = preview_session.preview_sender();
+    let stream_sender = preview_session.stream_sender();
+    let gain = job.gain;
+    let result = capture_audio(
+        job.capture_target.as_deref(),
+        &job.stop_token,
+        move |level| {
+            level_thread
+                .queue(move |mut controller| {
+                    let adjusted = level * gain;
+                    controller.as_mut().set_audio_level(meter_level(adjusted));
+                    controller.as_mut().set_input_db(peak_db(adjusted));
+                    let updates = controller.as_ref().audio_updates().saturating_add(1);
+                    controller.set_audio_updates(updates);
+                })
+                .ok();
+        },
+        move |audio| {
+            preview_sender.try_send(audio).ok();
+        },
+        move |audio| {
+            if let Some(stream_sender) = &stream_sender {
+                stream_sender.send(audio).ok();
+            }
+        },
+    );
+    preview_session.stop_and_join();
+    result
+}
+
+fn process_dictation_audio(
+    job: &DictationJob,
+    audio: &AudioBuffer,
+    qt_thread: &ControllerThread,
+) -> DictationUiContext {
+    let duration = audio.duration();
+    let mono = audio.to_asr_mono().trim_silence();
+    let combined_gain = asr_gain(mono.peak(), job.gain);
+    let asr_audio = mono.amplified(combined_gain);
+    let asr_peak = asr_audio.peak();
+    let diagnostic_dump = dump_asr_audio(&asr_audio);
+    let fallback_thread = qt_thread.clone();
+    let FinalAsrResult {
+        transcription,
+        native_fallback_error,
+    } = transcribe_final(
+        &FinalAsrRequest {
+            audio: &asr_audio,
+            language: &job.language,
+            speech_engine: job.speech_engine,
+            whisper_model: job.model.as_deref(),
+            use_gpu: job.use_gpu,
+            local_speech_url: &job.local_speech_url,
+            native_model: job.native_model,
+            native_backend: job.native_backend,
+            native_supervisor: &job.native_supervisor,
+        },
+        move || {
+            fallback_thread
+                .queue(|mut controller| {
+                    controller.as_mut().set_status_text(QString::from(
+                        "Native engine failed · running Whisper fallback…",
+                    ));
+                    controller.as_mut().set_live_transcript(QString::from(
+                        "Native engine failed; recovering with Whisper…",
+                    ));
+                })
+                .ok();
+        },
+    );
+    let EnhancementResult {
+        result: enhancement,
+        duration_ms: ai_duration_ms,
+    } = transcription.as_ref().ok().map_or(
+        EnhancementResult {
+            result: None,
+            duration_ms: 0,
+        },
+        |transcript| enhance_for_dictation(&job.ai_config, &transcript.text, qt_thread),
+    );
+    let retained_audio = if job.retain_audio
+        && transcription
+            .as_ref()
+            .is_ok_and(|transcript| !transcript.text.is_empty())
+    {
+        save_audio_history(&asr_audio, job.audio_budget_bytes).ok()
+    } else {
+        None
+    };
+    let dictionary = load_lines(&dictionary_path());
+    let text_result = resolve_final_text(
+        transcription,
+        enhancement,
+        job.command_mode_enabled,
+        &dictionary,
+    );
+    let audio_path = retained_audio
+        .as_deref()
+        .and_then(std::path::Path::to_str)
+        .unwrap_or("");
+    DictationUiContext {
+        result: persist_dictation_result(text_result, &job.ai_config, ai_duration_ms, audio_path),
+        duration,
+        asr_peak,
+        native_fallback_error,
+        diagnostic_dump,
+    }
+}
+
+fn enhance_for_dictation(
+    config: &AiConfig,
+    transcript: &str,
+    qt_thread: &ControllerThread,
+) -> EnhancementResult {
+    let stream_thread = qt_thread.clone();
+    enhance_transcript(config, transcript, move |text| {
+        let text = text.to_owned();
+        stream_thread
+            .queue(move |mut controller| {
+                if *controller.as_ref().overlay_enabled() {
+                    controller.as_mut().set_overlay_visible(true);
+                }
+                controller
+                    .as_mut()
+                    .set_live_transcript(QString::from(&text));
+                controller.set_status_text(QString::from(
+                    "Enhancing locally or with selected provider…",
+                ));
+            })
+            .ok();
+    })
+}
+
+fn start_dictation_worker(job: DictationJob, qt_thread: ControllerThread) {
+    std::thread::spawn(move || {
+        let audio = match capture_dictation(&job, &qt_thread) {
+            Ok(audio) => audio,
+            Err(error) => {
+                qt_thread
+                    .queue(move |mut controller| {
+                        controller.as_mut().rust_mut().get_mut().stop_token = None;
+                        controller.as_mut().set_recording(false);
+                        controller.as_mut().set_overlay_visible(false);
+                        controller.as_mut().set_audio_level(0.0);
+                        controller
+                            .set_status_text(QString::from(&format!("Capture failed: {error}")));
+                    })
+                    .ok();
+                return;
+            }
+        };
+        let peak = audio.peak();
+        let gain = job.gain;
+        qt_thread
+            .queue(move |mut controller| {
+                controller.as_mut().rust_mut().get_mut().stop_token = None;
+                controller.as_mut().set_recording(false);
+                controller.as_mut().set_transcribing(true);
+                controller
+                    .as_mut()
+                    .set_audio_level(meter_level(peak * gain));
+                controller.as_mut().set_input_db(peak_db(peak * gain));
+                controller.set_status_text(QString::from("Transcribing locally…"));
+            })
+            .ok();
+        let result = process_dictation_audio(&job, &audio, &qt_thread);
+        qt_thread
+            .queue(move |mut controller| {
+                apply_dictation_completion(controller.as_mut(), result);
+            })
+            .ok();
+    });
 }
 #[cfg(test)]
 mod tests {
