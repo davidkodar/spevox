@@ -15,6 +15,10 @@ sha256sums=('@SOURCE_SHA256@')
 
 build() {
   cd "$pkgname-$pkgver"
+  local source_root="$srcdir/$pkgname-$pkgver"
+  export CFLAGS="${CFLAGS} -ffile-prefix-map=${source_root}=."
+  export CXXFLAGS="${CXXFLAGS} -ffile-prefix-map=${source_root}=."
+  export RUSTFLAGS="${RUSTFLAGS} --remap-path-prefix=${source_root}=."
   # Several native dependencies generate Bindgen macro-evaluation files with
   # the same temporary name. Serialize this clean package build to avoid their
   # upstream race; normal incremental developer builds remain parallel.
