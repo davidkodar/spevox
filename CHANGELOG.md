@@ -5,6 +5,12 @@ All notable changes to FluidVoice Linux are documented here. The project uses
 
 ## 0.4.0 - 2026-08-16
 
+- Added optional experimental Sortformer v2 speaker diarization for file and
+  meeting transcription: one-click shared-runtime/model setup, immutable
+  revision and SHA-256 verification, CPU/cross-vendor Vulkan execution, up to
+  four speaker labels, timestamp-overlap assignment, speaker-aware History and
+  exports, clear capability guidance, cancellation/removal/repair controls,
+  and non-destructive fallback to the complete Whisper transcript.
 - Isolated the application-profile D-Bus integration test under a unique bus
   name with bounded waits, preventing the full validation suite from hanging
   when a real FluidVoice instance is already running during local release QA.

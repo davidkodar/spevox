@@ -72,9 +72,25 @@ pub const PARAKEET_CTC: Model = Model {
     url: "https://huggingface.co/nvidia/parakeet-ctc-1.1b/resolve/main/parakeet-ctc-1.1b.q8_0.gguf",
     realtime: true,
 };
+pub const SORTFORMER_V2: Model = Model {
+    id: "sortformer-v2",
+    name: "Sortformer Diarizer 4-speaker v2",
+    detail: "Experimental speaker diarization · up to 4 speakers · 140 MiB",
+    file: "sortformer-v2-q8_0.gguf",
+    bytes: 147_075_776,
+    sha256: "0679cfeb1ce356d0dea9470b31274f4bfc7eb927497d82005483770666da998a",
+    url: "https://github.com/davidkodar/fluidvoice-linux/releases/download/models-sortformer-v2-q8_0/sortformer-v2-q8_0.gguf",
+    realtime: true,
+};
 
 #[cfg(test)]
-const MODELS: [Model; 4] = [PARAKEET_V3, NEMOTRON_35, NEMOTRON_EN, PARAKEET_CTC];
+const MODELS: [Model; 5] = [
+    PARAKEET_V3,
+    NEMOTRON_35,
+    NEMOTRON_EN,
+    PARAKEET_CTC,
+    SORTFORMER_V2,
+];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Backend {
@@ -110,9 +126,78 @@ pub fn model_path(model: Model) -> PathBuf {
     if model == PARAKEET_V3 {
         // Preserve the location used by the original one-model preview.
         data_directory().join("models/parakeet").join(model.file)
+    } else if model == SORTFORMER_V2 {
+        data_directory().join("models/diarization").join(model.file)
     } else {
         data_directory().join("models/native-asr").join(model.file)
     }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct DiarizationSegment {
+    pub start_seconds: f64,
+    pub end_seconds: f64,
+    pub speaker: u32,
+}
+
+pub fn diarize_file(
+    backend: Backend,
+    wav_path: &std::path::Path,
+) -> Result<Vec<DiarizationSegment>, String> {
+    let executable = runtime_executable(backend)
+        .ok_or_else(|| format!("{} NeMo-Speech.cpp runtime is not installed", backend.id()))?;
+    if !model_installed(SORTFORMER_V2) {
+        return Err(format!("{} is not installed", SORTFORMER_V2.name));
+    }
+    let device = if backend == Backend::Cpu {
+        "cpu"
+    } else {
+        "vulkan"
+    };
+    let output = Command::new(executable)
+        .args(["--json", "diarize"])
+        .arg(wav_path)
+        .args(["--model"])
+        .arg(model_path(SORTFORMER_V2))
+        .args(["--backend", device, "--format", "json"])
+        .stdin(Stdio::null())
+        .output()
+        .map_err(|error| format!("could not start speaker diarization: {error}"))?;
+    if !output.status.success() {
+        let detail = String::from_utf8_lossy(&output.stderr);
+        return Err(format!(
+            "speaker diarization failed: {}",
+            detail.lines().last().unwrap_or("native runtime exited")
+        ));
+    }
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout)
+        .map_err(|error| format!("invalid diarization response: {error}"))?;
+    value
+        .get("segments")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| "diarization response did not contain segments".to_owned())?
+        .iter()
+        .map(|segment| {
+            let start_seconds = segment
+                .get("start")
+                .and_then(serde_json::Value::as_f64)
+                .ok_or_else(|| "diarization segment has no start time".to_owned())?;
+            let end_seconds = segment
+                .get("end")
+                .and_then(serde_json::Value::as_f64)
+                .ok_or_else(|| "diarization segment has no end time".to_owned())?;
+            let speaker = segment
+                .get("speaker")
+                .and_then(serde_json::Value::as_u64)
+                .and_then(|speaker| u32::try_from(speaker).ok())
+                .ok_or_else(|| "diarization segment has no speaker label".to_owned())?;
+            Ok(DiarizationSegment {
+                start_seconds,
+                end_seconds,
+                speaker,
+            })
+        })
+        .collect()
 }
 
 #[must_use]
@@ -598,13 +683,20 @@ mod tests {
     fn pinned_model_metadata_is_complete() {
         for model in MODELS {
             assert_eq!(model.sha256.len(), 64);
-            assert!(model.bytes > 600_000_000);
-            assert!(model.url.starts_with("https://huggingface.co/nvidia/"));
+            assert!(model.bytes > 100_000_000);
+            assert!(
+                model.url.starts_with("https://huggingface.co/")
+                    || model
+                        .url
+                        .starts_with("https://github.com/davidkodar/fluidvoice-linux/")
+            );
         }
         assert!(!PARAKEET_V3.realtime);
         assert!(NEMOTRON_35.realtime);
         assert!(NEMOTRON_EN.realtime);
         assert!(PARAKEET_CTC.realtime);
+        assert!(SORTFORMER_V2.realtime);
+        assert!(SORTFORMER_V2.url.contains("models-sortformer-v2-q8_0"));
     }
 
     #[test]

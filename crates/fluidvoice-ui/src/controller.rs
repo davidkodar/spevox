@@ -113,6 +113,15 @@ pub mod ffi {
         #[qproperty(bool, parakeet_model_installed, cxx_name = "parakeetModelInstalled")]
         #[qproperty(bool, parakeet_busy, cxx_name = "parakeetBusy")]
         #[qproperty(f32, parakeet_download_progress, cxx_name = "parakeetDownloadProgress")]
+        #[qproperty(bool, diarization_enabled, cxx_name = "diarizationEnabled")]
+        #[qproperty(bool, sortformer_installed, cxx_name = "sortformerInstalled")]
+        #[qproperty(bool, sortformer_busy, cxx_name = "sortformerBusy")]
+        #[qproperty(
+            f32,
+            sortformer_download_progress,
+            cxx_name = "sortformerDownloadProgress"
+        )]
+        #[qproperty(QString, sortformer_status, cxx_name = "sortformerStatus")]
         #[qproperty(bool, onboarding_completed, cxx_name = "onboardingCompleted")]
         type FluidVoiceController = super::FluidVoiceControllerRust;
 
@@ -422,6 +431,26 @@ pub mod ffi {
         #[qinvokable]
         #[cxx_name = "diagnoseParakeet"]
         fn diagnose_parakeet(self: Pin<&mut Self>);
+
+        #[qinvokable]
+        #[cxx_name = "updateDiarizationEnabled"]
+        fn update_diarization_enabled(self: Pin<&mut Self>, enabled: bool);
+
+        #[qinvokable]
+        #[cxx_name = "setupSortformer"]
+        fn setup_sortformer(self: Pin<&mut Self>);
+
+        #[qinvokable]
+        #[cxx_name = "cancelSortformerDownload"]
+        fn cancel_sortformer_download(self: Pin<&mut Self>);
+
+        #[qinvokable]
+        #[cxx_name = "deleteSortformer"]
+        fn delete_sortformer(self: Pin<&mut Self>);
+
+        #[qinvokable]
+        #[cxx_name = "diagnoseSortformer"]
+        fn diagnose_sortformer(self: Pin<&mut Self>);
     }
 
     impl cxx_qt::Threading for FluidVoiceController {}
@@ -563,6 +592,12 @@ pub struct FluidVoiceControllerRust {
     parakeet_download_progress: f32,
     parakeet_download_cancel: Option<Arc<AtomicBool>>,
     parakeet_supervisor: Arc<Mutex<parakeet::Supervisor>>,
+    diarization_enabled: bool,
+    sortformer_installed: bool,
+    sortformer_busy: bool,
+    sortformer_download_progress: f32,
+    sortformer_status: QString,
+    sortformer_download_cancel: Option<Arc<AtomicBool>>,
     onboarding_completed: bool,
 }
 
@@ -848,6 +883,18 @@ impl Default for FluidVoiceControllerRust {
             parakeet_download_progress: 0.0,
             parakeet_download_cancel: None,
             parakeet_supervisor: Arc::new(Mutex::new(parakeet::Supervisor::new())),
+            diarization_enabled: preferences.diarization_enabled,
+            sortformer_installed: parakeet::model_installed(parakeet::SORTFORMER_V2),
+            sortformer_busy: false,
+            sortformer_download_progress: 0.0,
+            sortformer_status: QString::from(
+                if parakeet::model_installed(parakeet::SORTFORMER_V2) {
+                    "Verified experimental Sortformer model is ready."
+                } else {
+                    "Optional experimental setup for speaker-labelled meeting transcripts."
+                },
+            ),
+            sortformer_download_cancel: None,
             onboarding_completed: preferences.onboarding_completed,
         }
     }
@@ -2598,6 +2645,143 @@ impl ffi::FluidVoiceController {
             }));
     }
 
+    pub fn update_diarization_enabled(mut self: Pin<&mut Self>, enabled: bool) {
+        self.as_mut().set_diarization_enabled(enabled);
+        self.as_ref().rust().save_preferences();
+        self.as_mut()
+            .set_sortformer_status(QString::from(if enabled {
+                if parakeet::model_installed(parakeet::SORTFORMER_V2) {
+                    "Speaker diarization enabled for file transcription."
+                } else {
+                    "Speaker diarization enabled, but one-click setup is still required."
+                }
+            } else {
+                "Speaker diarization is off; file transcription uses Whisper only."
+            }));
+    }
+
+    pub fn setup_sortformer(mut self: Pin<&mut Self>) {
+        if *self.as_ref().sortformer_busy() {
+            return;
+        }
+        let compute_backend = *self.as_ref().selected_compute_backend();
+        let backend = parakeet_backend(compute_backend);
+        let automatic = compute_backend == 0;
+        let cancel = Arc::new(AtomicBool::new(false));
+        self.as_mut()
+            .rust_mut()
+            .get_mut()
+            .sortformer_download_cancel = Some(cancel.clone());
+        self.as_mut().set_sortformer_busy(true);
+        self.as_mut().set_sortformer_download_progress(0.0);
+        self.as_mut().set_sortformer_status(QString::from(
+            "Preparing the shared native runtime and verified Sortformer model…",
+        ));
+        let qt_thread = self.qt_thread();
+        std::thread::spawn(move || {
+            let progress_thread = qt_thread.clone();
+            let runtime_result = if parakeet::runtime_installed(backend) {
+                Ok(backend)
+            } else {
+                parakeet::install_runtime(backend)
+                    .map(|()| backend)
+                    .or_else(|vulkan_error| {
+                        if automatic && backend == ParakeetBackend::Vulkan {
+                            parakeet::install_runtime(ParakeetBackend::Cpu)
+                                .map(|()| ParakeetBackend::Cpu)
+                                .map_err(|cpu_error| {
+                                    format!(
+                                        "Vulkan setup failed: {} CPU fallback also failed: {}",
+                                        friendly_runtime_error(&vulkan_error),
+                                        friendly_runtime_error(&cpu_error)
+                                    )
+                                })
+                        } else {
+                            Err(friendly_runtime_error(&vulkan_error))
+                        }
+                    })
+            };
+            let result = runtime_result.and_then(|installed_backend| {
+                if parakeet::model_installed(parakeet::SORTFORMER_V2) {
+                    Ok(installed_backend)
+                } else {
+                    parakeet::download_model(parakeet::SORTFORMER_V2, &cancel, move |progress| {
+                        progress_thread
+                            .queue(move |mut controller| {
+                                controller
+                                    .as_mut()
+                                    .set_sortformer_download_progress(progress);
+                            })
+                            .ok();
+                    })
+                    .map(|()| installed_backend)
+                }
+            });
+            qt_thread
+                .queue(move |mut controller| {
+                    controller
+                        .as_mut()
+                        .rust_mut()
+                        .get_mut()
+                        .sortformer_download_cancel = None;
+                    controller.as_mut().set_sortformer_busy(false);
+                    controller.as_mut().set_sortformer_download_progress(0.0);
+                    controller
+                        .as_mut()
+                        .set_sortformer_installed(parakeet::model_installed(
+                            parakeet::SORTFORMER_V2,
+                        ));
+                    controller
+                        .as_mut()
+                        .set_parakeet_runtime_installed(parakeet_runtime_available(
+                            compute_backend,
+                        ));
+                    controller.as_mut().set_sortformer_status(QString::from(match result {
+                        Ok(installed_backend) => format!(
+                            "Sortformer is ready for experimental speaker diarization using {}.",
+                            installed_backend.id().to_uppercase()
+                        ),
+                        Err(error) => format!("Sortformer setup failed: {error}"),
+                    }));
+                })
+                .ok();
+        });
+    }
+
+    pub fn cancel_sortformer_download(self: Pin<&mut Self>) {
+        if let Some(cancel) = self.as_ref().rust().sortformer_download_cancel.as_ref() {
+            cancel.store(true, Ordering::Relaxed);
+        }
+    }
+
+    pub fn delete_sortformer(mut self: Pin<&mut Self>) {
+        let result = parakeet::delete_model(parakeet::SORTFORMER_V2);
+        self.as_mut()
+            .set_sortformer_installed(parakeet::model_installed(parakeet::SORTFORMER_V2));
+        self.as_mut()
+            .set_sortformer_status(QString::from(match result {
+                Ok(()) => {
+                    "Sortformer model removed; ordinary transcription is unchanged.".to_owned()
+                }
+                Err(error) => format!("Could not remove Sortformer: {error}"),
+            }));
+    }
+
+    pub fn diagnose_sortformer(mut self: Pin<&mut Self>) {
+        let runtime = parakeet_runtime_available(*self.as_ref().selected_compute_backend());
+        let model = parakeet::model_installed(parakeet::SORTFORMER_V2);
+        self.as_mut().set_sortformer_installed(model);
+        self.as_mut()
+            .set_sortformer_status(QString::from(match (runtime, model) {
+                (true, true) => "Shared native runtime and verified Sortformer model are ready.",
+                (false, true) => "Sortformer is verified; rebuild the shared native runtime.",
+                (true, false) => "The native runtime is ready; download the Sortformer model.",
+                (false, false) => {
+                    "Run one-click setup to build the runtime and download Sortformer."
+                }
+            }));
+    }
+
     pub fn update_local_speech_url(mut self: Pin<&mut Self>, url: &QString) {
         let url = url.to_string();
         match LocalSpeechServer::new(&url) {
@@ -2916,6 +3100,9 @@ impl ffi::FluidVoiceController {
         let path = PathBuf::from(decode_file_url(&path.to_string()));
         let language = selected_language_code(self.as_ref().rust());
         let use_gpu = self.as_ref().rust().selected_compute_backend != 2;
+        let diarization_enabled = self.as_ref().rust().diarization_enabled;
+        let diarization_backend =
+            effective_parakeet_backend(self.as_ref().rust().selected_compute_backend);
         let ai_config = self.as_ref().rust().ai_config();
         let cancel = Arc::new(AtomicBool::new(false));
         self.as_mut().rust_mut().get_mut().meeting_cancel = Some(cancel.clone());
@@ -2932,6 +3119,8 @@ impl ffi::FluidVoiceController {
                 &model,
                 language,
                 use_gpu,
+                diarization_enabled,
+                diarization_backend,
                 &cancel,
                 move |progress, completed, total| {
                     progress_thread
@@ -2962,14 +3151,28 @@ impl ffi::FluidVoiceController {
                     } else {
                         (meeting.text.clone(), None, 0)
                     };
-                (text, raw_text, meeting.segments, ai_error, ai_duration_ms)
+                (
+                    text,
+                    raw_text,
+                    meeting.segments,
+                    meeting.diarization_warning,
+                    ai_error,
+                    ai_duration_ms,
+                )
             });
             qt_thread
                 .queue(move |mut controller| {
                     controller.as_mut().set_transcribing(false);
                     controller.as_mut().rust_mut().get_mut().meeting_cancel = None;
                     match result {
-                        Ok((text, raw_text, mut segments, ai_error, ai_duration_ms)) => {
+                        Ok((
+                            text,
+                            raw_text,
+                            mut segments,
+                            diarization_warning,
+                            ai_error,
+                            ai_duration_ms,
+                        )) => {
                             let dictionary = load_lines(&dictionary_path());
                             let processed = process_transcript(
                                 &text,
@@ -2983,6 +3186,19 @@ impl ffi::FluidVoiceController {
                                     &dictionary,
                                 );
                             }
+                            let history_text = if segments.iter().any(|segment| segment.speaker.is_some()) {
+                                segments
+                                    .iter()
+                                    .map(|segment| format!(
+                                        "{}: {}",
+                                        segment.speaker.as_deref().unwrap_or("Speaker unassigned"),
+                                        segment.text
+                                    ))
+                                    .collect::<Vec<_>>()
+                                    .join("\n")
+                            } else {
+                                processed.clone()
+                            };
                             let provider = ai_provider_name(&ai_config);
                             let ai_status = if ai_config.enabled {
                                 if ai_error.is_some() {
@@ -2995,7 +3211,7 @@ impl ffi::FluidVoiceController {
                             };
                             record_history(
                                 controller.as_mut(),
-                                &processed,
+                                &history_text,
                                 &HistoryContext {
                                     raw_text: &raw_text,
                                     provider,
@@ -3018,7 +3234,10 @@ impl ffi::FluidVoiceController {
                                 .as_mut()
                                 .set_file_transcription_status(QString::from(
                                 ai_error.map_or_else(
-                                    || "Complete — timestamped transcript added to History and ready to export.".to_owned(),
+                                    || diarization_warning.map_or_else(
+                                        || "Complete — timestamped speaker transcript added to History and ready to export.".to_owned(),
+                                        |warning| format!("Complete without speaker labels — {warning}"),
+                                    ),
                                     |error| {
                                         format!(
                                             "AI enhancement failed; raw transcript saved. {error}"
@@ -3581,6 +3800,7 @@ impl FluidVoiceControllerRust {
             local_api_port: self.local_api_port,
             speech_engine: self.selected_speech_engine,
             local_speech_url: self.local_speech_url.to_string(),
+            diarization_enabled: self.diarization_enabled,
         };
         if let Err(error) = preferences.save() {
             eprintln!("Failed to save preferences: {error}");
@@ -3640,6 +3860,7 @@ struct Preferences {
     local_api_port: i32,
     speech_engine: i32,
     local_speech_url: String,
+    diarization_enabled: bool,
 }
 
 #[derive(Clone)]
@@ -3739,6 +3960,7 @@ impl Default for Preferences {
             local_api_port: 43_128,
             speech_engine: 0,
             local_speech_url: "http://127.0.0.1:8080".to_owned(),
+            diarization_enabled: false,
         }
     }
 }
@@ -3813,6 +4035,8 @@ impl Preferences {
                 preferences.speech_engine = value.parse().unwrap_or(0).clamp(0, 5);
             } else if let Some(value) = line.strip_prefix("local_speech_url=") {
                 preferences.local_speech_url = unescape_setting(value);
+            } else if let Some(value) = line.strip_prefix("diarization_enabled=") {
+                preferences.diarization_enabled = value == "true";
             } else if let Some(value) = line.strip_prefix("onboarding_completed=") {
                 preferences.onboarding_completed = value == "true";
             }
@@ -3829,7 +4053,7 @@ impl Preferences {
         fs::write(
             path,
             format!(
-                "language={}\nmodel={}\nshortcut={}\ninput={}\ngain_db={}\noverlay_enabled={}\noverlay_size={}\noverlay_position={}\noverlay_show_text={}\noverlay_opacity={}\ncommand_mode_enabled={}\ncompute_backend={}\ntheme={}\naccent={}\nai_enabled={}\nai_provider={}\nai_model={}\nai_base_url={}\nai_prompt={}\nai_local_only={}\nauto_profiles_enabled={}\ntyping_wpm={}\nskip_weekends={}\naudio_history_enabled={}\naudio_history_budget_mb={}\nlocal_api_enabled={}\nlocal_api_port={}\nspeech_engine={}\nlocal_speech_url={}\nonboarding_completed={}\n",
+                "language={}\nmodel={}\nshortcut={}\ninput={}\ngain_db={}\noverlay_enabled={}\noverlay_size={}\noverlay_position={}\noverlay_show_text={}\noverlay_opacity={}\ncommand_mode_enabled={}\ncompute_backend={}\ntheme={}\naccent={}\nai_enabled={}\nai_provider={}\nai_model={}\nai_base_url={}\nai_prompt={}\nai_local_only={}\nauto_profiles_enabled={}\ntyping_wpm={}\nskip_weekends={}\naudio_history_enabled={}\naudio_history_budget_mb={}\nlocal_api_enabled={}\nlocal_api_port={}\nspeech_engine={}\nlocal_speech_url={}\ndiarization_enabled={}\nonboarding_completed={}\n",
                 self.language,
                 self.model.display(),
                 self.shortcut,
@@ -3859,6 +4083,7 @@ impl Preferences {
                 self.local_api_port,
                 self.speech_engine,
                 escape_setting(&self.local_speech_url),
+                self.diarization_enabled,
                 self.onboarding_completed
             ),
         )
@@ -4722,6 +4947,7 @@ struct MeetingSegment {
 struct MeetingTranscript {
     text: String,
     segments: Vec<MeetingSegment>,
+    diarization_warning: Option<String>,
 }
 
 fn transcribe_long_audio_file(
@@ -4729,6 +4955,8 @@ fn transcribe_long_audio_file(
     model: &PathBuf,
     language: String,
     use_gpu: bool,
+    diarization_enabled: bool,
+    diarization_backend: ParakeetBackend,
     cancel: &AtomicBool,
     mut progress: impl FnMut(f32, usize, usize),
 ) -> Result<MeetingTranscript, String> {
@@ -4766,6 +4994,32 @@ fn transcribe_long_audio_file(
         let completed = index + 1;
         progress(completed as f32 / total.max(1) as f32, completed, total);
     }
+    let mut diarization_warning = None;
+    if diarization_enabled {
+        if !parakeet::model_installed(parakeet::SORTFORMER_V2) {
+            diarization_warning = Some(
+                "Sortformer is not installed; run its one-click setup in File Transcription."
+                    .to_owned(),
+            );
+        } else if !parakeet::runtime_installed(diarization_backend) {
+            diarization_warning = Some(
+                "the selected native compute runtime is unavailable; run Check setup.".to_owned(),
+            );
+        } else {
+            match write_temporary_diarization_wav(&audio).and_then(|wav| {
+                let result = parakeet::diarize_file(diarization_backend, &wav);
+                fs::remove_file(wav).ok();
+                result
+            }) {
+                Ok(diarization) => assign_speakers(&mut segments, &diarization),
+                Err(error) => {
+                    diarization_warning = Some(format!(
+                        "experimental diarization failed, so the Whisper transcript was preserved: {error}"
+                    ))
+                }
+            }
+        }
+    }
     let text = segments
         .iter()
         .map(|segment| segment.text.as_str())
@@ -4774,7 +5028,59 @@ fn transcribe_long_audio_file(
     if text.trim().is_empty() {
         return Err("No speech was recognized in this file.".to_owned());
     }
-    Ok(MeetingTranscript { text, segments })
+    Ok(MeetingTranscript {
+        text,
+        segments,
+        diarization_warning,
+    })
+}
+
+fn write_temporary_diarization_wav(
+    audio: &fluidvoice_audio::MonoAudioBuffer,
+) -> Result<PathBuf, String> {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_nanos());
+    let path = std::env::temp_dir().join(format!(
+        "fluidvoice-diarization-{}-{nonce}.wav",
+        std::process::id()
+    ));
+    let spec = hound::WavSpec {
+        channels: 1,
+        sample_rate: 16_000,
+        bits_per_sample: 16,
+        sample_format: hound::SampleFormat::Int,
+    };
+    let mut writer = hound::WavWriter::create(&path, spec).map_err(|error| error.to_string())?;
+    for sample in audio.samples() {
+        #[allow(clippy::cast_possible_truncation)]
+        let value = (sample.clamp(-1.0, 1.0) * f32::from(i16::MAX)).round() as i16;
+        writer
+            .write_sample(value)
+            .map_err(|error| error.to_string())?;
+    }
+    writer.finalize().map_err(|error| error.to_string())?;
+    Ok(path)
+}
+
+fn assign_speakers(
+    transcript: &mut [MeetingSegment],
+    diarization: &[parakeet::DiarizationSegment],
+) {
+    for segment in transcript {
+        let start = segment.start_milliseconds as f64 / 1_000.0;
+        let end = segment.end_milliseconds as f64 / 1_000.0;
+        let speaker = diarization
+            .iter()
+            .filter_map(|candidate| {
+                let overlap = end.min(candidate.end_seconds) - start.max(candidate.start_seconds);
+                (overlap > 0.0).then_some((candidate.speaker, overlap))
+            })
+            .max_by(|left, right| left.1.total_cmp(&right.1))
+            .map(|(speaker, _)| format!("Speaker {speaker}"));
+        segment.speaker = speaker;
+    }
 }
 
 fn meeting_segment_qstring(segment: &MeetingSegment) -> QString {
@@ -5412,10 +5718,10 @@ mod tests {
     use std::{fs, time::Duration};
 
     use super::{
-        AiProfile, DesktopAction, DictionaryEntry, MeetingSegment, asr_gain, decode_audio_file,
-        decode_file_url, history_clipboard_text, meter_level, native_language_for_model,
-        native_model_for_engine, parse_csv_record, parse_desktop_action, peak_db,
-        process_transcript, profile_matches_application, read_dictionary_import,
+        AiProfile, DesktopAction, DictionaryEntry, MeetingSegment, asr_gain, assign_speakers,
+        decode_audio_file, decode_file_url, history_clipboard_text, meter_level,
+        native_language_for_model, native_model_for_engine, parse_csv_record, parse_desktop_action,
+        peak_db, process_transcript, profile_matches_application, read_dictionary_import,
         supported_languages, suspicious_single_word, timestamp_srt, valid_ollama_model_name,
         version_tuple, whisper_model_catalog, write_dictionary_csv, write_history_export,
         write_meeting_export,
@@ -5438,6 +5744,39 @@ mod tests {
             "en-US"
         );
         assert_eq!(native_language_for_model(parakeet::PARAKEET_V3, "sv"), "sv");
+    }
+
+    #[test]
+    fn assigns_each_transcript_segment_to_the_longest_overlapping_speaker() {
+        let mut transcript = vec![
+            MeetingSegment {
+                start_milliseconds: 0,
+                end_milliseconds: 2_000,
+                speaker: None,
+                text: "First".into(),
+            },
+            MeetingSegment {
+                start_milliseconds: 2_000,
+                end_milliseconds: 4_000,
+                speaker: None,
+                text: "Second".into(),
+            },
+        ];
+        let diarization = vec![
+            parakeet::DiarizationSegment {
+                start_seconds: 0.0,
+                end_seconds: 1.8,
+                speaker: 1,
+            },
+            parakeet::DiarizationSegment {
+                start_seconds: 1.7,
+                end_seconds: 4.0,
+                speaker: 2,
+            },
+        ];
+        assign_speakers(&mut transcript, &diarization);
+        assert_eq!(transcript[0].speaker.as_deref(), Some("Speaker 1"));
+        assert_eq!(transcript[1].speaker.as_deref(), Some("Speaker 2"));
     }
 
     #[test]

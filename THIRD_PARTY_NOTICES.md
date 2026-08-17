@@ -59,6 +59,22 @@ the user selects Install; they are not redistributed in this source tree.
 
 Copyright for these models is held by NVIDIA Corporation.
 
+## Sortformer speaker diarization model
+
+The optional experimental diarization model is downloaded separately only
+after the user selects setup. The GGUF is a FluidVoice conversion of NVIDIA's
+public Sortformer 4-speaker v2 checkpoint and is not presented as an
+NVIDIA-published binary. It is created with the converter from the pinned
+NeMo-Speech.cpp source revision listed above.
+
+- Original model: https://huggingface.co/nvidia/diar_streaming_sortformer_4spk-v2
+- Pinned model revision: `5240a64075176943f677d30fa2171c780229f341`
+- Original checkpoint SHA-256: `b371afce2c4958186469df33d939936b9746c89f38b10a69cfd2c61254e83329`
+- File: `sortformer-v2-q8_0.gguf`
+- Converted file SHA-256: `0679cfeb1ce356d0dea9470b31274f4bfc7eb927497d82005483770666da998a`
+- Copyright: NVIDIA Corporation
+- License: Creative Commons Attribution 4.0 International (CC BY 4.0)
+
 ## SentencePiece
 
 The optional managed Parakeet runtime builds a pinned private SentencePiece

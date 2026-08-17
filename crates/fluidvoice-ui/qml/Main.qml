@@ -1855,7 +1855,64 @@ ApplicationWindow {
                         ColumnLayout {
                             id: fileContent; anchors.fill: parent; anchors.margins: 20; spacing: 12
                             Text { text: qsTr("MEETING & LONG-RECORDING TRANSCRIPTION"); color: root.tertiaryText; font.pixelSize: 11; font.weight: Font.Medium }
-                            Text { Layout.fillWidth: true; text: qsTr("Uses the active Whisper model and language. Long audio is decoded locally and processed in bounded 30-second segments with timestamps. Speaker fields are preserved for future diarization, but remain unassigned until a real diarization backend is configured."); color: root.secondaryText; font.pixelSize: 13; wrapMode: Text.Wrap }
+                            Text { Layout.fillWidth: true; text: qsTr("Uses the active Whisper model and language. Long audio is decoded locally and processed in bounded 30-second segments with timestamps. Optional Sortformer diarization can label up to four speakers without changing ordinary dictation."); color: root.secondaryText; font.pixelSize: 13; wrapMode: Text.Wrap }
+                            Rectangle {
+                                Layout.fillWidth: true
+                                implicitHeight: diarizationSetup.implicitHeight + 28
+                                radius: 12
+                                color: root.panelRaised
+                                border.color: controller.diarizationEnabled ? root.accent : root.hairline
+                                ColumnLayout {
+                                    id: diarizationSetup
+                                    anchors.fill: parent
+                                    anchors.margins: 14
+                                    spacing: 10
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        ColumnLayout {
+                                            Layout.fillWidth: true
+                                            spacing: 3
+                                            RowLayout {
+                                                Text { text: qsTr("Speaker diarization"); color: root.primaryText; font.pixelSize: 14; font.weight: Font.DemiBold }
+                                                Rectangle {
+                                                    implicitWidth: experimentalLabel.implicitWidth + 16; implicitHeight: 24; radius: 12
+                                                    color: root.selectionSurface; border.color: root.accent
+                                                    Text { id: experimentalLabel; anchors.centerIn: parent; text: qsTr("Experimental"); color: root.accent; font.pixelSize: 10; font.weight: Font.Medium }
+                                                }
+                                            }
+                                            Text { Layout.fillWidth: true; text: qsTr("Identify who spoke when with local Sortformer v2. The regular Whisper transcript is always preserved if diarization fails."); color: root.secondaryText; font.pixelSize: 11; wrapMode: Text.Wrap }
+                                        }
+                                        Switch { checked: controller.diarizationEnabled; enabled: !controller.transcribing && !controller.sortformerBusy; onToggled: controller.updateDiarizationEnabled(checked) }
+                                    }
+                                    Text { Layout.fillWidth: true; text: controller.sortformerStatus; color: controller.sortformerInstalled ? root.accent : root.secondaryText; font.pixelSize: 11; wrapMode: Text.Wrap }
+                                    RowLayout {
+                                        visible: controller.sortformerBusy
+                                        Layout.fillWidth: true
+                                        BusyIndicator { running: controller.sortformerBusy; implicitWidth: 24; implicitHeight: 24 }
+                                        Text { Layout.fillWidth: true; text: controller.sortformerDownloadProgress > 0 ? qsTr("Downloading and verifying the diarization model…") : qsTr("Building the shared native runtime…"); color: root.accent; font.pixelSize: 11; wrapMode: Text.Wrap }
+                                    }
+                                    ProgressBar { visible: controller.sortformerBusy && controller.sortformerDownloadProgress > 0; Layout.fillWidth: true; value: controller.sortformerDownloadProgress }
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        Text {
+                                            Layout.fillWidth: true
+                                            text: controller.sortformerInstalled
+                                                ? qsTr("Verified model installed · maximum 4 speakers")
+                                                : qsTr("140 MiB verified FluidVoice GGUF conversion · shared native runtime")
+                                            color: root.tertiaryText; font.pixelSize: 10; wrapMode: Text.Wrap
+                                        }
+                                        Button {
+                                            Layout.preferredWidth: 150
+                                            text: controller.sortformerBusy && controller.sortformerDownloadProgress > 0 ? qsTr("Cancel") : controller.sortformerInstalled ? qsTr("Repair setup") : qsTr("Set up")
+                                            enabled: !controller.sortformerBusy || controller.sortformerDownloadProgress > 0
+                                            onClicked: controller.sortformerBusy ? controller.cancelSortformerDownload() : controller.setupSortformer()
+                                        }
+                                        Button { Layout.preferredWidth: 120; text: qsTr("Check setup"); enabled: !controller.sortformerBusy; onClicked: controller.diagnoseSortformer() }
+                                        Button { visible: controller.sortformerInstalled; Layout.preferredWidth: 110; text: qsTr("Delete"); enabled: !controller.sortformerBusy && !controller.transcribing; onClicked: controller.deleteSortformer() }
+                                    }
+                                    Text { Layout.fillWidth: true; text: qsTr("Best suited to meetings and interviews. Accuracy may degrade with more than four speakers, overlapping speech, noise, long recordings, or non-English conversation. CPU and cross-vendor Vulkan are supported."); color: root.tertiaryText; font.pixelSize: 10; wrapMode: Text.Wrap }
+                                }
+                            }
                             RowLayout { Layout.fillWidth: true
                                 Button { text: controller.transcribing ? qsTr("Transcribing…") : qsTr("Choose audio or video"); enabled: !controller.transcribing && !controller.recording; onClicked: audioFileDialog.open() }
                                 Button { visible: controller.transcribing; text: qsTr("Cancel"); onClicked: controller.cancelMeetingTranscription() }
