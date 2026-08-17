@@ -45,6 +45,14 @@ All notable changes to FluidVoice Linux are documented here. The project uses
   byte-exact test surface.
 - Replaced the hand-written preferences serializer with a versioned JSON model;
   existing line-based files migrate transparently on their next save.
+- Unified AI validation, loopback parsing, and timeout policy; authenticated
+  local servers are supported, and non-idempotent enhancement POSTs are never
+  retried after an ambiguous provider failure.
+- Removed HOME-less private-state fallbacks into predictable shared temporary
+  paths; startup now fails closed unless an XDG or home directory is available.
+- Completed packaging hygiene by installing both high-resolution icon sizes,
+  ignoring Flatpak build state, removing a vacuous portal-version branch, and
+  adding a 44.1 kHz uneven-chunk streaming-resampler regression test.
 - Closed follow-up audit regressions in meeting-file retry, local AI proxy
   isolation, IPv6 loopback ASR, Write Mode retry semantics, cancellable Whisper
   previews, model integrity checks, local API lifecycle handling, and native

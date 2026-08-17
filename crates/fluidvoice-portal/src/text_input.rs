@@ -96,10 +96,10 @@ fn restore_token_path() -> PathBuf {
     if let Some(directory) = std::env::var_os("XDG_STATE_HOME") {
         return PathBuf::from(directory).join("fluidvoice/portal-restore-token");
     }
-    std::env::var_os("HOME").map_or_else(
-        || std::env::temp_dir().join(format!("fluidvoice-{}-portal-token", std::process::id())),
-        |home| PathBuf::from(home).join(".local/state/fluidvoice/portal-restore-token"),
-    )
+    PathBuf::from(std::env::var_os("HOME").expect(
+        "FluidVoice requires HOME or XDG_STATE_HOME; refusing shared temporary token storage",
+    ))
+    .join(".local/state/fluidvoice/portal-restore-token")
 }
 
 fn save_restore_token(token: &str) -> std::io::Result<()> {

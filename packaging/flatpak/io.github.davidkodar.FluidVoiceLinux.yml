@@ -28,6 +28,7 @@ modules:
       - install -Dm644 data/io.github.davidkodar.FluidVoiceLinux.desktop /app/share/applications/io.github.davidkodar.FluidVoiceLinux.desktop
       - install -Dm644 data/io.github.davidkodar.FluidVoiceLinux.metainfo.xml /app/share/metainfo/io.github.davidkodar.FluidVoiceLinux.metainfo.xml
       - install -Dm644 crates/fluidvoice-ui/assets/fluidvoice-app.png /app/share/icons/hicolor/256x256/apps/io.github.davidkodar.FluidVoiceLinux.png
+      - install -Dm644 data/icons/hicolor/512x512/apps/io.github.davidkodar.FluidVoiceLinux.png /app/share/icons/hicolor/512x512/apps/io.github.davidkodar.FluidVoiceLinux.png
       - install -Dm644 LICENSE /app/share/licenses/fluidvoice-linux/LICENSE
       - install -Dm644 packaging/kwin-script/metadata.json /app/share/kwin/scripts/fluidvoiceprofiles/metadata.json
       - install -Dm644 packaging/kwin-script/contents/code/main.js /app/share/kwin/scripts/fluidvoiceprofiles/contents/code/main.js

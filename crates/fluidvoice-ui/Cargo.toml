@@ -21,6 +21,7 @@ sha2 = "0.10.9"
 tokio = { version = "1.53.1", features = ["macros", "rt", "sync"] }
 tungstenite = { version = "0.28.0", default-features = false, features = ["handshake"] }
 ureq = { version = "3.1.4", default-features = false, features = ["rustls"] }
+url = "2.5.7"
 zip = { version = "2.4.2", default-features = false, features = ["deflate"] }
 
 [build-dependencies]

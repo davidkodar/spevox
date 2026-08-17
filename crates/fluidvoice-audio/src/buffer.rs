@@ -469,6 +469,31 @@ mod tests {
     }
 
     #[test]
+    fn streaming_44khz_conversion_preserves_phase_across_uneven_chunks() {
+        let samples = (0..44_100)
+            .map(|index| (index as f32 * 0.017).sin())
+            .collect::<Vec<_>>();
+        let full = AudioBuffer::new(samples.clone(), 44_100, 1, false)
+            .unwrap()
+            .to_asr_mono();
+        let mut converter = StreamingAsrConverter::default();
+        let mut streamed = Vec::new();
+        for chunk in samples.chunks(613) {
+            streamed.extend(
+                converter
+                    .process(&AudioBuffer::new(chunk.to_vec(), 44_100, 1, false).unwrap())
+                    .samples()
+                    .iter()
+                    .copied(),
+            );
+        }
+        assert!(streamed.len() > 15_900);
+        for (actual, expected) in streamed.iter().zip(full.samples()) {
+            assert!((actual - expected).abs() < 1.0e-5);
+        }
+    }
+
+    #[test]
     fn reports_peak_and_rms() {
         let input = AudioBuffer::new(vec![-1.0, 1.0, -1.0, 1.0], 16_000, 1, false).unwrap();
 

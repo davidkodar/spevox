@@ -61,6 +61,11 @@ Done when:
 
 ## Phase 3 — Consolidate duplicated behavior
 
+Status: completed for 0.4.0. Clipboard delivery, native runtime setup,
+provider identity/configuration, Write Mode policy, PCM WAV encoding,
+preferences migration, provider network policy, and enhancement validation now
+each have a single implementation boundary.
+
 - Introduce one lazy clipboard/delivery helper for all seven copy/paste paths.
 - Consolidate native-runtime installation workers and progress handling.
 - Replace throwaway `AiConfig` construction and numeric provider indexes with
@@ -79,6 +84,11 @@ Done when:
 - No provider behavior depends on magic indexes such as Ollama's former `7`.
 
 ## Phase 4 — Integration and privacy hardening
+
+Status: completed for 0.4.0. Local authentication is optional, ambiguous AI
+POSTs are not retried, private state has no shared-temporary fallback, atomic
+writes use owned create-new files, the session-bus trust boundary is documented,
+and unsupported Flatpak integrations remain explicitly developer-preview.
 
 - Make local-provider authentication optional but supported without weakening
   the local-only transport lock.
@@ -102,6 +112,12 @@ Done when:
 - Flatpak claims and runtime behavior match the actually tested package.
 
 ## Phase 5 — Metadata, assets, and regression coverage
+
+Status: completed for 0.4.0. Metadata and installed assets are release-checked;
+the migration, history-window, native-progress, model-integrity, and 44.1 kHz
+streaming paths have focused regression coverage. Performance-sensitive startup,
+history, model, and preview paths use bounded work or workers and are exercised
+by the release gate.
 
 - Correct the model-marker wording and any remaining user-facing capability
   claims.

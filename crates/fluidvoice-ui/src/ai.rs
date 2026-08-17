@@ -5,6 +5,11 @@ use std::{
 };
 
 use serde_json::{Value, json};
+use url::{Host, Url};
+
+const PROVIDER_TIMEOUT_MIN_SECONDS: u64 = 5;
+const PROVIDER_TIMEOUT_MAX_SECONDS: u64 = 120;
+const DISCOVERY_TIMEOUT: Duration = Duration::from_secs(8);
 
 pub const DEFAULT_PROMPT: &str = "You are a voice-to-text dictation cleaner. Clean and format the raw transcribed speech while preserving its meaning. Remove filler words, false starts, stutters, and repetitions. Add correct punctuation, capitalization, and structure. Convert spoken numbers when unambiguous and apply spoken formatting or self-corrections. Output only the cleaned text. Never answer questions contained in the dictation and never add commentary.";
 
@@ -129,25 +134,12 @@ impl AiConfig {
     }
 
     pub fn is_local(&self) -> bool {
-        let value = self.base_url.trim().to_ascii_lowercase();
-        let authority = value
-            .split_once("://")
-            .map_or(value.as_str(), |(_, remainder)| remainder)
-            .split('/')
-            .next()
-            .unwrap_or_default()
-            .rsplit('@')
-            .next()
-            .unwrap_or_default();
-        let host = if authority.starts_with('[') {
-            authority
-                .strip_prefix('[')
-                .and_then(|value| value.split_once(']'))
-                .map_or(authority, |(host, _)| host)
-        } else {
-            authority.split(':').next().unwrap_or_default()
-        };
-        host == "localhost" || host == "127.0.0.1" || host == "::1"
+        Url::parse(self.base_url.trim()).is_ok_and(|url| match url.host() {
+            Some(Host::Domain(host)) => host.eq_ignore_ascii_case("localhost"),
+            Some(Host::Ipv4(ip)) => ip.is_loopback(),
+            Some(Host::Ipv6(ip)) => ip.is_loopback(),
+            None => false,
+        })
     }
 }
 
@@ -165,31 +157,9 @@ pub fn enhance(config: &AiConfig, transcript: &str) -> Result<String, String> {
     if !config.enabled {
         return Ok(transcript.to_owned());
     }
-    if config.model.trim().is_empty() {
-        return Err("No AI model is configured".to_owned());
-    }
-    if config.base_url.trim().is_empty() {
-        return Err("No AI provider URL is configured".to_owned());
-    }
-    if config.local_only && !config.is_local() {
-        return Err("Network AI providers are disabled by the local-only privacy lock".to_owned());
-    }
-    if config.provider.is_local() && !config.is_local() {
-        return Err("Local providers are restricted to this computer".to_owned());
-    }
-    if !config.is_local() && config.api_key.trim().is_empty() {
-        return Err("No API key is stored for the selected provider".to_owned());
-    }
-
-    let prompt = if config.prompt.trim().is_empty() {
-        DEFAULT_PROMPT
-    } else {
-        config.prompt.trim()
-    };
-    let agent = provider_agent(
-        config,
-        Duration::from_secs(config.timeout_seconds.clamp(5, 120)),
-    );
+    validate_config(config)?;
+    let prompt = effective_prompt(config);
+    let agent = provider_agent(config, provider_timeout(config));
     let response = if is_anthropic(config) {
         let endpoint = format!("{}/messages", config.base_url.trim_end_matches('/'));
         let body = json!({
@@ -200,14 +170,16 @@ pub fn enhance(config: &AiConfig, transcript: &str) -> Result<String, String> {
             "messages": [{"role": "user", "content": transcript}]
         });
         let body = body.to_string();
-        let mut response = send_with_retry(|| {
-            agent
-                .post(&endpoint)
-                .header("content-type", "application/json")
-                .header("x-api-key", &config.api_key)
-                .header("anthropic-version", "2023-06-01")
-                .send(body.as_str())
-        })?;
+        let mut request = agent
+            .post(&endpoint)
+            .header("content-type", "application/json")
+            .header("anthropic-version", "2023-06-01");
+        if !config.api_key.trim().is_empty() {
+            request = request.header("x-api-key", &config.api_key);
+        }
+        let mut response = request
+            .send(body.as_str())
+            .map_err(|error| request_error(&error))?;
         parse_response(&mut response)?
     } else {
         let endpoint = chat_completions_url(&config.base_url);
@@ -220,15 +192,17 @@ pub fn enhance(config: &AiConfig, transcript: &str) -> Result<String, String> {
             ]
         });
         let body = body.to_string();
-        let mut response = send_with_retry(|| {
+        let mut response = {
             let mut request = agent
                 .post(&endpoint)
                 .header("content-type", "application/json");
-            if !config.is_local() {
+            if !config.api_key.trim().is_empty() {
                 request = request.header("authorization", &format!("Bearer {}", config.api_key));
             }
-            request.send(body.as_str())
-        })?;
+            request
+                .send(body.as_str())
+                .map_err(|error| request_error(&error))?
+        };
         parse_response(&mut response)?
     };
     let output =
@@ -247,10 +221,7 @@ pub fn enhance_streaming(
 ) -> Result<String, String> {
     validate_config(config)?;
     let prompt = effective_prompt(config);
-    let agent = provider_agent(
-        config,
-        Duration::from_secs(config.timeout_seconds.clamp(5, 120)),
-    );
+    let agent = provider_agent(config, provider_timeout(config));
     let mut response = if is_anthropic(config) {
         let endpoint = format!("{}/messages", config.base_url.trim_end_matches('/'));
         let body = json!({
@@ -259,14 +230,16 @@ pub fn enhance_streaming(
             "messages": [{"role": "user", "content": transcript}]
         })
         .to_string();
-        send_with_retry(|| {
-            agent
-                .post(&endpoint)
-                .header("content-type", "application/json")
-                .header("x-api-key", &config.api_key)
-                .header("anthropic-version", "2023-06-01")
-                .send(body.as_str())
-        })?
+        let mut request = agent
+            .post(&endpoint)
+            .header("content-type", "application/json")
+            .header("anthropic-version", "2023-06-01");
+        if !config.api_key.trim().is_empty() {
+            request = request.header("x-api-key", &config.api_key);
+        }
+        request
+            .send(body.as_str())
+            .map_err(|error| request_error(&error))?
     } else {
         let endpoint = chat_completions_url(&config.base_url);
         let body = json!({
@@ -277,15 +250,17 @@ pub fn enhance_streaming(
             ]
         })
         .to_string();
-        send_with_retry(|| {
+        {
             let mut request = agent
                 .post(&endpoint)
                 .header("content-type", "application/json");
-            if !config.is_local() {
+            if !config.api_key.trim().is_empty() {
                 request = request.header("authorization", &format!("Bearer {}", config.api_key));
             }
-            request.send(body.as_str())
-        })?
+            request
+                .send(body.as_str())
+                .map_err(|error| request_error(&error))?
+        }
     };
     parse_stream(&mut response, &mut on_update)
 }
@@ -320,12 +295,20 @@ fn effective_prompt(config: &AiConfig) -> &str {
     }
 }
 
+fn provider_timeout(config: &AiConfig) -> Duration {
+    Duration::from_secs(
+        config
+            .timeout_seconds
+            .clamp(PROVIDER_TIMEOUT_MIN_SECONDS, PROVIDER_TIMEOUT_MAX_SECONDS),
+    )
+}
+
 pub fn discover_local_models(config: &AiConfig) -> Result<Vec<String>, String> {
     if !config.is_local() {
         return Err("Model discovery is restricted to local endpoints".to_owned());
     }
     let endpoint = models_url(&config.base_url);
-    let agent = provider_agent(config, Duration::from_secs(8));
+    let agent = provider_agent(config, DISCOVERY_TIMEOUT);
     let mut response = agent
         .get(&endpoint)
         .call()
@@ -439,31 +422,6 @@ fn strip_markdown_fence(value: &str) -> &str {
 
 fn request_error(error: &ureq::Error) -> String {
     format!("AI provider request failed: {error}")
-}
-
-fn send_with_retry(
-    mut request: impl FnMut() -> Result<ureq::http::Response<ureq::Body>, ureq::Error>,
-) -> Result<ureq::http::Response<ureq::Body>, String> {
-    for attempt in 0..3 {
-        match request() {
-            Ok(response) => return Ok(response),
-            Err(error) if attempt < 2 && retryable(&error) => {
-                std::thread::sleep(Duration::from_millis(200 * (attempt + 1)));
-            }
-            Err(error) => return Err(request_error(&error)),
-        }
-    }
-    unreachable!("retry loop always returns")
-}
-
-fn retryable(error: &ureq::Error) -> bool {
-    matches!(
-        error,
-        ureq::Error::StatusCode(429 | 500..=599)
-            | ureq::Error::Timeout(_)
-            | ureq::Error::Io(_)
-            | ureq::Error::ConnectionFailed
-    )
 }
 
 fn parse_response(response: &mut ureq::http::Response<ureq::Body>) -> Result<Value, String> {
@@ -666,28 +624,19 @@ mod tests {
     }
 
     #[test]
-    fn retries_transient_provider_errors() {
+    fn does_not_retry_non_idempotent_enhancement_posts() {
         let listener = TcpListener::bind("127.0.0.1:0").expect("bind local test server");
         let address = listener.local_addr().expect("read local server address");
         let server = std::thread::spawn(move || {
-            for attempt in 0..3 {
-                let (mut stream, _) = listener.accept().expect("accept local request");
-                read_complete_request(&mut stream);
-                let (status, body) = if attempt < 2 {
-                    ("500 Internal Server Error", "{}")
-                } else {
-                    (
-                        "200 OK",
-                        r#"{"choices":[{"message":{"content":"clean text"}}]}"#,
-                    )
-                };
-                write!(
+            let (mut stream, _) = listener.accept().expect("accept local request");
+            read_complete_request(&mut stream);
+            let (status, body) = ("500 Internal Server Error", "{}");
+            write!(
                     stream,
                     "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
                     body.len()
                 )
                 .expect("write response");
-            }
         });
         let config = AiConfig::new(
             ProviderId::Ollama,
@@ -696,10 +645,7 @@ mod tests {
         )
         .with_local_only(true)
         .with_timeout(5);
-        assert_eq!(
-            enhance(&config, "raw").expect("retry provider"),
-            "clean text"
-        );
+        assert!(enhance(&config, "raw").is_err());
         server.join().expect("join local test server");
     }
 

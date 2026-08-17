@@ -40,6 +40,20 @@ audio-file decoding, update checks, and release-facing status. These remain
 separated from microphone capture and embedded whisper.cpp inference by typed
 Rust boundaries even though the desktop bridge composes them in one process.
 
+## Session-bus profile boundary
+
+Automatic profile selection is an opt-in KDE integration. Its D-Bus endpoint
+is owned on the current user's session bus and accepts only bounded application
+class and window-title strings; it does not accept text, commands, paths, or
+credentials. The session bus is the sender trust boundary: another process
+running as the same desktop user can report an identity, so profile selection
+must never grant authority or trigger actions. It only chooses a cleanup prompt.
+The packaged KWin script remains disabled until the user enables the feature.
+
+The Flatpak manifest remains a developer preview. Direct KWin scripting and
+host-native runtime installation are not claimed as sandbox-supported until a
+portal-backed implementation and package-specific validation exist.
+
 ## Runtime state
 
 ```text

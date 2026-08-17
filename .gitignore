@@ -2,6 +2,7 @@ target/
 /build/
 /.cargo-home/
 /.cache/
+/.flatpak-builder/
 /.idea/
 /.vscode/
 /work/

@@ -782,6 +782,7 @@ dependencies = [
  "tokio",
  "tungstenite",
  "ureq",
+ "url",
  "zip",
 ]
 

@@ -36,6 +36,7 @@ test -x "${smoke_root}/install/usr/bin/fluidvoice-ui"
 test -f "${smoke_root}/install/usr/share/applications/io.github.davidkodar.FluidVoiceLinux.desktop"
 test -f "${smoke_root}/install/usr/share/metainfo/io.github.davidkodar.FluidVoiceLinux.metainfo.xml"
 test -f "${smoke_root}/install/usr/share/icons/hicolor/256x256/apps/io.github.davidkodar.FluidVoiceLinux.png"
+test -f "${smoke_root}/install/usr/share/icons/hicolor/512x512/apps/io.github.davidkodar.FluidVoiceLinux.png"
 
 ./packaging/package-tarball.sh
 version=$(awk -F '"' '/^version = "/ { print $2; exit }' Cargo.toml)

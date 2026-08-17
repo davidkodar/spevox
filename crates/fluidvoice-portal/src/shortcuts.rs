@@ -115,11 +115,6 @@ impl GlobalShortcutBinding {
         let app_id = ashpd::AppID::try_from(FLUIDVOICE_APP_ID)?;
         ashpd::register_host_app(app_id).await?;
         let portal = GlobalShortcuts::new().await?;
-        let version = portal.version();
-        if version < 1 {
-            return Err(GlobalShortcutError::UnsupportedPortalVersion(version));
-        }
-
         let session = portal
             .create_session(CreateSessionOptions::default())
             .await?;
@@ -212,7 +207,6 @@ impl GlobalShortcutBinding {
 pub enum GlobalShortcutError {
     Portal(ashpd::Error),
     InvalidConfiguration(String),
-    UnsupportedPortalVersion(u32),
     NoShortcutBound,
 }
 
@@ -223,12 +217,6 @@ impl fmt::Display for GlobalShortcutError {
             Self::InvalidConfiguration(message) => {
                 write!(formatter, "invalid shortcut configuration: {message}")
             }
-            Self::UnsupportedPortalVersion(version) => {
-                write!(
-                    formatter,
-                    "unsupported global shortcuts portal version {version}"
-                )
-            }
             Self::NoShortcutBound => formatter.write_str("the desktop did not bind a shortcut"),
         }
     }
@@ -238,9 +226,7 @@ impl Error for GlobalShortcutError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::Portal(error) => Some(error),
-            Self::InvalidConfiguration(_)
-            | Self::UnsupportedPortalVersion(_)
-            | Self::NoShortcutBound => None,
+            Self::InvalidConfiguration(_) | Self::NoShortcutBound => None,
         }
     }
 }

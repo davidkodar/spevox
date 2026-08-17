@@ -7,10 +7,11 @@ pub(super) fn data_directory() -> PathBuf {
     if let Some(directory) = std::env::var_os("XDG_DATA_HOME") {
         return PathBuf::from(directory).join("fluidvoice");
     }
-    std::env::var_os("HOME").map_or_else(
-        || std::env::temp_dir().join(format!("fluidvoice-{}", std::process::id())),
-        |home| PathBuf::from(home).join(".local/share/fluidvoice"),
+    PathBuf::from(
+        std::env::var_os("HOME")
+            .expect("FluidVoice requires HOME or XDG_DATA_HOME; refusing shared temporary storage"),
     )
+    .join(".local/share/fluidvoice")
 }
 
 pub(super) fn dictionary_path() -> PathBuf {

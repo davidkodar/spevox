@@ -3840,14 +3840,12 @@ fn preferences_path() -> PathBuf {
     if let Some(directory) = std::env::var_os("XDG_CONFIG_HOME") {
         return PathBuf::from(directory).join("fluidvoice/settings.conf");
     }
-    std::env::var_os("HOME").map_or_else(
-        || {
-            std::env::temp_dir()
-                .join(format!("fluidvoice-{}", std::process::id()))
-                .join("settings.conf")
-        },
-        |home| PathBuf::from(home).join(".config/fluidvoice/settings.conf"),
+    PathBuf::from(
+        std::env::var_os("HOME").expect(
+            "FluidVoice requires HOME or XDG_CONFIG_HOME; refusing shared temporary storage",
+        ),
     )
+    .join(".config/fluidvoice/settings.conf")
 }
 
 #[path = "storage.rs"]
