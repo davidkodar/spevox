@@ -3021,7 +3021,12 @@ impl ffi::FluidVoiceController {
             let preview_model = model.clone();
             let preview_language = language.clone();
             let preview_worker = std::thread::spawn(move || {
-                if speech_engine != 0 {
+                // Parakeet's managed HTTP helper currently receives the final
+                // buffer after release. Keep the established embedded Whisper
+                // preview active for both built-in Whisper and Parakeet so the
+                // overlay still types while the user speaks. Only the fully
+                // custom server remains final-result-only.
+                if speech_engine == 2 {
                     return;
                 }
                 let Some(model) = preview_model else { return };

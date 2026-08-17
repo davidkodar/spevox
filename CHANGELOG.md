@@ -5,6 +5,8 @@ All notable changes to FluidVoice Linux are documented here. The project uses
 
 ## 0.4.0 - 2026-08-16
 
+- Restored type-as-you-speak text for the Parakeet engine by retaining the
+  embedded Whisper live preview until Parakeet supplies the final transcript.
 - Fixed Parakeet setup on current Arch toolchains by managing its pinned
   SentencePiece dependency, making Automatic genuinely fall back from missing
   Vulkan development files to CPU, showing build progress, shortening setup
