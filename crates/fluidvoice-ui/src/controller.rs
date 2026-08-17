@@ -3598,6 +3598,7 @@ impl FluidVoiceControllerRust {
         )
         .with_enabled(self.ai_enabled)
         .with_prompt(prompt)
+        .with_language(selected_language_code(self))
         .with_api_key(self.ai_api_key.clone())
         .with_local_only(self.ai_local_only)
     }

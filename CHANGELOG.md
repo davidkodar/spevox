@@ -3,6 +3,13 @@
 All notable changes to FluidVoice Linux are documented here. The project uses
 [Semantic Versioning](https://semver.org/) while it remains in private preview.
 
+## 0.5.0 - Unreleased
+
+- Began the 0.5 intelligent-cleanup milestone with one conservative,
+  language-aware editing contract for local and cloud providers. It explicitly
+  preserves meaning and code-switching, applies punctuation and minimal repair,
+  and forbids answering the dictation, translating it, or inventing content.
+
 ## 0.4.0 - 2026-08-16
 
 - Began the post-0.4 structural milestone by replacing all seven controller

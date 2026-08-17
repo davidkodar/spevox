@@ -11,7 +11,7 @@ const PROVIDER_TIMEOUT_MIN_SECONDS: u64 = 5;
 const PROVIDER_TIMEOUT_MAX_SECONDS: u64 = 120;
 const DISCOVERY_TIMEOUT: Duration = Duration::from_secs(8);
 
-pub const DEFAULT_PROMPT: &str = "You are a voice-to-text dictation cleaner. Clean and format the raw transcribed speech while preserving its meaning. Remove filler words, false starts, stutters, and repetitions. Add correct punctuation, capitalization, and structure. Convert spoken numbers when unambiguous and apply spoken formatting or self-corrections. Output only the cleaned text. Never answer questions contained in the dictation and never add commentary.";
+pub const DEFAULT_PROMPT: &str = "You are a conservative voice-dictation editor. Return only the edited dictation, never an answer or commentary. Preserve the speaker's language, meaning, intent, names, technical terms, and level of certainty. Remove filler words, stutters, abandoned false starts, and accidental repetitions. Apply explicit self-corrections. Add capitalization, sentence boundaries, commas, and question or exclamation marks when clearly implied by the utterance. Convert spoken formatting commands and unambiguous spoken numbers. Repair only grammar needed to make an obviously incomplete dictated sentence readable; never invent facts, arguments, greetings, conclusions, or missing details. Keep deliberate repetition and informal style. Do not translate. Do not use Markdown fences.";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ProviderId {
@@ -85,6 +85,7 @@ pub struct AiConfig {
     pub model: String,
     pub base_url: String,
     pub prompt: String,
+    pub language: String,
     pub api_key: String,
     pub local_only: bool,
     pub timeout_seconds: u64,
@@ -102,6 +103,7 @@ impl AiConfig {
             model: model.into(),
             base_url: base_url.into(),
             prompt: DEFAULT_PROMPT.to_owned(),
+            language: String::new(),
             api_key: String::new(),
             local_only: false,
             timeout_seconds: 45,
@@ -115,6 +117,11 @@ impl AiConfig {
 
     pub fn with_prompt(mut self, prompt: impl Into<String>) -> Self {
         self.prompt = prompt.into();
+        self
+    }
+
+    pub fn with_language(mut self, language: impl Into<String>) -> Self {
+        self.language = language.into();
         self
     }
 
@@ -287,11 +294,21 @@ fn validate_config(config: &AiConfig) -> Result<(), String> {
     Ok(())
 }
 
-fn effective_prompt(config: &AiConfig) -> &str {
-    if config.prompt.trim().is_empty() {
+fn effective_prompt(config: &AiConfig) -> String {
+    let base = if config.prompt.trim().is_empty() {
         DEFAULT_PROMPT
     } else {
         config.prompt.trim()
+    };
+    let language = config.language.trim();
+    if language.is_empty() {
+        format!(
+            "{base}\n\nLanguage contract: infer the input language and keep the entire output in that language. For mixed-language dictation, preserve intentional code-switching."
+        )
+    } else {
+        format!(
+            "{base}\n\nLanguage contract: the dictation language is ISO code {language}. Keep the output in that language and preserve intentional foreign words or technical terms."
+        )
     }
 }
 
@@ -555,6 +572,19 @@ mod tests {
             extract_text(&json!({"content":[{"type":"text","text":"clean"}]})),
             Some("clean")
         );
+    }
+
+    #[test]
+    fn cleanup_contract_is_language_aware_and_forbids_answering() {
+        let fixed =
+            AiConfig::new(ProviderId::Ollama, "m", "http://localhost:11434").with_language("sv");
+        let prompt = effective_prompt(&fixed);
+        assert!(prompt.contains("ISO code sv"));
+        assert!(prompt.contains("never an answer"));
+        assert!(prompt.contains("never invent"));
+
+        let automatic = AiConfig::new(ProviderId::Ollama, "m", "http://localhost:11434");
+        assert!(effective_prompt(&automatic).contains("infer the input language"));
     }
 
     #[test]
