@@ -637,6 +637,72 @@ pub struct FluidVoiceControllerRust {
     onboarding_completed: bool,
 }
 
+struct StartupSnapshot {
+    dictionary: Vec<String>,
+    history: Vec<String>,
+    command_history: Vec<String>,
+    lifetime_stats: LifetimeStats,
+    ai_profiles: Vec<AiProfile>,
+    audio_history_status: String,
+}
+
+fn load_startup_snapshot() -> StartupSnapshot {
+    clear_missing_audio_history_references().ok();
+    let history = load_lines(&history_path());
+    StartupSnapshot {
+        dictionary: load_lines(&dictionary_path()),
+        command_history: load_lines(&command_history_path()),
+        lifetime_stats: LifetimeStats::load_or_migrate(&history),
+        ai_profiles: load_ai_profiles(),
+        audio_history_status: audio_history_summary(),
+        history,
+    }
+}
+
+fn apply_startup_snapshot(
+    mut controller: Pin<&mut ffi::FluidVoiceController>,
+    snapshot: StartupSnapshot,
+) {
+    controller.as_mut().set_dictionary_terms(
+        snapshot
+            .dictionary
+            .iter()
+            .map(|line| QString::from(&dictionary_display(line)))
+            .collect(),
+    );
+    controller
+        .as_mut()
+        .set_history_entries(snapshot.history.iter().rev().map(QString::from).collect());
+    controller.as_mut().set_command_history(
+        snapshot
+            .command_history
+            .iter()
+            .rev()
+            .map(QString::from)
+            .collect(),
+    );
+    controller
+        .as_mut()
+        .set_transcript_count(snapshot.lifetime_stats.transcript_count_i32());
+    controller
+        .as_mut()
+        .set_dictated_word_count(snapshot.lifetime_stats.dictated_word_count_i32());
+    controller
+        .as_mut()
+        .set_audio_history_status(QString::from(&snapshot.audio_history_status));
+    controller.as_mut().set_ai_profile_names(
+        std::iter::once(QString::from("Default"))
+            .chain(
+                snapshot
+                    .ai_profiles
+                    .iter()
+                    .map(|profile| QString::from(&profile.name)),
+            )
+            .collect(),
+    );
+    controller.as_mut().rust_mut().get_mut().ai_profiles = snapshot.ai_profiles;
+}
+
 impl Default for FluidVoiceControllerRust {
     // Constructs the complete Q_PROPERTY snapshot atomically for QML.
     #[allow(clippy::too_many_lines)]
@@ -693,10 +759,14 @@ impl Default for FluidVoiceControllerRust {
                     )
                 },
             );
-        let (model_states, model_details) = model_ui_lists(&model_paths);
-        let dictionary = load_lines(&dictionary_path());
-        clear_missing_audio_history_references().ok();
-        let history = load_lines(&history_path());
+        let model_states = model_paths
+            .iter()
+            .map(|_| QString::from("Checking…"))
+            .collect();
+        let model_details = model_paths
+            .iter()
+            .map(|_| QString::from("Inspecting local model…"))
+            .collect();
         let selected_ai_provider = if preferences.ai_local_only {
             let saved = preferences.ai_provider.clamp(0, 9);
             if ai_provider(saved).local { saved } else { 7 }
@@ -733,8 +803,6 @@ impl Default for FluidVoiceControllerRust {
         // QML construction instead of blocking the first frame.
         let ai_api_key = String::new();
         let ai_key_configured = provider.local;
-        let lifetime_stats = LifetimeStats::load_or_migrate(&history);
-        let ai_profiles = load_ai_profiles();
         Self {
             status_text: QString::from("Ready"),
             text_delivery_status: QString::from(
@@ -792,16 +860,13 @@ impl Default for FluidVoiceControllerRust {
                 .map(|(label, _)| QString::from(*label))
                 .collect(),
             selected_shortcut,
-            dictionary_terms: dictionary
-                .iter()
-                .map(|line| QString::from(&dictionary_display(line)))
-                .collect(),
-            history_entries: history.iter().rev().map(QString::from).collect(),
+            dictionary_terms: QStringList::default(),
+            history_entries: QStringList::default(),
             audio_history_enabled: preferences.audio_history_enabled,
             audio_history_budget_mb: preferences.audio_history_budget_mb,
-            audio_history_status: QString::from(audio_history_summary()),
-            transcript_count: lifetime_stats.transcript_count_i32(),
-            dictated_word_count: lifetime_stats.dictated_word_count_i32(),
+            audio_history_status: QString::from("Inspecting retained recordings…"),
+            transcript_count: 0,
+            dictated_word_count: 0,
             typing_wpm: preferences.typing_wpm,
             skip_weekends: preferences.skip_weekends,
             command_mode_enabled: preferences.command_mode_enabled,
@@ -810,11 +875,7 @@ impl Default for FluidVoiceControllerRust {
             ),
             pending_command: QString::default(),
             pending_desktop_action: None,
-            command_history: load_lines(&command_history_path())
-                .iter()
-                .rev()
-                .map(QString::from)
-                .collect(),
+            command_history: QStringList::default(),
             file_transcription_status: QString::from("Choose a WAV file to transcribe locally."),
             meeting_progress: 0.0,
             meeting_segments: QStringList::default(),
@@ -877,20 +938,14 @@ impl Default for FluidVoiceControllerRust {
             ollama_status: QString::from("Run the setup check to inspect Ollama."),
             ollama_installed: false,
             ollama_busy: false,
-            ai_profile_names: std::iter::once(QString::from("Default"))
-                .chain(
-                    ai_profiles
-                        .iter()
-                        .map(|profile| QString::from(&profile.name)),
-                )
-                .collect(),
+            ai_profile_names: [QString::from("Default")].into_iter().collect(),
             selected_ai_profile: 0,
             ai_profile_prompt: QString::default(),
             ai_profile_name: QString::default(),
             ai_profile_match: QString::default(),
             auto_profiles_enabled: preferences.auto_profiles_enabled,
             active_application: QString::from("KWin bridge has not reported an application."),
-            ai_profiles,
+            ai_profiles: Vec::new(),
             last_write_job: None,
             app_version: QString::from(env!("CARGO_PKG_VERSION")),
             update_status: QString::from("Updates have not been checked."),
@@ -977,8 +1032,12 @@ impl ffi::FluidVoiceController {
         let model_thread = qt_thread.clone();
         std::thread::spawn(move || {
             verify_unmarked_whisper_models();
+            let snapshot = load_startup_snapshot();
             model_thread
-                .queue(|mut controller| controller.as_mut().refresh_model_catalog())
+                .queue(move |mut controller| {
+                    controller.as_mut().refresh_model_catalog();
+                    apply_startup_snapshot(controller.as_mut(), snapshot);
+                })
                 .ok();
         });
         let key_provider = ai_provider(*self.as_ref().selected_ai_provider());

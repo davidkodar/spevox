@@ -17,6 +17,9 @@ All notable changes to FluidVoice Linux are documented here. The project uses
 - Moved Secret Service API-key writes and KWin automatic-profile configuration
   onto bounded workers so wallet prompts and desktop reconfiguration cannot
   freeze the Qt interface; stale completions are ignored after selection changes.
+- Deferred history, lifetime-stat migration, dictionary, command history, AI
+  profiles, retained-audio scanning, and Whisper model-state probing until the
+  desktop-runtime worker, keeping controller construction free of those scans.
 - Closed follow-up audit regressions in meeting-file retry, local AI proxy
   isolation, IPv6 loopback ASR, Write Mode retry semantics, cancellable Whisper
   previews, model integrity checks, local API lifecycle handling, and native
