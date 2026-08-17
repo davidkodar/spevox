@@ -5,57 +5,41 @@
 Native, local-first voice dictation for KDE Plasma on Wayland.
 
 > [!IMPORTANT]
-> Spevox is an independent Linux application inspired by
-> [FluidVoice for macOS](https://github.com/altic-dev/FluidVoice). It is not
-> sponsored or endorsed by Altic or the upstream maintainers. Spevox is
-> authored by David Bolin and informed by the upstream GPLv3 source and user
-> experience. It remains a prerelease preview.
+> Spevox brings the ideas behind
+> [FluidVoice for macOS](https://github.com/altic-dev/FluidVoice) to Linux. It
+> is an independent project by David Bolin and is still under development.
 
-Credit belongs to Altic and the upstream FluidVoice contributors for the
-original macOS project and product concept. See [CREDITS.md](CREDITS.md) for
-authorship and relationship details.
-
-Spevox combines a Rust 2024 core, Qt Quick/CXX-Qt interface,
-PipeWire capture, XDG desktop portals, and local whisper.cpp inference. The
-normal dictation path does not send audio or transcripts to a cloud service.
-Optional AI cleanup can use a local server or a provider the user explicitly
-configures.
+Spevox records from PipeWire, transcribes speech locally with Whisper, and
+pastes the result into the app you are using. AI cleanup is optional and can
+run locally or through a service you choose.
 
 ## Current features
 
 - Hold-to-dictate from any application through a Plasma-managed global shortcut.
 - Selectable PipeWire microphone with software gain, live dBFS meter, and input test.
 - Local multilingual Whisper transcription across all 99 supported languages.
-- Experimental loopback-only OpenAI-compatible speech-server backend for
-  user-managed local ASR runtimes.
+- Experimental support for local OpenAI-compatible speech servers.
 - Automatic language detection or a fixed language for more reliable short dictation.
 - Tiny, Base, Small, Medium, Large Turbo, and Large v3 model management.
 - Vulkan acceleration on compatible NVIDIA, AMD, and Intel GPUs with CPU fallback.
-- Configurable live transcript overlay with animated typewriter-style updates,
-  direct editor delivery on shortcut release, and an optional persistent result
-  popup with an upstream-style recovery actions menu,
-  three sizes, placement, opacity, text visibility, and recovery actions.
-- Wayland-aware direct paste where available, with verified clipboard recovery.
+- Live transcript overlay with three sizes, adjustable placement and opacity,
+  and optional result actions after dictation.
+- Direct paste on Wayland where supported, with clipboard fallback.
 - Native Plasma system tray, single-instance activation, and correct desktop identity.
 - Persistent custom spellings and optional spoken formatting commands.
 - Local MP3, FLAC, Ogg/Opus, M4A/AAC, WebM, MP4, and WAV transcription through
   FFmpeg, plus transcript history and usage statistics.
 - KDE system theme/accent defaults plus explicit Spevox dark, light, and accent options.
-- Optional post-transcription cleanup through standard cloud providers, Ollama,
-  LM Studio, or a custom OpenAI-compatible endpoint, with local model discovery
-  and raw-text fallback.
-- Conservative language-aware cleanup, deterministic spoken formatting,
-  model-quality guidance, and observable raw/final results with provider,
-  latency, language, policy, and fallback metadata.
-- Persistent application/workflow profiles with profile-specific cleanup prompts.
-- Upstream-style local statistics with configurable typing speed, weekend-aware
-  streaks, 7/30-day activity, milestones, insights, records, and AI edit impact.
+- Optional AI cleanup through Ollama, LM Studio, supported cloud services, or a
+  custom OpenAI-compatible endpoint. The original transcript is used if cleanup fails.
+- Language-aware punctuation, formatting, and light grammar cleanup.
+- Saved AI profiles for different apps and tasks.
+- Local statistics for activity, streaks, time saved, and AI changes.
 - Optional local microphone-audio history with a storage budget, automatic
   pruning, playback, individual deletion, and ZIP export.
-- Optional authenticated loopback API for local automation and dictation control.
-- Upstream-inspired settings navigation plus a first-run wizard with privacy,
-  microphone, model speed/accuracy/size, GPU, experimental-engine, and test-
-  dictation guidance; it remains reopenable from Getting Started.
+- Optional local API for automation and dictation control.
+- First-run setup for privacy, microphone choice, model selection, GPU use, and
+  a test dictation. You can reopen it from Getting Started.
 
 See [CHANGELOG.md](CHANGELOG.md) for release-by-release details.
 
@@ -133,8 +117,8 @@ the settings window leaves Spevox running in the system tray.
 
 ## Linux and macOS feature comparison
 
-This table is intentionally conservative. “Partial” means the Linux feature is
-usable but does not yet match the depth of the current macOS implementation.
+The table below compares Spevox with FluidVoice for macOS. “Partial” means the
+feature works on Linux but does not yet offer everything found in the Mac app.
 
 | Capability | Spevox 0.6.0 | Current macOS FluidVoice | Notes |
 | --- | --- | --- | --- |
@@ -146,20 +130,20 @@ usable but does not yet match the depth of the current macOS implementation.
 | Vulkan GPU acceleration | Available | Not applicable | Linux supports cross-vendor Vulkan with CPU fallback. |
 | Automatic/fixed language | Available | Available | All 99 Whisper languages are exposed. |
 | Model download and deletion | Available | Available | Downloads are SHA-256 verified, remain `.part` until complete, and retain an integrity marker for subsequent loads. |
-| Custom dictionary | Available | Available | Linux supports persistent spoken-to-preferred words and phrases, legacy capitalization entries, CSV/TSV import, CSV export, and explicit merge/overwrite/replace conflict policies. Dictionary replacements run deterministically after transcription. |
+| Custom dictionary | Available | Available | Save preferred words and phrases, import CSV/TSV files, export CSV files, and choose how import conflicts are handled. |
 | Spoken formatting | Available | Available | Linux handles newline, paragraph, comma, period, question mark, and exclamation mark. |
-| Command Mode system actions | Partial | Available | Linux provides provider-backed KDE assistance plus confirmed allowlisted actions for System Settings, Konsole, Dolphin, and screen locking; arbitrary shell execution is deliberately prohibited. |
-| Write/rewrite selected text | Available | Available | `Ctrl+Alt+W` opens Write Mode from any application. Linux captures and replaces selected text through the consented Wayland keyboard portal, with provider/model visibility plus retry, undo, preview, and clipboard recovery. The closed Fluid-1 model is not available. |
-| AI Enhancement | Partial | Available | Linux supports configurable cloud and local providers, streamed overlay updates, application/workflow prompt profiles, and safe raw-text fallback. It cannot reproduce the closed Fluid-1 model. |
+| Command Mode system actions | Partial | Available | Spevox can open System Settings, Konsole, and Dolphin, or lock the screen. It does not run arbitrary shell commands. |
+| Write/rewrite selected text | Available | Available | `Ctrl+Alt+W` opens Write Mode. It can replace selected text and provides preview, retry, undo, and clipboard recovery. |
+| AI Enhancement | Partial | Available | Spevox supports local and cloud AI services, live updates, saved profiles, and fallback to the original text. Fluid-1 is not available. |
 | Fluid Intelligence / Fluid-1 | Missing | Available | Fluid-1 weights, runtime, and training code are separately maintained and not available in the GPL repository. |
 | File and meeting transcription | Available | Available | Linux accepts MP3, FLAC, Ogg/Opus, M4A/AAC, WebM, MP4, and varied WAV through FFmpeg, then runs bounded timestamped Whisper segments with progress/cancellation and TXT, Markdown, SRT, WebVTT, or JSON export. Optional experimental Sortformer v2 diarization labels up to four speakers locally; detected speakers can be renamed consistently in the current result, History, and exports, and the last file can be retried after changing settings. |
 | Transcript history | Partial | Available | Linux provides search, timestamps, raw/final visual diffs, change counts, copy/undo actions, optional retained audio, AI metadata, word counts, and JSON/CSV/ZIP export; app/window metadata and feedback reports remain missing. |
-| Usage statistics | Available | Available | Linux provides today/all-time totals, estimated time saved, configurable typing speed, weekend-aware streaks, 7/30-day charts, milestones, insights, records, and AI enhancement impact/provider activity. |
+| Usage statistics | Available | Available | Includes daily and all-time totals, estimated time saved, streaks, charts, milestones, records, and AI activity. |
 | Per-application configuration | Available | Available | Linux provides persistent named prompt profiles and opt-in automatic matching through a packaged KWin script. Only application class and window title cross the local session bus; the reporting KWin script is disabled by default. |
 | Audio recording history | Available | Available | Optional and off by default; Linux retains local mono WAV recordings within a configurable budget, supports playback and deletion, and exports audio plus metadata as ZIP. |
 | Adaptive themes and accents | Available | Available | System/KDE defaults plus explicit Spevox themes and colors. |
 | Tray/menu-bar integration | Available | Available | Plasma tray is the Linux equivalent of the macOS menu bar item. |
-| Automatic updates / beta channel | Partial | Available | The app checks public GitHub releases but does not yet install updates unattended or provide a separate beta feed. Hosted release automation remains manually triggered while CI capacity is limited. |
+| Automatic updates / beta channel | Partial | Available | Spevox checks GitHub for releases, but does not install them automatically or provide a separate beta channel yet. |
 
 The macOS feature set changes quickly. This matrix reflects the upstream source
 and README reviewed during 0.5.0 development; it is not a promise of identical
@@ -176,11 +160,9 @@ Built-in Whisper is the supported default. **Local speech server
 service at HTTP loopback only. Spevox encodes the captured mono signal as
 PCM WAV and will reject remote hosts, HTTPS URLs, recordings longer than two
 minutes, or responses above 1 MiB. Live preview is unavailable because the
-external process receives audio only after recording stops. This keeps native
-ASR runtimes independently updateable; [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx)
-is a promising Linux/Rust route with offline, streaming, Parakeet/NeMo-class,
-and diarization support, but 0.5.0 does not bundle its rapidly evolving native
-runtime or model catalog.
+external process receives audio only after recording stops. This lets you
+update the speech server separately from Spevox. The app does not currently
+bundle [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx).
 
 **Native NVIDIA speech engines (beta)** are managed by the application without
 Python, PyTorch, or a CUDA-only dependency chain. The catalog contains Parakeet
@@ -250,29 +232,22 @@ keeps settings, downloaded models, history, dictionaries, retained audio, API
 tokens, and provider secrets available without copying or deleting user data.
 New installations use the `spevox` paths above.
 
-Audio is processed locally and is not retained unless optional Audio History is
-explicitly enabled. Retained recordings use
+Audio is processed locally and is saved only when Audio History is turned on.
+Saved recordings use
 `$XDG_DATA_HOME/spevox/audio-history`, are capped by the selected budget,
 and are removed when History is cleared. History and dictionary data can be
 cleared from the interface or removed from the paths above.
 
-AI enhancement is disabled by default. Ollama and LM Studio can keep the
-cleanup step local, and Spevox can query either server for installed models.
-When Ollama is selected, the AI Enhancement page distinguishes a missing
-installation from a stopped server or an empty model library. It links to the
-official Linux installer, can start `ollama serve`, and runs validated
-`ollama pull` model downloads with an in-app busy/result state. Operating-system
-installation still requires the user's explicit action and is never performed
-silently with administrator privileges.
-Their built-in presets reject non-loopback endpoints to prevent an accidental
-privacy downgrade. The local-provider privacy lock is enabled by default and
-must be explicitly switched off before a cloud provider can be selected. When
-a cloud provider is enabled, the cleanup prompt and
-raw transcript—not microphone audio—are sent to that provider. API keys are
-stored through the desktop Secret Service using `secret-tool`; they are never
-written to `settings.conf`. If enhancement is unavailable or fails, Spevox
-delivers the unenhanced transcript. Provider responses are time-bounded,
-size-limited, and transient failures are retried before fallback.
+AI enhancement is off by default. Ollama and LM Studio keep cleanup on your
+computer, and Spevox can list the models installed in either one. The Ollama
+page can tell whether Ollama is missing, stopped, or has no models. It can start
+`ollama serve` and download a model, but installing Ollama itself is left to you.
+
+Local presets accept only addresses on this computer. Cloud services stay
+locked until you turn off the local-only setting. A cloud service receives the
+transcript and cleanup instructions, never the microphone recording. API keys
+are stored with the desktop Secret Service, not in `settings.conf`. If cleanup
+fails, Spevox uses the original transcript.
 
 Automatic application profiles are also disabled by default. The installer
 ships `spevoxprofiles`, a small KWin script, but it is enabled only when the
@@ -363,7 +338,7 @@ archives with SHA-256 checksum files. `packaging/package-tarball.sh` reproduces
 that artifact locally. The in-app update check reads public GitHub Releases;
 releases are never installed silently.
 
-Embedded whisper.cpp remains the conservative default and automatic fallback.
+Embedded whisper.cpp is the default and automatic fallback.
 The four managed NVIDIA engines are optional native KDE/Linux backends. Apple
 Speech is an Apple platform service, while the currently published Cohere and
 Parakeet Flash integrations rely on CoreML/Apple Neural Engine; they are shown
@@ -385,46 +360,34 @@ More detail is available in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Project status and roadmap
 
-The core KDE Wayland dictation workflow, broad audio decoding, rich local
-history, streamed AI cleanup, explicit application profiles, and checksummed
-release packaging are operational. The public preview remains prerelease
-software while guided local-model setup, accessibility review, signed
-distribution-native packages, and testing across more Plasma distributions and
-GPU vendors continue.
+Spevox already covers everyday dictation, audio-file transcription, local
+history, optional AI cleanup, app profiles, and release packages. It is still
+under development. Better model setup, accessibility, native distribution
+packages, and wider hardware testing are still on the list.
 
 ### Completed in 0.6.0
 
-- **Independent Spevox identity:** renamed the Linux application from its
-  former development name, introduced an original icon and wordmark, and
-  migrated desktop, package, executable, and application identifiers while
-  retaining access to existing 0.5.x settings, models, and history.
+- **Spevox name and icon:** renamed the app and updated its executable, desktop
+  entry, package name, and application ID. Existing 0.5.x settings, models, and
+  history continue to work.
 
-- **Structural refactoring and hardening:** controller responsibilities now use
-  explicit Rust modules, blocking startup and persistence work is bounded or
-  moved off the Qt thread, duplicated policies have been consolidated, and the
-  release gate covers security, packaging, QML, and regression checks.
+- **Code cleanup and security:** split up large parts of the controller, moved
+  slow startup work away from the interface, removed duplicated code, and
+  expanded the release checks.
 
-- **Multilingual intelligent dictation cleanup:** expanded the compact AI
-  prompt into a constrained, upstream-inspired cleanup pipeline covering
-  punctuation and question detection, capitalization, minimal unambiguous
-  grammatical repairs, filler and false-start removal, self-corrections,
-  spoken formatting, and number normalization. The implementation includes
-  deterministic formatting where an LLM is unnecessary, language-aware prompt
-  guidance, model recommendations, and regression fixtures that compare raw
-  dictation with expected output across English, Swedish, and additional
-  languages. It targets reliable behavior with local and cloud providers; it
-  does not claim compatibility with or reproduction of the privately
-  maintained Fluid Intelligence model.
+- **Better AI cleanup:** improved punctuation, capitalization, questions,
+  fillers, false starts, spoken formatting, and numbers. Prompts follow the
+  selected language, and tests cover English, Swedish, and other languages.
+  This works with supported local and cloud services; it is not Fluid-1.
 
 Please use [GitHub Issues](https://github.com/davidkodar/spevox/issues)
 for reproducible bugs and focused feature proposals.
 
 ## Upstream relationship and licensing
 
-Spevox is an independent GPLv3 Linux implementation inspired by the
-GPLv3-licensed [FluidVoice](https://github.com/altic-dev/FluidVoice) macOS
-project created by Altic and the upstream contributors. Spevox is authored
-and maintained by David Bolin. See [LICENSE](LICENSE),
+Spevox is an independent Linux app inspired by the GPLv3-licensed
+[FluidVoice](https://github.com/altic-dev/FluidVoice) project for macOS. Spevox
+is made and maintained by David Bolin. See [LICENSE](LICENSE),
 [CREDITS.md](CREDITS.md), and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)
 for license and attribution details. The generated
 [THIRD_PARTY_LICENSES.html](THIRD_PARTY_LICENSES.html) bundles the license texts

@@ -31,17 +31,17 @@ ApplicationWindow {
         qsTr("Change logs"), qsTr("Feedback"), qsTr("About & License")
     ]
     readonly property var destinationDescriptions: [
-        qsTr("Manage Spevox behavior, shortcuts, and appearance."),
+        qsTr("Change shortcuts, appearance, and app settings."),
         qsTr("Choose the microphone, speech model, and spoken language."),
-        qsTr("Refine dictated text with an optional AI processing step."),
+        qsTr("Optionally clean up dictated text with AI."),
         qsTr("Teach Spevox names, terms, and preferred spellings."),
-        qsTr("Run actions and workflows with your voice."),
+        qsTr("Use your voice to run common actions."),
         qsTr("Create transcripts from existing audio files."),
         qsTr("Review recent dictation and transcription activity."),
         qsTr("See how you use Spevox over time."),
-        qsTr("Learn the essentials and complete initial setup."),
+        qsTr("Set up Spevox and learn the basics."),
         qsTr("See what changed in recent versions."),
-        qsTr("Share feedback about this unofficial Linux port."),
+        qsTr("Report a problem or suggest an improvement."),
         qsTr("Version, credits, and license.")
     ]
 
@@ -558,7 +558,7 @@ ApplicationWindow {
                 ColumnLayout {
                     spacing: 12
                     Text { text: qsTr("1. Microphone and privacy"); color: root.primaryText; font.pixelSize: 19; font.weight: Font.DemiBold }
-                    Text { Layout.fillWidth: true; text: qsTr("Spevox records only while you hold the dictation shortcut. Speech recognition runs locally. Audio history is off by default, and cloud AI enhancement remains optional and disabled until you configure it."); color: root.secondaryText; font.pixelSize: 13; wrapMode: Text.Wrap }
+                    Text { Layout.fillWidth: true; text: qsTr("Spevox records while you hold the dictation shortcut and transcribes your speech on this computer. Audio history and cloud AI are off by default."); color: root.secondaryText; font.pixelSize: 13; wrapMode: Text.Wrap }
                     Rectangle { Layout.fillWidth: true; implicitHeight: 88; radius: 12; color: root.panelRaised; border.color: root.hairline
                         RowLayout { anchors.fill: parent; anchors.margins: 14; spacing: 14
                             Rectangle { width: 12; height: 12; radius: 6; color: controller.inputSources.length > 0 ? root.success : root.warning }
@@ -573,7 +573,7 @@ ApplicationWindow {
                 ColumnLayout {
                     spacing: 10
                     Text { text: qsTr("2. Choose the right Whisper model"); color: root.primaryText; font.pixelSize: 19; font.weight: Font.DemiBold }
-                    Text { Layout.fillWidth: true; text: qsTr("Larger models generally improve recognition—especially outside English—but require more memory and processing time. Start conservatively, test your own voice, then move up only if accuracy needs improvement."); color: root.secondaryText; font.pixelSize: 12; wrapMode: Text.Wrap }
+                    Text { Layout.fillWidth: true; text: qsTr("Larger models are usually more accurate, but they need more memory and take longer. Start with Base or Small and try a larger model if needed."); color: root.secondaryText; font.pixelSize: 12; wrapMode: Text.Wrap }
                     GridLayout {
                         Layout.fillWidth: true; columns: 4; columnSpacing: 8; rowSpacing: 7
                         Repeater { model: [qsTr("Model"), qsTr("Best for"), qsTr("Speed"), qsTr("Download")]
@@ -609,7 +609,7 @@ ApplicationWindow {
                     Rectangle { Layout.fillWidth: true; implicitHeight: 104; radius: 12; color: root.panelRaised; border.color: root.warning
                         ColumnLayout { anchors.fill: parent; anchors.margins: 14
                             Text { text: qsTr("Native engines · experimental"); color: root.warning; font.pixelSize: 14; font.weight: Font.DemiBold }
-                            Text { Layout.fillWidth: true; text: qsTr("Parakeet and Nemotron may be faster for particular workflows, but installation, language accuracy, live preview, and GPU behavior vary. They always retain a Whisper fallback and should be tested before relying on them."); color: root.secondaryText; font.pixelSize: 11; wrapMode: Text.Wrap }
+                            Text { Layout.fillWidth: true; text: qsTr("Parakeet and Nemotron are experimental. Speed, language support, and GPU compatibility vary, so test them before using them every day. Spevox falls back to Whisper if needed."); color: root.secondaryText; font.pixelSize: 11; wrapMode: Text.Wrap }
                         }
                     }
                     Item { Layout.fillHeight: true }
@@ -1589,7 +1589,7 @@ ApplicationWindow {
                                 anchors.verticalCenter: parent.verticalCenter
                                 spacing: 2
                                 Text { text: qsTr("Theme"); color: root.primaryText; font.pixelSize: 14; font.weight: Font.Medium }
-                                Text { text: qsTr("Follow Plasma or use an explicit Spevox appearance."); color: root.secondaryText; font.pixelSize: 13 }
+                                Text { text: qsTr("Follow Plasma or choose a Spevox theme."); color: root.secondaryText; font.pixelSize: 13 }
                             }
                             ComboBox {
                                 id: themeSelector
@@ -1667,7 +1667,7 @@ ApplicationWindow {
                             ColumnLayout {
                                 Layout.fillWidth: true; spacing: 3
                                 Text { text: qsTr("Local providers only"); color: root.primaryText; font.pixelSize: 14; font.weight: Font.DemiBold }
-                                Text { Layout.fillWidth: true; text: qsTr("Prevent Spevox from sending transcripts or cleanup prompts to any network AI provider."); color: root.secondaryText; font.pixelSize: 12; wrapMode: Text.Wrap }
+                                Text { Layout.fillWidth: true; text: qsTr("Block all cloud AI services. Transcripts and prompts stay on this computer."); color: root.secondaryText; font.pixelSize: 12; wrapMode: Text.Wrap }
                             }
                             Switch { checked: controller.aiLocalOnly; onToggled: controller.updateAiLocalOnly(checked) }
                         }
@@ -1751,7 +1751,7 @@ ApplicationWindow {
                             border.color: controller.aiLocalEndpoint ? root.accent : "#d9a441"
                             Text {
                                 id: privacyText; anchors.fill: parent; anchors.margins: 12
-                                text: controller.aiLocalEndpoint ? qsTr("Fully local · Whisper audio transcription, the raw transcript, cleanup prompt, and enhanced text all remain on this computer.") : qsTr("Cloud processing · when enhancement is enabled, the cleanup prompt and raw transcript are sent to the selected provider. Microphone audio is never sent.")
+                                text: controller.aiLocalEndpoint ? qsTr("Local · transcripts and AI cleanup stay on this computer.") : qsTr("Cloud · the transcript and cleanup prompt go to the selected provider. Microphone audio is never sent.")
                                 color: controller.aiLocalEndpoint ? root.accent : "#d9a441"; font.pixelSize: 11; wrapMode: Text.Wrap
                             }
                         }
@@ -1765,7 +1765,7 @@ ApplicationWindow {
                                     Layout.fillWidth: true; wrapMode: Text.Wrap; color: root.secondaryText; font.pixelSize: 11
                                     text: controller.aiLocalEndpoint
                                           ? qsTr("Small local models are faster but may miss punctuation, self-corrections, or less common languages. A capable 7B-class instruct model is the recommended baseline; larger models usually follow cleanup constraints more reliably but use more memory and add latency.")
-                                          : qsTr("Cloud model quality and privacy vary by provider. Spevox sends only the cleanup prompt and transcript, uses raw text if enhancement fails, and never uploads microphone audio.")
+                                          : qsTr("Cloud providers receive the transcript and cleanup prompt, but never the microphone audio. If cleanup fails, Spevox uses the original text.")
                                 }
                             }
                         }
@@ -1810,7 +1810,7 @@ ApplicationWindow {
                             Text { Layout.fillWidth: true; text: controller.aiStatus; color: root.secondaryText; font.pixelSize: 11; wrapMode: Text.Wrap }
                             Button { text: controller.assistantBusy ? qsTr("Testing…") : qsTr("Verify provider"); enabled: !controller.assistantBusy; onClicked: controller.testAiProvider() }
                         }
-                        Text { Layout.fillWidth: true; text: qsTr("Fluid Intelligence / Fluid-1 is not included. This implementation uses your selected standard or local provider and preserves raw-text fallback behavior."); color: root.tertiaryText; font.pixelSize: 11; wrapMode: Text.Wrap }
+                        Text { Layout.fillWidth: true; text: qsTr("Fluid-1 is not included. Spevox uses the AI provider you choose above."); color: root.tertiaryText; font.pixelSize: 11; wrapMode: Text.Wrap }
                     }
                 }
 
@@ -1875,7 +1875,7 @@ ApplicationWindow {
                             Text { Layout.fillWidth: true; text: qsTr("“new line”  “new paragraph”  “comma”  “period”  “question mark”  “exclamation mark”"); color: root.secondaryText; font.pixelSize: 13; wrapMode: Text.Wrap }
                             Rectangle { Layout.fillWidth: true; height: 1; color: root.hairline }
                             Text { text: qsTr("COMMAND ASSISTANT"); color: root.tertiaryText; font.pixelSize: 11; font.weight: Font.Medium }
-                            Text { Layout.fillWidth: true; text: qsTr("Ask the configured provider for KDE help, or request an allowlisted action: open settings, open terminal, open file manager, or lock screen. Every desktop action requires confirmation; arbitrary shell execution is never allowed."); color: root.secondaryText; font.pixelSize: 12; wrapMode: Text.Wrap }
+                            Text { Layout.fillWidth: true; text: qsTr("Ask for KDE help or open System Settings, Konsole, or Dolphin with your voice. Spevox asks before running an action and cannot run arbitrary shell commands."); color: root.secondaryText; font.pixelSize: 12; wrapMode: Text.Wrap }
                             RowLayout {
                                 Layout.fillWidth: true
                                 TextField { id: commandInput; Layout.fillWidth: true; placeholderText: qsTr("Ask or request a desktop action"); onAccepted: commandSubmit.clicked() }
@@ -1898,7 +1898,7 @@ ApplicationWindow {
                         ColumnLayout {
                             id: rewriteContent; anchors.fill: parent; anchors.margins: 16; spacing: 12
                             Text { text: qsTr("WRITE MODE"); color: root.tertiaryText; font.pixelSize: 11; font.weight: Font.Medium }
-                            Text { Layout.fillWidth: true; text: qsTr("Press Ctrl+Alt+W anywhere to open Write Mode. Select text in another application, describe the result you want, and Spevox will replace it through the provider and model configured above. Plasma may request keyboard-control permission."); color: root.secondaryText; font.pixelSize: 12; wrapMode: Text.Wrap }
+                            Text { Layout.fillWidth: true; text: qsTr("Press Ctrl+Alt+W to open Write Mode. Select some text, say how you want it changed, and Spevox will replace it. Plasma may ask for keyboard-control permission."); color: root.secondaryText; font.pixelSize: 12; wrapMode: Text.Wrap }
                             RowLayout {
                                 Layout.fillWidth: true
                                 Text { Layout.fillWidth: true; text: qsTr("Provider: %1 · Model: %2").arg(controller.aiProviders[controller.selectedAiProvider]).arg(controller.aiModel.length > 0 ? controller.aiModel : qsTr("provider default")); color: root.secondaryText; font.pixelSize: 11; elide: Text.ElideRight }
@@ -2310,7 +2310,7 @@ ApplicationWindow {
                                       .arg(root.aiEditImpact().wordDelta >= 0 ? "+" + root.aiEditImpact().wordDelta : root.aiEditImpact().wordDelta)
                                       .arg(root.aiEditImpact().characterDelta >= 0 ? "+" + root.aiEditImpact().characterDelta : root.aiEditImpact().characterDelta)
                                 : qsTr("No AI edit impact has been recorded yet."); color: root.primaryText; font.pixelSize: 12; wrapMode: Text.Wrap }
-                            Text { Layout.fillWidth: true; text: qsTr("These are deterministic text deltas, not a claim that the rewritten text is objectively better."); color: root.tertiaryText; font.pixelSize: 10; wrapMode: Text.Wrap }
+                            Text { Layout.fillWidth: true; text: qsTr("These numbers show how much the AI changed, not whether the result was better."); color: root.tertiaryText; font.pixelSize: 10; wrapMode: Text.Wrap }
                         }
                     }
                     Rectangle {
@@ -2420,7 +2420,7 @@ ApplicationWindow {
                         ColumnLayout {
                             id: usageTips; anchors.fill: parent; anchors.margins: 16; spacing: 8
                             Text { text: qsTr("KDE & WAYLAND TIPS"); color: root.tertiaryText; font.pixelSize: 11; font.weight: Font.Medium }
-                            Text { Layout.fillWidth: true; text: qsTr("• Closing the settings window keeps Spevox available in the Plasma system tray.\n• Plasma owns the global shortcut and may ask for approval the first time.\n• If direct paste is unavailable in an application, the transcript remains recoverable on the clipboard.\n• Automatic compute uses Vulkan when a compatible GPU is available and safely falls back to CPU.\n• Models, history, and dictionary data stay under your standard XDG user-data directory."); color: root.secondaryText; font.pixelSize: 13; lineHeight: 1.25; wrapMode: Text.Wrap }
+                            Text { Layout.fillWidth: true; text: qsTr("• Closing Settings leaves Spevox running in the system tray.\n• Plasma may ask you to approve the global shortcut the first time.\n• If Spevox cannot paste into an app, the transcript is still copied to the clipboard.\n• Automatic compute uses Vulkan when possible and falls back to the CPU.\n• Models, history, and dictionary data are stored in your user-data folder."); color: root.secondaryText; font.pixelSize: 13; lineHeight: 1.25; wrapMode: Text.Wrap }
                         }
                     }
                 }
