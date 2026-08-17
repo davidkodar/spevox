@@ -2701,31 +2701,13 @@ impl ffi::FluidVoiceController {
             return;
         }
         let compute_backend = *self.as_ref().selected_compute_backend();
-        let backend = parakeet_backend(compute_backend);
-        let automatic = compute_backend == 0;
         self.as_mut().set_parakeet_busy(true);
         self.as_mut().set_parakeet_status(QString::from(
             "Building the pinned native runtime… This can take several minutes.",
         ));
         let qt_thread = self.qt_thread();
         std::thread::spawn(move || {
-            let result = parakeet::install_runtime(backend)
-                .map(|()| (backend, false))
-                .or_else(|vulkan_error| {
-                    if automatic && backend == ParakeetBackend::Vulkan {
-                        parakeet::install_runtime(ParakeetBackend::Cpu)
-                            .map(|()| (ParakeetBackend::Cpu, true))
-                            .map_err(|cpu_error| {
-                                format!(
-                                    "Vulkan setup failed: {} CPU fallback also failed: {}",
-                                    friendly_runtime_error(&vulkan_error),
-                                    friendly_runtime_error(&cpu_error)
-                                )
-                            })
-                    } else {
-                        Err(friendly_runtime_error(&vulkan_error))
-                    }
-                });
+            let result = install_native_runtime(compute_backend);
             qt_thread
                 .queue(move |mut controller| {
                     controller.as_mut().set_parakeet_busy(false);
@@ -2736,10 +2718,10 @@ impl ffi::FluidVoiceController {
                     controller
                         .as_mut()
                         .set_parakeet_status(QString::from(match result {
-                            Ok((installed_backend, fell_back)) => if fell_back {
+                            Ok(runtime) => if runtime.fell_back {
                                 "Vulkan development files were unavailable, so the pinned CPU runtime was installed automatically. Parakeet is ready to use.".to_owned()
                             } else {
-                                format!("Pinned {} Parakeet runtime installed.", installed_backend.id().to_uppercase())
+                                format!("Pinned {} Parakeet runtime installed.", runtime.backend.id().to_uppercase())
                             },
                             Err(error) => format!("Runtime installation failed: {error}"),
                         }));
@@ -2756,8 +2738,6 @@ impl ffi::FluidVoiceController {
             return;
         };
         let compute_backend = *self.as_ref().selected_compute_backend();
-        let backend = parakeet_backend(compute_backend);
-        let automatic = compute_backend == 0;
         let cancel = Arc::new(AtomicBool::new(false));
         self.as_mut().rust_mut().get_mut().parakeet_download_cancel = Some(cancel.clone());
         self.as_mut().set_parakeet_busy(true);
@@ -2769,43 +2749,14 @@ impl ffi::FluidVoiceController {
         let qt_thread = self.qt_thread();
         std::thread::spawn(move || {
             let progress_thread = qt_thread.clone();
-            let mut last_progress = Instant::now()
-                .checked_sub(Duration::from_secs(1))
-                .unwrap_or_else(Instant::now);
-            let runtime_result = if parakeet::runtime_installed(backend) {
-                Ok((backend, false))
-            } else {
-                parakeet::install_runtime(backend)
-                    .map(|()| (backend, false))
-                    .or_else(|vulkan_error| {
-                        if automatic && backend == ParakeetBackend::Vulkan {
-                            parakeet::install_runtime(ParakeetBackend::Cpu)
-                                .map(|()| (ParakeetBackend::Cpu, true))
-                                .map_err(|cpu_error| {
-                                    format!(
-                                        "Vulkan setup failed: {} CPU fallback also failed: {}",
-                                        friendly_runtime_error(&vulkan_error),
-                                        friendly_runtime_error(&cpu_error)
-                                    )
-                                })
-                        } else {
-                            Err(friendly_runtime_error(&vulkan_error))
-                        }
-                    })
-            };
-            let result = runtime_result.and_then(|_| {
-                parakeet::download_model(model, &cancel, move |progress| {
-                    if progress < 1.0 && last_progress.elapsed() < Duration::from_millis(50) {
-                        return;
-                    }
-                    last_progress = Instant::now();
+            let result =
+                prepare_native_model(compute_backend, model, &cancel, true, move |progress| {
                     progress_thread
                         .queue(move |mut controller| {
                             controller.as_mut().set_parakeet_download_progress(progress);
                         })
                         .ok();
-                })
-            });
+                });
             qt_thread
                 .queue(move |mut controller| {
                     controller
@@ -2826,7 +2777,7 @@ impl ffi::FluidVoiceController {
                     controller
                         .as_mut()
                         .set_parakeet_status(QString::from(match result {
-                            Ok(()) => format!("{} and its native runtime are ready.", model.name),
+                            Ok(_) => format!("{} and its native runtime are ready.", model.name),
                             Err(error) => format!("One-click setup failed: {error}"),
                         }));
                 })
@@ -2898,8 +2849,6 @@ impl ffi::FluidVoiceController {
             return;
         }
         let compute_backend = *self.as_ref().selected_compute_backend();
-        let backend = parakeet_backend(compute_backend);
-        let automatic = compute_backend == 0;
         let cancel = Arc::new(AtomicBool::new(false));
         self.as_mut()
             .rust_mut()
@@ -2913,50 +2862,21 @@ impl ffi::FluidVoiceController {
         let qt_thread = self.qt_thread();
         std::thread::spawn(move || {
             let progress_thread = qt_thread.clone();
-            let mut last_progress = Instant::now()
-                .checked_sub(Duration::from_secs(1))
-                .unwrap_or_else(Instant::now);
-            let runtime_result = if parakeet::runtime_installed(backend) {
-                Ok(backend)
-            } else {
-                parakeet::install_runtime(backend)
-                    .map(|()| backend)
-                    .or_else(|vulkan_error| {
-                        if automatic && backend == ParakeetBackend::Vulkan {
-                            parakeet::install_runtime(ParakeetBackend::Cpu)
-                                .map(|()| ParakeetBackend::Cpu)
-                                .map_err(|cpu_error| {
-                                    format!(
-                                        "Vulkan setup failed: {} CPU fallback also failed: {}",
-                                        friendly_runtime_error(&vulkan_error),
-                                        friendly_runtime_error(&cpu_error)
-                                    )
-                                })
-                        } else {
-                            Err(friendly_runtime_error(&vulkan_error))
-                        }
-                    })
-            };
-            let result = runtime_result.and_then(|installed_backend| {
-                if parakeet::model_installed(parakeet::SORTFORMER_V2) {
-                    Ok(installed_backend)
-                } else {
-                    parakeet::download_model(parakeet::SORTFORMER_V2, &cancel, move |progress| {
-                        if progress < 1.0 && last_progress.elapsed() < Duration::from_millis(50) {
-                            return;
-                        }
-                        last_progress = Instant::now();
-                        progress_thread
-                            .queue(move |mut controller| {
-                                controller
-                                    .as_mut()
-                                    .set_sortformer_download_progress(progress);
-                            })
-                            .ok();
-                    })
-                    .map(|()| installed_backend)
-                }
-            });
+            let result = prepare_native_model(
+                compute_backend,
+                parakeet::SORTFORMER_V2,
+                &cancel,
+                false,
+                move |progress| {
+                    progress_thread
+                        .queue(move |mut controller| {
+                            controller
+                                .as_mut()
+                                .set_sortformer_download_progress(progress);
+                        })
+                        .ok();
+                },
+            );
             qt_thread
                 .queue(move |mut controller| {
                     controller
@@ -2977,9 +2897,9 @@ impl ffi::FluidVoiceController {
                             compute_backend,
                         ));
                     controller.as_mut().set_sortformer_status(QString::from(match result {
-                        Ok(installed_backend) => format!(
+                        Ok(runtime) => format!(
                             "Sortformer is ready for experimental speaker diarization using {}.",
-                            installed_backend.id().to_uppercase()
+                            runtime.backend.id().to_uppercase()
                         ),
                         Err(error) => format!("Sortformer setup failed: {error}"),
                     }));
@@ -4047,8 +3967,8 @@ use meeting::{
 pub(crate) use speech_runtime::progress_ratio;
 use speech_runtime::{
     asr_gain, compute_backend_summary, display_ratio, dump_asr_audio, effective_parakeet_backend,
-    friendly_runtime_error, language_display_name, meter_level, native_language_for_model,
-    native_model_for_engine, parakeet_backend, parakeet_runtime_available, pcm_i16, peak_db,
+    install_native_runtime, language_display_name, meter_level, native_language_for_model,
+    native_model_for_engine, parakeet_runtime_available, pcm_i16, peak_db, prepare_native_model,
     selected_language_code, selected_model_path, selected_shortcut_trigger, shortcut_triggers,
     suspicious_single_word, valid_index,
 };

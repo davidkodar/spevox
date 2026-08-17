@@ -232,6 +232,98 @@ pub(super) fn suspicious_single_word(text: &str, duration: Duration) -> bool {
     matches!(normalized.as_str(), "you" | "thanks" | "thank you")
 }
 use super::{
-    Duration, FluidVoiceControllerRust, ParakeetBackend, PathBuf, model_file_valid, parakeet,
-    supported_languages, whisper_model_catalog,
+    AtomicBool, Duration, FluidVoiceControllerRust, Instant, ParakeetBackend, PathBuf,
+    model_file_valid, parakeet, supported_languages, whisper_model_catalog,
 };
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) struct NativeRuntimeInstall {
+    pub(super) backend: ParakeetBackend,
+    pub(super) fell_back: bool,
+}
+
+pub(super) fn install_native_runtime(compute_backend: i32) -> Result<NativeRuntimeInstall, String> {
+    install_native_runtime_backend(compute_backend, true)
+}
+
+pub(super) fn prepare_native_model(
+    compute_backend: i32,
+    model: parakeet::Model,
+    cancel: &AtomicBool,
+    force_download: bool,
+    mut progress: impl FnMut(f32),
+) -> Result<NativeRuntimeInstall, String> {
+    let runtime = install_native_runtime_backend(compute_backend, false)?;
+    if force_download || !parakeet::model_installed(model) {
+        let mut last_progress = Instant::now()
+            .checked_sub(Duration::from_secs(1))
+            .unwrap_or_else(Instant::now);
+        parakeet::download_model(model, cancel, move |value| {
+            if !native_progress_update_due(value, last_progress.elapsed()) {
+                return;
+            }
+            last_progress = Instant::now();
+            progress(value);
+        })?;
+    }
+    Ok(runtime)
+}
+
+fn native_progress_update_due(value: f32, elapsed: Duration) -> bool {
+    value >= 1.0 || elapsed >= Duration::from_millis(50)
+}
+
+fn install_native_runtime_backend(
+    compute_backend: i32,
+    force: bool,
+) -> Result<NativeRuntimeInstall, String> {
+    let backend = parakeet_backend(compute_backend);
+    if !force && parakeet::runtime_installed(backend) {
+        return Ok(NativeRuntimeInstall {
+            backend,
+            fell_back: false,
+        });
+    }
+    parakeet::install_runtime(backend)
+        .map(|()| NativeRuntimeInstall {
+            backend,
+            fell_back: false,
+        })
+        .or_else(|backend_error| {
+            if compute_backend == 0 && backend == ParakeetBackend::Vulkan {
+                if !force && parakeet::runtime_installed(ParakeetBackend::Cpu) {
+                    return Ok(NativeRuntimeInstall {
+                        backend: ParakeetBackend::Cpu,
+                        fell_back: true,
+                    });
+                }
+                parakeet::install_runtime(ParakeetBackend::Cpu)
+                    .map(|()| NativeRuntimeInstall {
+                        backend: ParakeetBackend::Cpu,
+                        fell_back: true,
+                    })
+                    .map_err(|cpu_error| {
+                        format!(
+                            "Vulkan setup failed: {} CPU fallback also failed: {}",
+                            friendly_runtime_error(&backend_error),
+                            friendly_runtime_error(&cpu_error)
+                        )
+                    })
+            } else {
+                Err(friendly_runtime_error(&backend_error))
+            }
+        })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::native_progress_update_due;
+    use std::time::Duration;
+
+    #[test]
+    fn native_progress_is_bounded_but_always_publishes_completion() {
+        assert!(!native_progress_update_due(0.5, Duration::from_millis(49)));
+        assert!(native_progress_update_due(0.5, Duration::from_millis(50)));
+        assert!(native_progress_update_due(1.0, Duration::ZERO));
+    }
+}
