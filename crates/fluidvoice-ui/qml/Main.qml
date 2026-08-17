@@ -943,14 +943,14 @@ ApplicationWindow {
                             onActivated: function(index) { controller.selectSpeechEngine(index) }
                         }
                         TextField {
-                            visible: controller.selectedSpeechEngine === 2
+                            visible: controller.selectedSpeechEngine === 5
                             Layout.fillWidth: true
                             text: controller.localSpeechUrl
                             placeholderText: qsTr("http://127.0.0.1:8080")
                             onEditingFinished: controller.updateLocalSpeechUrl(text)
                         }
                         Text {
-                            visible: controller.selectedSpeechEngine === 2
+                            visible: controller.selectedSpeechEngine === 5
                             Layout.fillWidth: true
                             text: qsTr("Experimental OpenAI-compatible /v1/audio/transcriptions endpoint. Only HTTP loopback is accepted; live preview is unavailable with an external process.")
                             color: root.accent; font.pixelSize: 11; wrapMode: Text.Wrap
@@ -970,7 +970,7 @@ ApplicationWindow {
                         }
 
                         RowLayout {
-                            visible: controller.selectedSpeechEngine !== 2
+                            visible: controller.selectedSpeechEngine !== 5
                             Layout.fillWidth: true
                             Layout.preferredHeight: visible ? 62 : 0
                             spacing: 24
@@ -1002,7 +1002,7 @@ ApplicationWindow {
                         }
 
                         Rectangle {
-                            visible: controller.selectedSpeechEngine === 1
+                            visible: controller.selectedSpeechEngine >= 1 && controller.selectedSpeechEngine <= 4
                             Layout.fillWidth: true
                             implicitHeight: parakeetSetup.implicitHeight + 28
                             radius: 12
@@ -1013,7 +1013,8 @@ ApplicationWindow {
                                 anchors.fill: parent
                                 anchors.margins: 14
                                 spacing: 10
-                                Text { text: qsTr("Parakeet TDT v3 · beta"); color: root.primaryText; font.pixelSize: 15; font.weight: Font.DemiBold }
+                                Text { text: controller.speechEngines[controller.selectedSpeechEngine]; color: root.primaryText; font.pixelSize: 15; font.weight: Font.DemiBold }
+                                Text { Layout.fillWidth: true; text: controller.nativeModelDetail; color: root.tertiaryText; font.pixelSize: 11; wrapMode: Text.Wrap }
                                 Text { Layout.fillWidth: true; text: controller.parakeetStatus; color: root.secondaryText; font.pixelSize: 12; wrapMode: Text.Wrap }
                                 RowLayout {
                                     visible: controller.parakeetBusy
@@ -1023,13 +1024,13 @@ ApplicationWindow {
                                 }
                                 RowLayout {
                                     Layout.fillWidth: true
-                                    Text { Layout.fillWidth: true; text: controller.parakeetRuntimeInstalled ? qsTr("Native runtime installed") : qsTr("Native runtime required"); color: controller.parakeetRuntimeInstalled ? root.accent : root.secondaryText }
+                                    Text { Layout.fillWidth: true; text: controller.parakeetRuntimeInstalled ? qsTr("Shared native runtime installed") : qsTr("Shared native runtime required"); color: controller.parakeetRuntimeInstalled ? root.accent : root.secondaryText }
                                     Button { Layout.preferredWidth: 160; text: controller.parakeetRuntimeInstalled ? qsTr("Rebuild") : qsTr("Install runtime"); enabled: !controller.parakeetBusy; onClicked: controller.installParakeetRuntime() }
                                 }
                                 RowLayout {
                                     Layout.fillWidth: true
-                                    Text { Layout.fillWidth: true; text: controller.parakeetModelInstalled ? qsTr("Verified multilingual model installed · 681 MiB") : qsTr("Multilingual model required · 681 MiB"); color: controller.parakeetModelInstalled ? root.accent : root.secondaryText }
-                                    Button { visible: !controller.parakeetModelInstalled; Layout.preferredWidth: 160; enabled: !controller.parakeetBusy || controller.parakeetDownloadProgress > 0; text: controller.parakeetDownloadProgress > 0 ? qsTr("Cancel") : qsTr("Download model"); onClicked: controller.parakeetDownloadProgress > 0 ? controller.cancelParakeetDownload() : controller.downloadParakeetModel() }
+                                    Text { Layout.fillWidth: true; text: controller.parakeetModelInstalled ? qsTr("Selected model downloaded and verified") : qsTr("Selected model is not downloaded"); color: controller.parakeetModelInstalled ? root.accent : root.secondaryText }
+                                    Button { visible: !controller.parakeetModelInstalled; Layout.preferredWidth: 160; enabled: !controller.parakeetBusy || controller.parakeetDownloadProgress > 0; text: controller.parakeetDownloadProgress > 0 ? qsTr("Cancel") : qsTr("Install"); onClicked: controller.parakeetDownloadProgress > 0 ? controller.cancelParakeetDownload() : controller.downloadParakeetModel() }
                                     Button { visible: controller.parakeetModelInstalled; Layout.preferredWidth: 160; text: qsTr("Delete model"); enabled: !controller.parakeetBusy; onClicked: controller.deleteParakeetModel() }
                                 }
                                 ProgressBar { visible: controller.parakeetBusy && controller.parakeetDownloadProgress > 0; Layout.fillWidth: true; value: controller.parakeetDownloadProgress }
@@ -1038,7 +1039,7 @@ ApplicationWindow {
                                     Text { Layout.fillWidth: true; text: qsTr("Runs locally through pinned NVIDIA NeMo-Speech.cpp. Whisper provides live text while you speak and remains the automatic fallback."); color: root.tertiaryText; font.pixelSize: 11; wrapMode: Text.Wrap }
                                     Button { Layout.preferredWidth: 160; text: qsTr("Check setup"); enabled: !controller.parakeetBusy; onClicked: controller.diagnoseParakeet() }
                                 }
-                                Text { Layout.fillWidth: true; text: qsTr("Install the runtime and model in either order. Both are required before Parakeet can transcribe."); color: root.tertiaryText; font.pixelSize: 11; wrapMode: Text.Wrap }
+                                Text { Layout.fillWidth: true; text: qsTr("Install performs the complete verified setup in one click. The runtime is shared, so additional native models only require their model download."); color: root.tertiaryText; font.pixelSize: 11; wrapMode: Text.Wrap }
                             }
                         }
 

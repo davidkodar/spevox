@@ -11,13 +11,60 @@ use std::{
 use sha2::{Digest, Sha256};
 
 pub const RUNTIME_REVISION: &str = "9bc876635af36df537d9bc6d3f57ad1b76e4f74a";
-pub const MODEL_FILE: &str = "parakeet-tdt-0.6b-v3.q8_0.gguf";
-pub const MODEL_BYTES: u64 = 713_975_456;
-pub const MODEL_SHA256: &str = "e3880d0aaaaf2c308ea2c35016b2b895c423eb3fda924c1b463d1c19b7f4d32e";
 pub const ENDPOINT: &str = "http://127.0.0.1:8179";
 
 const SOURCE_URL: &str = "https://github.com/NVIDIA/NeMo-Speech.cpp.git";
-const MODEL_URL: &str = "https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3/resolve/main/parakeet-tdt-0.6b-v3.q8_0.gguf";
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct Model {
+    pub id: &'static str,
+    pub name: &'static str,
+    pub detail: &'static str,
+    pub file: &'static str,
+    pub bytes: u64,
+    pub sha256: &'static str,
+    pub url: &'static str,
+}
+
+pub const PARAKEET_V3: Model = Model {
+    id: "parakeet-v3",
+    name: "Parakeet TDT v3",
+    detail: "25 European languages · self-punctuating · 681 MiB",
+    file: "parakeet-tdt-0.6b-v3.q8_0.gguf",
+    bytes: 713_975_456,
+    sha256: "e3880d0aaaaf2c308ea2c35016b2b895c423eb3fda924c1b463d1c19b7f4d32e",
+    url: "https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3/resolve/main/parakeet-tdt-0.6b-v3.q8_0.gguf",
+};
+pub const NEMOTRON_35: Model = Model {
+    id: "nemotron-35",
+    name: "Nemotron 3.5 Multilingual",
+    detail: "40+ language-locales · streaming RNNT · 707 MiB",
+    file: "nemotron-3.5-asr-streaming-0.6b.q8_0.gguf",
+    bytes: 741_548_352,
+    sha256: "a5c435f294eea8f88ce68dd27b8c3bfea7f777cb2fbba04fcd30eaa555f429ae",
+    url: "https://huggingface.co/nvidia/nemotron-3.5-asr-streaming-0.6b/resolve/main/nemotron-3.5-asr-streaming-0.6b.q8_0.gguf",
+};
+pub const NEMOTRON_EN: Model = Model {
+    id: "nemotron-en",
+    name: "Nemotron Streaming English",
+    detail: "Low-latency English RNNT · 668 MiB",
+    file: "nemotron-speech-streaming-en-0.6b.q8_0.gguf",
+    bytes: 699_872_960,
+    sha256: "d9a01898d2a611c8764e23a1c2f45e70bbd5a425dc4de93692ac951dd603812d",
+    url: "https://huggingface.co/nvidia/nemotron-speech-streaming-en-0.6b/resolve/main/nemotron-speech-streaming-en-0.6b.q8_0.gguf",
+};
+pub const PARAKEET_CTC: Model = Model {
+    id: "parakeet-ctc",
+    name: "Parakeet CTC 1.1B",
+    detail: "High-throughput English · 1.10 GiB",
+    file: "parakeet-ctc-1.1b.q8_0.gguf",
+    bytes: 1_178_100_960,
+    sha256: "6584fc0fdacf1c220401ea4c3a1d5b44454b655c141cb8672178072c203d92b8",
+    url: "https://huggingface.co/nvidia/parakeet-ctc-1.1b/resolve/main/parakeet-ctc-1.1b.q8_0.gguf",
+};
+
+#[cfg(test)]
+const MODELS: [Model; 4] = [PARAKEET_V3, NEMOTRON_35, NEMOTRON_EN, PARAKEET_CTC];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Backend {
@@ -49,8 +96,13 @@ pub fn data_directory() -> PathBuf {
 }
 
 #[must_use]
-pub fn model_path() -> PathBuf {
-    data_directory().join("models/parakeet").join(MODEL_FILE)
+pub fn model_path(model: Model) -> PathBuf {
+    if model == PARAKEET_V3 {
+        // Preserve the location used by the original one-model preview.
+        data_directory().join("models/parakeet").join(model.file)
+    } else {
+        data_directory().join("models/native-asr").join(model.file)
+    }
 }
 
 #[must_use]
@@ -75,11 +127,11 @@ pub fn runtime_installed(backend: Backend) -> bool {
 }
 
 #[must_use]
-pub fn model_installed() -> bool {
-    let path = model_path();
-    fs::metadata(&path).is_ok_and(|metadata| metadata.is_file() && metadata.len() == MODEL_BYTES)
+pub fn model_installed(model: Model) -> bool {
+    let path = model_path(model);
+    fs::metadata(&path).is_ok_and(|metadata| metadata.is_file() && metadata.len() == model.bytes)
         && fs::read_to_string(verification_path(&path))
-            .is_ok_and(|digest| digest.trim() == MODEL_SHA256)
+            .is_ok_and(|digest| digest.trim() == model.sha256)
 }
 
 pub fn install_runtime(backend: Backend) -> Result<(), String> {
@@ -178,16 +230,20 @@ pub fn install_runtime(backend: Backend) -> Result<(), String> {
     Ok(())
 }
 
-pub fn download_model(cancel: &AtomicBool, mut progress: impl FnMut(f32)) -> Result<(), String> {
-    let destination = model_path();
+pub fn download_model(
+    model: Model,
+    cancel: &AtomicBool,
+    mut progress: impl FnMut(f32),
+) -> Result<(), String> {
+    let destination = model_path(model);
     let parent = destination
         .parent()
-        .ok_or_else(|| "invalid Parakeet model destination".to_owned())?;
+        .ok_or_else(|| "invalid native model destination".to_owned())?;
     fs::create_dir_all(parent).map_err(|error| error.to_string())?;
     let partial = destination.with_extension("gguf.part");
-    let response = ureq::get(MODEL_URL)
+    let response = ureq::get(model.url)
         .call()
-        .map_err(|error| format!("Parakeet model request failed: {error}"))?;
+        .map_err(|error| format!("{} request failed: {error}", model.name))?;
     let mut reader = response.into_body().into_reader();
     let mut output = fs::File::create(&partial).map_err(|error| error.to_string())?;
     let mut hasher = Sha256::new();
@@ -210,24 +266,28 @@ pub fn download_model(cancel: &AtomicBool, mut progress: impl FnMut(f32)) -> Res
             .map_err(|error| error.to_string())?;
         hasher.update(&buffer[..count]);
         downloaded = downloaded.saturating_add(u64::try_from(count).unwrap_or_default());
-        progress((downloaded as f64 / MODEL_BYTES as f64).clamp(0.0, 1.0) as f32);
+        progress((downloaded as f64 / model.bytes as f64).clamp(0.0, 1.0) as f32);
     }
     output.sync_all().map_err(|error| error.to_string())?;
     drop(output);
     let digest = format!("{:x}", hasher.finalize());
-    if downloaded != MODEL_BYTES || digest != MODEL_SHA256 {
+    if downloaded != model.bytes || digest != model.sha256 {
         fs::remove_file(&partial).ok();
         return Err(format!(
-            "model verification failed (bytes {downloaded}/{MODEL_BYTES}, sha256 {digest})"
+            "model verification failed (bytes {downloaded}/{}, sha256 {digest})",
+            model.bytes
         ));
     }
     fs::rename(&partial, &destination).map_err(|error| error.to_string())?;
-    fs::write(verification_path(&destination), format!("{MODEL_SHA256}\n"))
-        .map_err(|error| error.to_string())
+    fs::write(
+        verification_path(&destination),
+        format!("{}\n", model.sha256),
+    )
+    .map_err(|error| error.to_string())
 }
 
-pub fn delete_model() -> Result<(), String> {
-    let path = model_path();
+pub fn delete_model(model: Model) -> Result<(), String> {
+    let path = model_path(model);
     if path.is_file() {
         fs::remove_file(&path).map_err(|error| error.to_string())?;
     }
@@ -242,6 +302,7 @@ fn verification_path(model: &std::path::Path) -> PathBuf {
 pub struct Supervisor {
     child: Option<Child>,
     executable: Option<PathBuf>,
+    model: Option<Model>,
 }
 
 impl Supervisor {
@@ -250,16 +311,18 @@ impl Supervisor {
         Self {
             child: None,
             executable: None,
+            model: None,
         }
     }
 
-    pub fn ensure_ready(&mut self, backend: Backend) -> Result<(), String> {
+    pub fn ensure_ready(&mut self, backend: Backend, model: Model) -> Result<(), String> {
         let executable = runtime_executable(backend)
             .ok_or_else(|| format!("{} NeMo-Speech.cpp runtime is not installed", backend.id()))?;
-        if !model_installed() {
-            return Err("Parakeet v3 model is not installed".to_owned());
+        if !model_installed(model) {
+            return Err(format!("{} is not installed", model.name));
         }
         if self.executable.as_ref() == Some(&executable)
+            && self.model == Some(model)
             && self
                 .child
                 .as_mut()
@@ -276,7 +339,7 @@ impl Supervisor {
         let stderr = stdout.try_clone().map_err(|error| error.to_string())?;
         let child = Command::new(&executable)
             .args(["serve", "--asr-model"])
-            .arg(model_path())
+            .arg(model_path(model))
             .args([
                 "--host",
                 "127.0.0.1",
@@ -295,6 +358,7 @@ impl Supervisor {
             .map_err(|error| format!("could not start NeMo-Speech.cpp: {error}"))?;
         self.child = Some(child);
         self.executable = Some(executable);
+        self.model = Some(model);
         for _ in 0..120 {
             if ready() {
                 return Ok(());
@@ -319,6 +383,7 @@ impl Supervisor {
             child.wait().ok();
         }
         self.executable = None;
+        self.model = None;
     }
 }
 
@@ -374,9 +439,11 @@ mod tests {
 
     #[test]
     fn pinned_model_metadata_is_complete() {
-        assert_eq!(MODEL_SHA256.len(), 64);
-        assert!(MODEL_BYTES > 600_000_000);
-        assert!(MODEL_URL.starts_with("https://huggingface.co/nvidia/"));
+        for model in MODELS {
+            assert_eq!(model.sha256.len(), 64);
+            assert!(model.bytes > 600_000_000);
+            assert!(model.url.starts_with("https://huggingface.co/nvidia/"));
+        }
     }
 
     #[test]

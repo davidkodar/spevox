@@ -120,7 +120,7 @@ usable but does not yet match the depth of the current macOS implementation.
 | Direct typing into applications | Partial | Available | Linux uses Wayland portal/clipboard delivery; application support can vary. |
 | Live transcript overlay | Available | Available | Linux provides compact/standard/expanded layouts, placement, opacity, text visibility, streamed AI retry, copy, raw recovery, and undo; previews use periodic local Whisper rather than the newest Parakeet streaming path. |
 | Whisper models | Available | Available | Linux supports all six listed multilingual GGML sizes. |
-| Parakeet, Nemotron, Cohere, Apple Speech | Partial | Available | Linux includes a managed Parakeet TDT v3 beta through native NeMo-Speech.cpp, plus a custom loopback ASR bridge. Nemotron, Cohere, and Apple Speech remain unavailable as embedded Linux engines. |
+| Parakeet, Nemotron, Cohere, Apple Speech | Partial | Available | Linux provides one-click managed Parakeet TDT v3, Nemotron 3.5 multilingual, Nemotron Streaming English, and Parakeet CTC 1.1B engines through native NeMo-Speech.cpp, plus a custom loopback ASR bridge. CoreML-only Cohere/Parakeet Flash and Apple Speech are not Linux runtimes. |
 | Vulkan GPU acceleration | Available | Not applicable | Linux supports cross-vendor Vulkan with CPU fallback. |
 | Automatic/fixed language | Available | Available | All 99 Whisper languages are exposed. |
 | Model download and deletion | Available | Available | Downloads are size-validated and remain `.part` until complete. |
@@ -160,11 +160,13 @@ is a promising Linux/Rust route with offline, streaming, Parakeet/NeMo-class,
 and diarization support, but 0.4.0 does not bundle its rapidly evolving native
 runtime or model catalog.
 
-**Parakeet TDT v3 (beta)** is managed by the application without Python,
-PyTorch, or a CUDA-only dependency chain. FluidVoice builds a pinned revision
-of NVIDIA NeMo-Speech.cpp into its XDG data directory, offers CPU or Vulkan,
-downloads the multilingual quantized model from NVIDIA's Hugging Face
-repository, and verifies its exact size and SHA-256 digest before activation.
+**Native NVIDIA speech engines (beta)** are managed by the application without
+Python, PyTorch, or a CUDA-only dependency chain. The catalog contains Parakeet
+TDT v3, Nemotron 3.5 Multilingual, Nemotron Streaming English, and Parakeet CTC
+1.1B. One click builds or reuses a pinned NVIDIA NeMo-Speech.cpp runtime,
+downloads the chosen official quantized model, and verifies its exact size and
+SHA-256 digest before activation. Nemotron 3.5 receives model-native locale
+codes such as `sv-SE`; the two English-only engines deliberately force English.
 The helper listens only on `127.0.0.1`, starts on first use, and is supervised
 by FluidVoice. If setup, startup, or transcription fails, the captured audio is
 sent through the selected local Whisper model instead of being lost. Installing
@@ -285,11 +287,13 @@ that artifact locally. The in-app update check reads GitHub Releases and will
 remain unavailable while this repository is private; releases are not installed
 silently.
 
-The current production speech backend remains embedded whisper.cpp. Parakeet,
-Nemotron, Cohere, and Apple Speech depend on runtimes or platform services that
-cannot presently be shipped as a supported native KDE/Linux backend; the engine
-boundary remains isolated so a maintainable Linux runtime can be added later
-without changing capture, history, or delivery.
+Embedded whisper.cpp remains the conservative default and automatic fallback.
+The four managed NVIDIA engines are optional native KDE/Linux backends. Apple
+Speech is an Apple platform service, while the currently published Cohere and
+Parakeet Flash integrations rely on CoreML/Apple Neural Engine; they are shown
+as platform gaps rather than nonfunctional Linux download buttons. Parakeet v2
+is likewise omitted because NVIDIA does not publish a ready, verifiable GGUF
+artifact for the pinned native runtime.
 
 ## Architecture
 

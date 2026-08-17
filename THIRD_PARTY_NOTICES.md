@@ -39,6 +39,26 @@ user's request and is never redistributed in the FluidVoice source tree.
 - Copyright: NVIDIA Corporation
 - License: Creative Commons Attribution 4.0 International (CC BY 4.0)
 
+## Additional NVIDIA speech models
+
+The following optional quantized models are downloaded separately only after
+the user selects Install; they are not redistributed in this source tree.
+
+- Nemotron 3.5 ASR Streaming 0.6B
+  - Source: https://huggingface.co/nvidia/nemotron-3.5-asr-streaming-0.6b
+  - File: `nemotron-3.5-asr-streaming-0.6b.q8_0.gguf`
+  - License: NVIDIA Open Model Development and Work License 1.1
+- Nemotron Speech Streaming English 0.6B
+  - Source: https://huggingface.co/nvidia/nemotron-speech-streaming-en-0.6b
+  - File: `nemotron-speech-streaming-en-0.6b.q8_0.gguf`
+  - License: NVIDIA Open Model License
+- Parakeet CTC 1.1B
+  - Source: https://huggingface.co/nvidia/parakeet-ctc-1.1b
+  - File: `parakeet-ctc-1.1b.q8_0.gguf`
+  - License: Creative Commons Attribution 4.0 International (CC BY 4.0)
+
+Copyright for these models is held by NVIDIA Corporation.
+
 ## SentencePiece
 
 The optional managed Parakeet runtime builds a pinned private SentencePiece

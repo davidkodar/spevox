@@ -5,6 +5,11 @@ All notable changes to FluidVoice Linux are documented here. The project uses
 
 ## 0.4.0 - 2026-08-16
 
+- Added a verified native speech catalog with one-click installation for
+  Parakeet TDT v3, Nemotron 3.5 Multilingual, Nemotron Streaming English, and
+  Parakeet CTC 1.1B. All engines reuse the pinned NeMo-Speech.cpp runtime,
+  preserve Vulkan/CPU fallback and Whisper recovery, and use model-appropriate
+  language identifiers.
 - Made the AI Enhancement master switch authoritative for result retries and
   hid AI-only popup actions while enhancement is disabled.
 - Restored type-as-you-speak text for the Parakeet engine by retaining the
