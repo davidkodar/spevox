@@ -1,10 +1,10 @@
 use std::{
     path::Path,
     sync::{Arc, Mutex},
-    time::Instant,
+    time::{Duration, Instant},
 };
 
-use fluidvoice_audio::MonoAudioBuffer;
+use fluidvoice_audio::{AudioBuffer, CaptureStopToken, MonoAudioBuffer, PipeWireCapture};
 use fluidvoice_transcription::{LocalSpeechServer, Transcript};
 
 use crate::{
@@ -34,6 +34,33 @@ pub(super) struct FinalAsrResult {
 pub(super) struct EnhancementResult {
     pub(super) result: Option<Result<String, String>>,
     pub(super) duration_ms: u128,
+}
+
+pub(super) fn capture_audio(
+    target: Option<&str>,
+    stop_token: &CaptureStopToken,
+    mut on_level: impl FnMut(f32) + 'static,
+    on_preview: impl FnMut(AudioBuffer) + 'static,
+    on_stream_chunk: impl FnMut(AudioBuffer) + 'static,
+) -> Result<AudioBuffer, String> {
+    let mut last_level_report: Option<Instant> = None;
+    PipeWireCapture::capture_with_streaming_preview(
+        Duration::from_mins(2),
+        target,
+        stop_token,
+        move |level| {
+            if last_level_report
+                .is_some_and(|reported| reported.elapsed() < Duration::from_millis(50))
+            {
+                return;
+            }
+            last_level_report = Some(Instant::now());
+            on_level(level);
+        },
+        on_preview,
+        on_stream_chunk,
+    )
+    .map_err(|error| error.to_string())
 }
 
 pub(super) fn enhance_transcript(

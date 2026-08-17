@@ -3581,7 +3581,6 @@ impl ffi::FluidVoiceController {
         std::thread::spawn(move || {
             let level_thread = qt_thread.clone();
             let preview_thread = qt_thread.clone();
-            let mut last_level_report: Option<Instant> = None;
             let (preview_sender, preview_receiver) =
                 std::sync::mpsc::sync_channel::<AudioBuffer>(1);
             // Never block PipeWire while the native server performs a cold
@@ -3690,17 +3689,10 @@ impl ffi::FluidVoiceController {
                         .ok();
                 }
             });
-            let result = PipeWireCapture::capture_with_streaming_preview(
-                Duration::from_mins(2),
+            let result = capture_audio(
                 capture_target.as_deref(),
                 &stop_token,
                 move |level| {
-                    if last_level_report
-                        .is_some_and(|reported| reported.elapsed() < Duration::from_millis(50))
-                    {
-                        return;
-                    }
-                    last_level_report = Some(Instant::now());
                     level_thread
                         .queue(move |mut controller| {
                             let adjusted = level * gain;
@@ -4334,7 +4326,8 @@ mod dictation;
 #[path = "speech_runtime.rs"]
 mod speech_runtime;
 use dictation::{
-    EnhancementResult, FinalAsrRequest, FinalAsrResult, enhance_transcript, transcribe_final,
+    EnhancementResult, FinalAsrRequest, FinalAsrResult, capture_audio, enhance_transcript,
+    transcribe_final,
 };
 #[cfg(test)]
 use dictionary::parse_csv_record;
