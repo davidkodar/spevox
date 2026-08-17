@@ -3764,71 +3764,35 @@ impl ffi::FluidVoiceController {
             let asr_audio = mono.amplified(combined_gain);
             let asr_peak = asr_audio.peak();
             let diagnostic_dump = dump_asr_audio(&asr_audio);
-            let whisper_transcription = || {
-                model
-                    .as_deref()
-                    .ok_or_else(|| "No Whisper model is installed".to_owned())
-                    .and_then(|model| {
-                        whisper_cache::get(model, use_gpu)?
-                            .transcribe_in_language(
-                                &asr_audio,
-                                (!language.is_empty()).then_some(language.as_str()),
-                            )
-                            .map_err(|error| error.to_string())
-                    })
-            };
-            let (transcription, parakeet_fallback) = if speech_engine == 5 {
-                (
-                    LocalSpeechServer::new(&local_speech_url)
-                        .and_then(|server| {
-                            server.transcribe(
-                                &asr_audio,
-                                (!language.is_empty()).then_some(language.as_str()),
-                            )
+            let fallback_thread = qt_thread.clone();
+            let FinalAsrResult {
+                transcription,
+                native_fallback_error: parakeet_fallback,
+            } = transcribe_final(
+                &FinalAsrRequest {
+                    audio: &asr_audio,
+                    language: &language,
+                    speech_engine,
+                    whisper_model: model.as_deref(),
+                    use_gpu,
+                    local_speech_url: &local_speech_url,
+                    native_model,
+                    native_backend: parakeet_backend,
+                    native_supervisor: &parakeet_supervisor,
+                },
+                move || {
+                    fallback_thread
+                        .queue(|mut controller| {
+                            controller.as_mut().set_status_text(QString::from(
+                                "Native engine failed · running Whisper fallback…",
+                            ));
+                            controller.as_mut().set_live_transcript(QString::from(
+                                "Native engine failed; recovering with Whisper…",
+                            ));
                         })
-                        .map_err(|error| error.to_string()),
-                    None,
-                )
-            } else if let Some(native_model) = native_model {
-                let native_language = native_language_for_model(native_model, &language);
-                let primary = parakeet_supervisor
-                    .lock()
-                    .map_err(|_| "Parakeet supervisor lock was poisoned".to_owned())
-                    .and_then(|mut supervisor| {
-                        supervisor.ensure_ready(parakeet_backend, native_model)?;
-                        Ok(supervisor.endpoint())
-                    })
-                    .and_then(|endpoint| {
-                        LocalSpeechServer::new(&endpoint).map_err(|error| error.to_string())
-                    })
-                    .and_then(|server| {
-                        server
-                            .transcribe(
-                                &asr_audio,
-                                (!native_language.is_empty()).then_some(native_language.as_str()),
-                            )
-                            .map_err(|error| error.to_string())
-                    });
-                match primary {
-                    Ok(transcript) => (Ok(transcript), None),
-                    Err(error) => {
-                        let fallback_thread = qt_thread.clone();
-                        fallback_thread
-                            .queue(|mut controller| {
-                                controller.as_mut().set_status_text(QString::from(
-                                    "Native engine failed · running Whisper fallback…",
-                                ));
-                                controller.as_mut().set_live_transcript(QString::from(
-                                    "Native engine failed; recovering with Whisper…",
-                                ));
-                            })
-                            .ok();
-                        (whisper_transcription(), Some(error))
-                    }
-                }
-            } else {
-                (whisper_transcription(), None)
-            };
+                        .ok();
+                },
+            );
             let enhancement_started = Instant::now();
             let enhancement = transcription.as_ref().ok().and_then(|transcript| {
                 if ai_config.enabled {
@@ -4370,8 +4334,11 @@ use models::{
     download_whisper_model, managed_model_directory, model_file_valid, model_ui_lists,
     resolve_model_path, supported_languages, verify_unmarked_whisper_models, whisper_model_catalog,
 };
+#[path = "dictation.rs"]
+mod dictation;
 #[path = "speech_runtime.rs"]
 mod speech_runtime;
+use dictation::{FinalAsrRequest, FinalAsrResult, transcribe_final};
 #[cfg(test)]
 use dictionary::parse_csv_record;
 #[cfg(test)]
