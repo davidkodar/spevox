@@ -1,9 +1,9 @@
 name: CI
 
 on:
-  push:
-    branches: [main]
-  pull_request:
+  # Hosted CI is temporarily manual-only while the private-repository minutes
+  # allowance is exhausted. Restore push/pull_request triggers when desired.
+  workflow_dispatch:
 
 permissions:
   contents: read
