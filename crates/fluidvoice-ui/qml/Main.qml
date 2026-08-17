@@ -1116,6 +1116,12 @@ ApplicationWindow {
                                 onActivated: function(index) { controller.selectComputeBackend(index) }
                             }
                         }
+                        RowLayout {
+                            visible: controller.selectedSpeechEngine !== 5
+                            Layout.fillWidth: true
+                            Text { Layout.fillWidth: true; text: controller.computeStatus; color: root.tertiaryText; font.pixelSize: 10; wrapMode: Text.Wrap }
+                            Button { text: qsTr("Refresh diagnostics"); onClicked: controller.diagnoseComputeBackend(); Accessible.name: qsTr("Refresh compute backend diagnostics") }
+                        }
 
                         Rectangle {
                             visible: controller.selectedSpeechEngine >= 1 && controller.selectedSpeechEngine <= 4
@@ -1914,14 +1920,41 @@ ApplicationWindow {
                                 }
                             }
                             RowLayout { Layout.fillWidth: true
-                                Button { text: controller.transcribing ? qsTr("Transcribing…") : qsTr("Choose audio or video"); enabled: !controller.transcribing && !controller.recording; onClicked: audioFileDialog.open() }
+                                Button { text: controller.transcribing ? qsTr("Transcribing…") : qsTr("Choose audio or video"); enabled: !controller.transcribing && !controller.recording; onClicked: audioFileDialog.open(); Accessible.name: qsTr("Choose audio or video for transcription") }
+                                Button { visible: controller.lastMeetingFile.length > 0; text: qsTr("Retry last file"); enabled: !controller.transcribing && !controller.recording; onClicked: controller.retryMeetingTranscription(); Accessible.name: qsTr("Retry transcription with current settings") }
                                 Button { visible: controller.transcribing; text: qsTr("Cancel"); onClicked: controller.cancelMeetingTranscription() }
                                 Item { Layout.fillWidth: true }
                                 ComboBox { id: meetingExportFormat; model: ["TXT", "MD", "SRT", "VTT", "JSON"]; currentIndex: 2 }
                                 Button { text: qsTr("Export"); enabled: controller.meetingSegments.length > 0 && !controller.transcribing; onClicked: meetingExportDialog.open() }
                             }
+                            Text { visible: controller.lastMeetingFile.length > 0; Layout.fillWidth: true; text: qsTr("Last file: %1").arg(controller.lastMeetingFile); color: root.tertiaryText; font.pixelSize: 10; elide: Text.ElideMiddle }
                             ProgressBar { visible: controller.transcribing || controller.meetingProgress > 0; Layout.fillWidth: true; from: 0; to: 1; value: controller.meetingProgress }
                             Text { Layout.fillWidth: true; text: controller.fileTranscriptionStatus; color: controller.transcribing ? root.accent : root.secondaryText; font.pixelSize: 12; wrapMode: Text.Wrap }
+                            Rectangle {
+                                visible: controller.meetingSpeakers.length > 0
+                                Layout.fillWidth: true
+                                implicitHeight: speakerNames.implicitHeight + 24
+                                radius: 10; color: root.background; border.color: root.hairline
+                                RowLayout {
+                                    id: speakerNames
+                                    anchors.fill: parent; anchors.margins: 12; spacing: 10
+                                    ColumnLayout { Layout.fillWidth: true; spacing: 2
+                                        Text { text: qsTr("Speaker names"); color: root.primaryText; font.pixelSize: 12; font.weight: Font.DemiBold }
+                                        Text { Layout.fillWidth: true; text: qsTr("Rename a detected speaker for this result, History, and every export format."); color: root.secondaryText; font.pixelSize: 10; wrapMode: Text.Wrap }
+                                    }
+                                    ComboBox { id: meetingSpeakerSelector; Layout.preferredWidth: 150; model: controller.meetingSpeakers; Accessible.name: qsTr("Detected speaker") }
+                                    TextField { id: meetingSpeakerName; Layout.preferredWidth: 180; placeholderText: qsTr("Speaker name"); maximumLength: 40; Accessible.name: qsTr("New speaker name") }
+                                    Button {
+                                        text: qsTr("Rename")
+                                        enabled: meetingSpeakerSelector.currentIndex >= 0 && meetingSpeakerName.text.trim().length > 0
+                                        onClicked: {
+                                            controller.renameMeetingSpeaker(meetingSpeakerSelector.currentText, meetingSpeakerName.text)
+                                            meetingSpeakerName.clear()
+                                        }
+                                        Accessible.name: qsTr("Rename selected speaker")
+                                    }
+                                }
+                            }
                             ListView {
                                 visible: controller.meetingSegments.length > 0
                                 Layout.fillWidth: true; Layout.preferredHeight: Math.min(320, contentHeight); clip: true; spacing: 6

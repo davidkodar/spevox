@@ -132,7 +132,7 @@ usable but does not yet match the depth of the current macOS implementation.
 | Write/rewrite selected text | Available | Available | `Ctrl+Alt+W` opens Write Mode from any application. Linux captures and replaces selected text through the consented Wayland keyboard portal, with provider/model visibility plus retry, undo, preview, and clipboard recovery. The closed Fluid-1 model is not available. |
 | AI Enhancement | Partial | Available | Linux supports configurable cloud and local providers, streamed overlay updates, application/workflow prompt profiles, and safe raw-text fallback. It cannot reproduce the closed Fluid-1 model. |
 | Fluid Intelligence / Fluid-1 | Missing | Available | Fluid-1 weights, runtime, and training code are separately maintained and not available in the GPL repository. |
-| File and meeting transcription | Available | Available | Linux accepts MP3, FLAC, Ogg/Opus, M4A/AAC, WebM, MP4, and varied WAV through FFmpeg, then runs bounded timestamped Whisper segments with progress/cancellation and TXT, Markdown, SRT, WebVTT, or JSON export. Optional experimental Sortformer v2 diarization labels up to four speakers locally. |
+| File and meeting transcription | Available | Available | Linux accepts MP3, FLAC, Ogg/Opus, M4A/AAC, WebM, MP4, and varied WAV through FFmpeg, then runs bounded timestamped Whisper segments with progress/cancellation and TXT, Markdown, SRT, WebVTT, or JSON export. Optional experimental Sortformer v2 diarization labels up to four speakers locally; detected speakers can be renamed consistently in the current result, History, and exports, and the last file can be retried after changing settings. |
 | Transcript history | Partial | Available | Linux provides search, timestamps, raw/final visual diffs, change counts, copy/undo actions, optional retained audio, AI metadata, word counts, and JSON/CSV/ZIP export; app/window metadata and feedback reports remain missing. |
 | Usage statistics | Available | Available | Linux provides today/all-time totals, estimated time saved, configurable typing speed, weekend-aware streaks, 7/30-day charts, milestones, insights, records, and AI enhancement impact/provider activity. |
 | Per-application configuration | Available | Available | Linux provides persistent named prompt profiles and opt-in automatic matching through a packaged KWin script. Only application class and window title cross the local session bus; the bridge is disabled by default. |
@@ -312,6 +312,16 @@ cargo run -p fluidvoice-app -- --diagnose-audio 3 [PIPEWIRE_NODE]
 cargo run -p fluidvoice-app -- --diagnose-transcription /path/to/model.bin 5 [PIPEWIRE_NODE]
 cargo run -p fluidvoice-app -- --diagnose-workflow /path/to/model.bin 5 [PIPEWIRE_NODE]
 ```
+
+The Voice Engine page also reports the selected CPU/Vulkan policy and provides
+a refreshable compute diagnostic. This describes the requested runtime policy;
+the transcription log remains the authoritative record of the backend actually
+initialized by the model runtime.
+
+Before cutting a release candidate, run `packaging/release-check.sh` for the
+automated formatting, QML, test, release-build, staged-install, and package
+checks. The manual fresh-user, accessibility, and optional-runtime acceptance
+steps are documented in `docs/RELEASE_CHECKLIST.md`.
 
 The application ID is `io.github.davidkodar.FluidVoiceLinux`. The matching
 desktop entry, icon, AppStream metadata, and GPL license are installed by

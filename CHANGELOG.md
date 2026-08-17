@@ -5,6 +5,12 @@ All notable changes to FluidVoice Linux are documented here. The project uses
 
 ## 0.4.0 - 2026-08-16
 
+- Hardened the meeting workflow with retry-under-current-settings, visible last
+  file, validated speaker renaming propagated to the current result, latest
+  file History entry, and every export format. Added truthful compute
+  diagnostics that distinguish requested Whisper GPU behavior from installed
+  native CPU/Vulkan runtimes, accessible names for new controls, and a
+  repeatable clean-install/release-candidate gate plus human QA checklist.
 - Added optional experimental Sortformer v2 speaker diarization for file and
   meeting transcription: one-click shared-runtime/model setup, immutable
   revision and SHA-256 verification, CPU/cross-vendor Vulkan execution, up to

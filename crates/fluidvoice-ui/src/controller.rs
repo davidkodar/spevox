@@ -67,8 +67,11 @@ pub mod ffi {
         )]
         #[qproperty(f32, meeting_progress, cxx_name = "meetingProgress")]
         #[qproperty(QStringList, meeting_segments, cxx_name = "meetingSegments")]
+        #[qproperty(QStringList, meeting_speakers, cxx_name = "meetingSpeakers")]
+        #[qproperty(QString, last_meeting_file, cxx_name = "lastMeetingFile")]
         #[qproperty(QStringList, compute_backends, cxx_name = "computeBackends")]
         #[qproperty(i32, selected_compute_backend, cxx_name = "selectedComputeBackend")]
+        #[qproperty(QString, compute_status, cxx_name = "computeStatus")]
         #[qproperty(QStringList, theme_options, cxx_name = "themeOptions")]
         #[qproperty(i32, selected_theme, cxx_name = "selectedTheme")]
         #[qproperty(QStringList, accent_options, cxx_name = "accentOptions")]
@@ -284,6 +287,14 @@ pub mod ffi {
         fn export_meeting(self: Pin<&mut Self>, path: &QString, format: &QString);
 
         #[qinvokable]
+        #[cxx_name = "renameMeetingSpeaker"]
+        fn rename_meeting_speaker(self: Pin<&mut Self>, current: &QString, replacement: &QString);
+
+        #[qinvokable]
+        #[cxx_name = "retryMeetingTranscription"]
+        fn retry_meeting_transcription(self: Pin<&mut Self>);
+
+        #[qinvokable]
         #[cxx_name = "completeOnboarding"]
         fn complete_onboarding(self: Pin<&mut Self>);
 
@@ -294,6 +305,10 @@ pub mod ffi {
         #[qinvokable]
         #[cxx_name = "selectComputeBackend"]
         fn select_compute_backend(self: Pin<&mut Self>, index: i32);
+
+        #[qinvokable]
+        #[cxx_name = "diagnoseComputeBackend"]
+        fn diagnose_compute_backend(self: Pin<&mut Self>);
 
         #[qinvokable]
         #[cxx_name = "selectTheme"]
@@ -544,10 +559,13 @@ pub struct FluidVoiceControllerRust {
     file_transcription_status: QString,
     meeting_progress: f32,
     meeting_segments: QStringList,
+    meeting_speakers: QStringList,
+    last_meeting_file: QString,
     meeting_results: Vec<MeetingSegment>,
     meeting_cancel: Option<Arc<AtomicBool>>,
     compute_backends: QStringList,
     selected_compute_backend: i32,
+    compute_status: QString,
     theme_options: QStringList,
     selected_theme: i32,
     accent_options: QStringList,
@@ -779,6 +797,8 @@ impl Default for FluidVoiceControllerRust {
             file_transcription_status: QString::from("Choose a WAV file to transcribe locally."),
             meeting_progress: 0.0,
             meeting_segments: QStringList::default(),
+            meeting_speakers: QStringList::default(),
+            last_meeting_file: QString::default(),
             meeting_results: Vec::new(),
             meeting_cancel: None,
             compute_backends: ["Automatic (Vulkan → CPU)", "Vulkan only", "CPU only"]
@@ -786,6 +806,7 @@ impl Default for FluidVoiceControllerRust {
                 .map(QString::from)
                 .collect(),
             selected_compute_backend: preferences.compute_backend.clamp(0, 2),
+            compute_status: QString::from(compute_backend_summary(preferences.compute_backend)),
             theme_options: ["System", "FluidVoice Dark", "FluidVoice Light"]
                 .into_iter()
                 .map(QString::from)
@@ -1639,12 +1660,21 @@ impl ffi::FluidVoiceController {
         self.as_mut().set_selected_compute_backend(index);
         self.as_mut()
             .set_parakeet_runtime_installed(parakeet_runtime_available(index));
+        self.as_mut()
+            .set_compute_status(QString::from(compute_backend_summary(index)));
         self.as_ref().rust().save_preferences();
         self.as_mut().set_status_text(QString::from(match index {
             2 => "CPU inference selected",
             1 => "Vulkan-only inference selected; its development packages are required",
             _ => "Automatic inference selected; Vulkan is preferred with managed CPU fallback",
         }));
+    }
+
+    pub fn diagnose_compute_backend(mut self: Pin<&mut Self>) {
+        let selected = *self.as_ref().selected_compute_backend();
+        let summary = compute_backend_summary(selected);
+        self.as_mut().set_compute_status(QString::from(&summary));
+        self.as_mut().set_status_text(QString::from(&summary));
     }
 
     pub fn select_theme(mut self: Pin<&mut Self>, index: i32) {
@@ -3098,6 +3128,8 @@ impl ffi::FluidVoiceController {
             return;
         };
         let path = PathBuf::from(decode_file_url(&path.to_string()));
+        self.as_mut()
+            .set_last_meeting_file(QString::from(path.to_string_lossy().as_ref()));
         let language = selected_language_code(self.as_ref().rust());
         let use_gpu = self.as_ref().rust().selected_compute_backend != 2;
         let diarization_enabled = self.as_ref().rust().diarization_enabled;
@@ -3229,6 +3261,12 @@ impl ffi::FluidVoiceController {
                             controller.as_mut().set_meeting_segments(
                                 segments.iter().map(meeting_segment_qstring).collect(),
                             );
+                            controller.as_mut().set_meeting_speakers(
+                                meeting_speaker_names(&segments)
+                                    .iter()
+                                    .map(QString::from)
+                                    .collect(),
+                            );
                             controller.as_mut().rust_mut().get_mut().meeting_results = segments;
                             controller
                                 .as_mut()
@@ -3286,6 +3324,70 @@ impl ffi::FluidVoiceController {
                     "Meeting export failed: {error}"
                 ))),
         }
+    }
+
+    pub fn rename_meeting_speaker(
+        mut self: Pin<&mut Self>,
+        current: &QString,
+        replacement: &QString,
+    ) {
+        let current = current.to_string();
+        let replacement = replacement.to_string().trim().to_owned();
+        if current.is_empty()
+            || replacement.is_empty()
+            || replacement.len() > 40
+            || replacement.chars().any(char::is_control)
+        {
+            self.as_mut().set_file_transcription_status(QString::from(
+                "Speaker names must contain 1–40 printable characters.",
+            ));
+            return;
+        }
+        let rust = self.as_mut().rust_mut().get_mut();
+        let mut changed = false;
+        for segment in &mut rust.meeting_results {
+            if segment.speaker.as_deref() == Some(&current) {
+                segment.speaker = Some(replacement.clone());
+                changed = true;
+            }
+        }
+        if !changed {
+            self.as_mut().set_file_transcription_status(QString::from(
+                "The selected speaker no longer exists in this transcript.",
+            ));
+            return;
+        }
+        let segments = self.as_ref().rust().meeting_results.clone();
+        self.as_mut()
+            .set_meeting_segments(segments.iter().map(meeting_segment_qstring).collect());
+        self.as_mut().set_meeting_speakers(
+            meeting_speaker_names(&segments)
+                .iter()
+                .map(QString::from)
+                .collect(),
+        );
+        let history_result = rename_latest_file_history_speaker(&current, &replacement);
+        if history_result.is_ok() {
+            let history = load_lines(&history_path());
+            self.as_mut()
+                .set_history_entries(history.iter().rev().map(QString::from).collect());
+        }
+        self.as_mut()
+            .set_file_transcription_status(QString::from(history_result.map_or_else(
+                |error| format!("Speaker renamed in this result; History update failed: {error}"),
+                |()| format!("Renamed {current} to {replacement} in this result and History."),
+            )));
+    }
+
+    pub fn retry_meeting_transcription(mut self: Pin<&mut Self>) {
+        let path = self.as_ref().last_meeting_file().clone();
+        if path.is_empty() {
+            self.as_mut().set_file_transcription_status(QString::from(
+                "Choose an audio or video file before retrying.",
+            ));
+            return;
+        }
+        self.as_mut().transcribe_file(&path);
     }
 
     #[allow(clippy::too_many_lines)]
@@ -5083,6 +5185,49 @@ fn assign_speakers(
     }
 }
 
+fn meeting_speaker_names(segments: &[MeetingSegment]) -> Vec<String> {
+    let mut speakers = Vec::new();
+    for speaker in segments
+        .iter()
+        .filter_map(|segment| segment.speaker.as_ref())
+    {
+        if !speakers.contains(speaker) {
+            speakers.push(speaker.clone());
+        }
+    }
+    speakers
+}
+
+fn rename_latest_file_history_speaker(current: &str, replacement: &str) -> Result<(), String> {
+    let path = history_path();
+    let mut history = load_lines(&path);
+    rename_latest_file_history_speaker_entries(&mut history, current, replacement)?;
+    save_lines(&path, &history).map_err(|error| error.to_string())
+}
+
+fn rename_latest_file_history_speaker_entries(
+    history: &mut [String],
+    current: &str,
+    replacement: &str,
+) -> Result<(), String> {
+    let entry = history
+        .iter_mut()
+        .rev()
+        .find(|entry| history_field(entry, 7) == Some("file"))
+        .ok_or_else(|| "no file-transcription History entry exists".to_owned())?;
+    let mut fields = entry.split('\t').map(str::to_owned).collect::<Vec<_>>();
+    let text = fields
+        .get_mut(1)
+        .ok_or_else(|| "the latest History entry is incomplete".to_owned())?;
+    let needle = format!("{current}: ");
+    if !text.contains(&needle) {
+        return Err("the latest History entry does not contain that speaker".to_owned());
+    }
+    *text = text.replace(&needle, &format!("{replacement}: "));
+    *entry = fields.join("\t");
+    Ok(())
+}
+
 fn meeting_segment_qstring(segment: &MeetingSegment) -> QString {
     QString::from(&format!(
         "{}\t{}\t{}\t{}",
@@ -5543,6 +5688,27 @@ fn parakeet_backend(compute_backend: i32) -> ParakeetBackend {
     }
 }
 
+fn compute_backend_summary(compute_backend: i32) -> String {
+    let cpu = parakeet::runtime_installed(ParakeetBackend::Cpu);
+    let vulkan = parakeet::runtime_installed(ParakeetBackend::Vulkan);
+    let runtime = match (vulkan, cpu) {
+        (true, true) => "native Vulkan and CPU runtimes installed",
+        (true, false) => "native Vulkan runtime installed; CPU fallback not installed",
+        (false, true) => "native CPU runtime installed; Vulkan runtime unavailable",
+        (false, false) => "native runtimes not installed",
+    };
+    match compute_backend {
+        2 => format!("CPU only · Whisper requests CPU · {runtime}"),
+        1 => format!("Vulkan only · Whisper requests GPU · {runtime}"),
+        _ if vulkan => format!(
+            "Automatic · Whisper requests GPU · native engines use Vulkan · CPU fallback {}",
+            if cpu { "ready" } else { "not installed" }
+        ),
+        _ if cpu => "Automatic · Whisper requests GPU with library fallback · native engines use installed CPU runtime".to_owned(),
+        _ => "Automatic · Whisper requests GPU with library fallback · native runtime setup required".to_owned(),
+    }
+}
+
 fn native_model_for_engine(engine: i32) -> Option<parakeet::Model> {
     match engine {
         1 => Some(parakeet::PARAKEET_V3),
@@ -5719,12 +5885,12 @@ mod tests {
 
     use super::{
         AiProfile, DesktopAction, DictionaryEntry, MeetingSegment, asr_gain, assign_speakers,
-        decode_audio_file, decode_file_url, history_clipboard_text, meter_level,
-        native_language_for_model, native_model_for_engine, parse_csv_record, parse_desktop_action,
-        peak_db, process_transcript, profile_matches_application, read_dictionary_import,
-        supported_languages, suspicious_single_word, timestamp_srt, valid_ollama_model_name,
-        version_tuple, whisper_model_catalog, write_dictionary_csv, write_history_export,
-        write_meeting_export,
+        decode_audio_file, decode_file_url, history_clipboard_text, meeting_speaker_names,
+        meter_level, native_language_for_model, native_model_for_engine, parse_csv_record,
+        parse_desktop_action, peak_db, process_transcript, profile_matches_application,
+        read_dictionary_import, rename_latest_file_history_speaker_entries, supported_languages,
+        suspicious_single_word, timestamp_srt, valid_ollama_model_name, version_tuple,
+        whisper_model_catalog, write_dictionary_csv, write_history_export, write_meeting_export,
     };
     use crate::parakeet;
 
@@ -5777,6 +5943,24 @@ mod tests {
         assign_speakers(&mut transcript, &diarization);
         assert_eq!(transcript[0].speaker.as_deref(), Some("Speaker 1"));
         assert_eq!(transcript[1].speaker.as_deref(), Some("Speaker 2"));
+        assert_eq!(
+            meeting_speaker_names(&transcript),
+            ["Speaker 1", "Speaker 2"]
+        );
+    }
+
+    #[test]
+    fn renames_speakers_only_in_the_latest_file_history_entry() {
+        let mut history = vec![
+            "1\tSpeaker 1: older\traw\t\t\tdisabled\t0\tfile\t".to_owned(),
+            "2\tdictation\traw\t\t\tdisabled\t0\tdictation\t".to_owned(),
+            "3\tSpeaker 1: hello Speaker 2: hi\traw\t\t\tdisabled\t0\tfile\t".to_owned(),
+        ];
+        rename_latest_file_history_speaker_entries(&mut history, "Speaker 1", "David")
+            .expect("rename latest file speaker");
+        assert!(history[0].contains("Speaker 1: older"));
+        assert!(history[2].contains("David: hello"));
+        assert!(!history[2].contains("Speaker 1: hello"));
     }
 
     #[test]
