@@ -5,6 +5,11 @@ All notable changes to FluidVoice Linux are documented here. The project uses
 
 ## 0.4.0 - 2026-08-16
 
+- Added a persistent four-step first-run onboarding wizard covering microphone
+  and privacy expectations, practical Whisper speed/accuracy/size guidance,
+  cross-vendor Vulkan behavior, experimental-engine limitations, and a final
+  readiness check. Existing installations are not interrupted after upgrading,
+  and the complete guide can be reopened from Getting Started.
 - Disabled native realtime previews on the pinned Vulkan runtime after tracing
   real Nemotron audio to an upstream GGML tensor assertion. Vulkan remains the
   fast final-inference backend, while the stable Whisper overlay is used for

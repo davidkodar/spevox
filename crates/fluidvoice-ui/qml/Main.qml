@@ -16,6 +16,7 @@ ApplicationWindow {
     color: root.windowBackground
     property int settingsSection: 0
     property int statsChartDays: 7
+    property int onboardingStep: 0
 
     SystemPalette {
         id: systemPalette
@@ -397,6 +398,8 @@ ApplicationWindow {
     readonly property color selectionSurface: Qt.rgba(root.accent.r, root.accent.g, root.accent.b,
                                                        darkTheme ? 0.30 : 0.18)
     readonly property color accentText: root.accent.hslLightness > 0.62 ? "#202024" : "#ffffff"
+    readonly property color success: "#56d394"
+    readonly property color warning: "#f0b45a"
 
     // Feed the chosen accent back into Qt Quick Controls so sliders, switches,
     // selections, progress bars, and focused controls all update with it.
@@ -504,9 +507,122 @@ ApplicationWindow {
         }
     }
 
+    Dialog {
+        id: onboardingDialog
+        modal: true
+        closePolicy: Popup.NoAutoClose
+        anchors.centerIn: parent
+        width: Math.min(root.width - 48, 760)
+        height: Math.min(root.height - 48, 570)
+        padding: 0
+        background: Rectangle { radius: 20; color: root.panel; border.color: root.hairline }
+        contentItem: ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: 24
+            spacing: 16
+            RowLayout {
+                Layout.fillWidth: true
+                Image { source: "qrc:/qt/qml/io/github/davidkodar/FluidVoiceLinux/assets/fluidvoice-app.png"; sourceSize.width: 42; sourceSize.height: 42; fillMode: Image.PreserveAspectFit }
+                ColumnLayout {
+                    Layout.fillWidth: true; spacing: 2
+                    Text { text: qsTr("Welcome to FluidVoice"); color: root.primaryText; font.pixelSize: 22; font.weight: Font.Bold }
+                    Text { text: qsTr("Private, native dictation for KDE Plasma"); color: root.secondaryText; font.pixelSize: 12 }
+                }
+                Text { text: qsTr("Step %1 of 4").arg(root.onboardingStep + 1); color: root.tertiaryText; font.pixelSize: 11 }
+            }
+            ProgressBar { Layout.fillWidth: true; from: 0; to: 4; value: root.onboardingStep + 1 }
+            StackLayout {
+                Layout.fillWidth: true; Layout.fillHeight: true; currentIndex: root.onboardingStep
+                ColumnLayout {
+                    spacing: 12
+                    Text { text: qsTr("1. Microphone and privacy"); color: root.primaryText; font.pixelSize: 19; font.weight: Font.DemiBold }
+                    Text { Layout.fillWidth: true; text: qsTr("FluidVoice records only while you hold the dictation shortcut. Speech recognition runs locally. Audio history is off by default, and cloud AI enhancement remains optional and disabled until you configure it."); color: root.secondaryText; font.pixelSize: 13; wrapMode: Text.Wrap }
+                    Rectangle { Layout.fillWidth: true; implicitHeight: 88; radius: 12; color: root.panelRaised; border.color: root.hairline
+                        RowLayout { anchors.fill: parent; anchors.margins: 14; spacing: 14
+                            Rectangle { width: 12; height: 12; radius: 6; color: controller.inputSources.length > 0 ? root.success : root.warning }
+                            ColumnLayout { Layout.fillWidth: true
+                                Text { text: controller.inputSources.length > 0 ? qsTr("Microphone detected") : qsTr("Waiting for microphone access"); color: root.primaryText; font.pixelSize: 14; font.weight: Font.Medium }
+                                Text { Layout.fillWidth: true; text: controller.microphoneName.length > 0 ? controller.microphoneName : qsTr("Open Voice Engine after setup to select and test the correct input."); color: root.secondaryText; font.pixelSize: 11; wrapMode: Text.Wrap }
+                            }
+                        }
+                    }
+                    Item { Layout.fillHeight: true }
+                }
+                ColumnLayout {
+                    spacing: 10
+                    Text { text: qsTr("2. Choose the right Whisper model"); color: root.primaryText; font.pixelSize: 19; font.weight: Font.DemiBold }
+                    Text { Layout.fillWidth: true; text: qsTr("Larger models generally improve recognition—especially outside English—but require more memory and processing time. Start conservatively, test your own voice, then move up only if accuracy needs improvement."); color: root.secondaryText; font.pixelSize: 12; wrapMode: Text.Wrap }
+                    GridLayout {
+                        Layout.fillWidth: true; columns: 4; columnSpacing: 8; rowSpacing: 7
+                        Repeater { model: [qsTr("Model"), qsTr("Best for"), qsTr("Speed"), qsTr("Download")]
+                            Text { required property string modelData; text: modelData; color: root.tertiaryText; font.pixelSize: 10; font.weight: Font.DemiBold }
+                        }
+                        Repeater { model: [
+                            ["Tiny / Base", qsTr("Fast English tests"), qsTr("Fastest"), "75–141 MB"],
+                            ["Small", qsTr("Balanced everyday use"), qsTr("Fast"), "465 MB"],
+                            ["Medium", qsTr("Better multilingual accuracy"), qsTr("Slower"), "1.4 GB"],
+                            ["Large Turbo", qsTr("High accuracy, modern GPU"), qsTr("Medium"), "1.5 GB"],
+                            ["Large v3", qsTr("Maximum accuracy"), qsTr("Slowest"), "2.9 GB"]
+                        ]
+                            delegate: Repeater { required property var modelData; model: modelData
+                                Text { required property string modelData; Layout.fillWidth: true; text: modelData; color: root.primaryText; font.pixelSize: 11; wrapMode: Text.Wrap }
+                            }
+                        }
+                    }
+                    Rectangle { Layout.fillWidth: true; implicitHeight: 58; radius: 10; color: root.selectionSurface; border.color: root.accent
+                        Text { anchors.fill: parent; anchors.margins: 12; text: qsTr("Recommendation: start with Base for English or Small for general multilingual use. Try Medium or Large Turbo when accuracy matters more than speed."); color: root.accent; font.pixelSize: 11; wrapMode: Text.Wrap; verticalAlignment: Text.AlignVCenter }
+                    }
+                    Item { Layout.fillHeight: true }
+                }
+                ColumnLayout {
+                    spacing: 12
+                    Text { text: qsTr("3. Performance and experimental engines"); color: root.primaryText; font.pixelSize: 19; font.weight: Font.DemiBold }
+                    Text { Layout.fillWidth: true; text: qsTr("Automatic (Vulkan) is recommended: FluidVoice uses a compatible AMD, Intel, or NVIDIA GPU when available and safely falls back to CPU. CPU mode is the most compatible but can be substantially slower with large models."); color: root.secondaryText; font.pixelSize: 13; wrapMode: Text.Wrap }
+                    Rectangle { Layout.fillWidth: true; implicitHeight: 88; radius: 12; color: root.panelRaised; border.color: root.hairline
+                        ColumnLayout { anchors.fill: parent; anchors.margins: 14
+                            Text { text: qsTr("Built-in Whisper · recommended"); color: root.primaryText; font.pixelSize: 14; font.weight: Font.DemiBold }
+                            Text { Layout.fillWidth: true; text: qsTr("The stable default with broad language support, predictable downloads, local processing, and CPU/Vulkan operation."); color: root.secondaryText; font.pixelSize: 11; wrapMode: Text.Wrap }
+                        }
+                    }
+                    Rectangle { Layout.fillWidth: true; implicitHeight: 104; radius: 12; color: root.panelRaised; border.color: root.warning
+                        ColumnLayout { anchors.fill: parent; anchors.margins: 14
+                            Text { text: qsTr("Native engines · experimental"); color: root.warning; font.pixelSize: 14; font.weight: Font.DemiBold }
+                            Text { Layout.fillWidth: true; text: qsTr("Parakeet and Nemotron may be faster for particular workflows, but installation, language accuracy, live preview, and GPU behavior vary. They always retain a Whisper fallback and should be tested before relying on them."); color: root.secondaryText; font.pixelSize: 11; wrapMode: Text.Wrap }
+                        }
+                    }
+                    Item { Layout.fillHeight: true }
+                }
+                ColumnLayout {
+                    spacing: 12
+                    Text { text: qsTr("4. Ready for a test dictation"); color: root.primaryText; font.pixelSize: 19; font.weight: Font.DemiBold }
+                    Text { Layout.fillWidth: true; text: qsTr("After finishing, open Voice Engine, test the selected microphone, download a model, and hold Ctrl+Alt+D while speaking. Release the shortcut to transcribe and paste into the active application."); color: root.secondaryText; font.pixelSize: 13; wrapMode: Text.Wrap }
+                    Rectangle { Layout.fillWidth: true; implicitHeight: readinessColumn.implicitHeight + 28; radius: 12; color: root.panelRaised; border.color: root.hairline
+                        ColumnLayout { id: readinessColumn; anchors.fill: parent; anchors.margins: 14; spacing: 8
+                            Text { text: (controller.inputSources.length > 0 ? "✓ " : "○ ") + qsTr("Microphone detected"); color: controller.inputSources.length > 0 ? root.success : root.secondaryText; font.pixelSize: 12 }
+                            Text { text: (controller.modelName.length > 0 ? "✓ " : "○ ") + qsTr("Speech model selected or ready to download"); color: controller.modelName.length > 0 ? root.success : root.secondaryText; font.pixelSize: 12 }
+                            Text { text: "✓ " + qsTr("Shortcut: Ctrl+Alt+D"); color: root.success; font.pixelSize: 12 }
+                            Text { text: "✓ " + qsTr("Local transcription and safe clipboard recovery"); color: root.success; font.pixelSize: 12 }
+                        }
+                    }
+                    Text { Layout.fillWidth: true; text: qsTr("You can reopen this guide at any time from Getting Started."); color: root.tertiaryText; font.pixelSize: 11; wrapMode: Text.Wrap }
+                    Item { Layout.fillHeight: true }
+                }
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                Button { visible: root.onboardingStep > 0; text: qsTr("Back"); onClicked: root.onboardingStep-- }
+                Item { Layout.fillWidth: true }
+                Button { visible: root.onboardingStep < 3; text: qsTr("Continue"); highlighted: true; onClicked: root.onboardingStep++ }
+                Button { visible: root.onboardingStep === 3; text: qsTr("Finish and open Voice Engine"); highlighted: true; onClicked: { controller.completeOnboarding(); onboardingDialog.close(); root.showSettingsSection(1) } }
+            }
+        }
+    }
+
     Component.onCompleted: {
         controller.initializeAudio()
         controller.initializeDesktopRuntime()
+        if (!controller.onboardingCompleted)
+            Qt.callLater(function() { root.onboardingStep = 0; onboardingDialog.open() })
     }
 
     background: Rectangle {
@@ -2096,7 +2212,10 @@ ApplicationWindow {
                             id: firstRunContent; anchors.fill: parent; anchors.margins: 16; spacing: 8
                             Text { text: qsTr("RECOMMENDED FIRST RUN"); color: root.tertiaryText; font.pixelSize: 11; font.weight: Font.Medium }
                             Text { Layout.fillWidth: true; text: qsTr("1. Select and test your microphone.\n2. Download a multilingual Whisper model—Base is a practical starting point for English; other languages may benefit from a larger model.\n3. Choose a fixed language for best short-dictation accuracy, or Automatic for mixed languages.\n4. Keep Automatic (Vulkan) selected for GPU acceleration with CPU fallback.\n5. Hold the global shortcut, speak naturally, then release to transcribe and paste."); color: root.secondaryText; font.pixelSize: 13; lineHeight: 1.25; wrapMode: Text.Wrap }
-                            Button { text: qsTr("Open Voice Engine"); onClicked: root.showSettingsSection(1) }
+                            RowLayout {
+                                Button { text: qsTr("Open Voice Engine"); onClicked: root.showSettingsSection(1) }
+                                Button { text: qsTr("Run welcome guide"); onClicked: { controller.resetOnboarding(); root.onboardingStep = 0; onboardingDialog.open() } }
+                            }
                         }
                     }
 

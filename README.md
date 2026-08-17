@@ -42,7 +42,9 @@ configures.
 - Optional local microphone-audio history with a storage budget, automatic
   pruning, playback, individual deletion, and ZIP export.
 - Optional authenticated loopback API for local automation and dictation control.
-- Upstream-inspired settings navigation, onboarding, changelog, and feedback pages.
+- Upstream-inspired settings navigation plus a first-run wizard with privacy,
+  microphone, model speed/accuracy/size, GPU, experimental-engine, and test-
+  dictation guidance; it remains reopenable from Getting Started.
 
 See [CHANGELOG.md](CHANGELOG.md) for release-by-release details.
 

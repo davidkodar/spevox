@@ -113,6 +113,7 @@ pub mod ffi {
         #[qproperty(bool, parakeet_model_installed, cxx_name = "parakeetModelInstalled")]
         #[qproperty(bool, parakeet_busy, cxx_name = "parakeetBusy")]
         #[qproperty(f32, parakeet_download_progress, cxx_name = "parakeetDownloadProgress")]
+        #[qproperty(bool, onboarding_completed, cxx_name = "onboardingCompleted")]
         type FluidVoiceController = super::FluidVoiceControllerRust;
 
         #[qinvokable]
@@ -272,6 +273,14 @@ pub mod ffi {
         #[qinvokable]
         #[cxx_name = "exportMeeting"]
         fn export_meeting(self: Pin<&mut Self>, path: &QString, format: &QString);
+
+        #[qinvokable]
+        #[cxx_name = "completeOnboarding"]
+        fn complete_onboarding(self: Pin<&mut Self>);
+
+        #[qinvokable]
+        #[cxx_name = "resetOnboarding"]
+        fn reset_onboarding(self: Pin<&mut Self>);
 
         #[qinvokable]
         #[cxx_name = "selectComputeBackend"]
@@ -554,6 +563,7 @@ pub struct FluidVoiceControllerRust {
     parakeet_download_progress: f32,
     parakeet_download_cancel: Option<Arc<AtomicBool>>,
     parakeet_supervisor: Arc<Mutex<parakeet::Supervisor>>,
+    onboarding_completed: bool,
 }
 
 impl Default for FluidVoiceControllerRust {
@@ -838,11 +848,30 @@ impl Default for FluidVoiceControllerRust {
             parakeet_download_progress: 0.0,
             parakeet_download_cancel: None,
             parakeet_supervisor: Arc::new(Mutex::new(parakeet::Supervisor::new())),
+            onboarding_completed: preferences.onboarding_completed,
         }
     }
 }
 
 impl ffi::FluidVoiceController {
+    pub fn complete_onboarding(mut self: Pin<&mut Self>) {
+        let mut preferences = Preferences::load();
+        preferences.onboarding_completed = true;
+        if preferences.save().is_ok() {
+            self.as_mut().set_onboarding_completed(true);
+            self.as_mut()
+                .set_status_text(QString::from("Setup complete · FluidVoice is ready"));
+        }
+    }
+
+    pub fn reset_onboarding(mut self: Pin<&mut Self>) {
+        let mut preferences = Preferences::load();
+        preferences.onboarding_completed = false;
+        if preferences.save().is_ok() {
+            self.as_mut().set_onboarding_completed(false);
+        }
+    }
+
     pub fn initialize_desktop_runtime(mut self: Pin<&mut Self>) {
         if self.as_ref().rust().desktop_sender.is_some() {
             return;
@@ -3522,6 +3551,7 @@ impl ffi::FluidVoiceController {
 impl FluidVoiceControllerRust {
     fn save_preferences(&self) {
         let preferences = Preferences {
+            onboarding_completed: self.onboarding_completed,
             language: selected_language_code(self),
             model: selected_model_path(self).unwrap_or_default(),
             shortcut: selected_shortcut_trigger(self),
@@ -3580,6 +3610,7 @@ impl FluidVoiceControllerRust {
 }
 
 struct Preferences {
+    onboarding_completed: bool,
     language: String,
     model: PathBuf,
     shortcut: String,
@@ -3678,6 +3709,7 @@ fn profile_matches_application(profile: &AiProfile, lowercase_window_identity: &
 impl Default for Preferences {
     fn default() -> Self {
         Self {
+            onboarding_completed: false,
             language: "en".to_owned(),
             model: PathBuf::new(),
             shortcut: "CTRL+ALT+D".to_owned(),
@@ -3717,6 +3749,10 @@ impl Preferences {
             return Self::default();
         };
         let mut preferences = Self::default();
+        // Existing installations predate onboarding and must not be interrupted
+        // by a first-run dialog after upgrading. An explicit saved false value
+        // still allows users to reopen the guide from Getting Started.
+        preferences.onboarding_completed = true;
         for line in contents.lines() {
             if let Some(value) = line.strip_prefix("language=") {
                 preferences.language = value.to_owned();
@@ -3777,6 +3813,8 @@ impl Preferences {
                 preferences.speech_engine = value.parse().unwrap_or(0).clamp(0, 5);
             } else if let Some(value) = line.strip_prefix("local_speech_url=") {
                 preferences.local_speech_url = unescape_setting(value);
+            } else if let Some(value) = line.strip_prefix("onboarding_completed=") {
+                preferences.onboarding_completed = value == "true";
             }
         }
         preferences
@@ -3791,7 +3829,7 @@ impl Preferences {
         fs::write(
             path,
             format!(
-                "language={}\nmodel={}\nshortcut={}\ninput={}\ngain_db={}\noverlay_enabled={}\noverlay_size={}\noverlay_position={}\noverlay_show_text={}\noverlay_opacity={}\ncommand_mode_enabled={}\ncompute_backend={}\ntheme={}\naccent={}\nai_enabled={}\nai_provider={}\nai_model={}\nai_base_url={}\nai_prompt={}\nai_local_only={}\nauto_profiles_enabled={}\ntyping_wpm={}\nskip_weekends={}\naudio_history_enabled={}\naudio_history_budget_mb={}\nlocal_api_enabled={}\nlocal_api_port={}\nspeech_engine={}\nlocal_speech_url={}\n",
+                "language={}\nmodel={}\nshortcut={}\ninput={}\ngain_db={}\noverlay_enabled={}\noverlay_size={}\noverlay_position={}\noverlay_show_text={}\noverlay_opacity={}\ncommand_mode_enabled={}\ncompute_backend={}\ntheme={}\naccent={}\nai_enabled={}\nai_provider={}\nai_model={}\nai_base_url={}\nai_prompt={}\nai_local_only={}\nauto_profiles_enabled={}\ntyping_wpm={}\nskip_weekends={}\naudio_history_enabled={}\naudio_history_budget_mb={}\nlocal_api_enabled={}\nlocal_api_port={}\nspeech_engine={}\nlocal_speech_url={}\nonboarding_completed={}\n",
                 self.language,
                 self.model.display(),
                 self.shortcut,
@@ -3820,7 +3858,8 @@ impl Preferences {
                 self.local_api_enabled,
                 self.local_api_port,
                 self.speech_engine,
-                escape_setting(&self.local_speech_url)
+                escape_setting(&self.local_speech_url),
+                self.onboarding_completed
             ),
         )
         .map_err(|error| error.to_string())
