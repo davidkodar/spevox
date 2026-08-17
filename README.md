@@ -56,11 +56,36 @@ The application currently requires:
 - `secret-tool` (from libsecret) when storing API keys for cloud AI providers.
 - FFmpeg for broad audio-file transcription (16-bit PCM WAV retains a built-in fallback).
 
-On Arch Linux or CachyOS, the Vulkan headers are provided by:
+Install the build packages for your distribution, then install Rust 1.85 or
+newer through [rustup](https://rustup.rs/) if your distribution ships an older
+toolchain.
+
+**Arch Linux / CachyOS**
 
 ```bash
-sudo pacman -S --needed vulkan-headers
+sudo pacman -S --needed base-devel clang cmake ffmpeg git libpipewire libsecret \
+  ninja qt6-base qt6-declarative qt6-tools shaderc vulkan-headers vulkan-icd-loader
 ```
+
+**Fedora**
+
+```bash
+sudo dnf install gcc-c++ clang cmake git ninja-build pkgconf-pkg-config \
+  qt6-qtbase-devel qt6-qtdeclarative-devel qt6-qttools-devel pipewire-devel \
+  vulkan-headers vulkan-loader-devel glslc libsecret ffmpeg-free
+```
+
+**Ubuntu / Debian**
+
+```bash
+sudo apt update
+sudo apt install build-essential clang cmake git ninja-build pkg-config \
+  qt6-base-dev qt6-declarative-dev qt6-tools-dev qt6-tools-dev-tools \
+  libpipewire-0.3-dev libvulkan-dev glslc libsecret-tools ffmpeg
+```
+
+Package names can vary between distribution releases. These commands cover the
+main build and runtime requirements on current releases.
 
 ### 2. Build and install
 
@@ -92,11 +117,10 @@ integration, keyring access, native-runtime setup, and desktop actions still
 need portal-native implementations before the sandboxed package is supported.
 
 Initial packages are distributed through GitHub Releases rather than the AUR.
-The release page provides a prebuilt x86_64 archive for supported Arch-family
-systems and a standalone `PKGBUILD` for users who prefer a clean local source
-build. The archive installer verifies linked runtime libraries before copying
-files and stops with a dependency error instead of installing a binary that
-cannot launch.
+The prebuilt x86_64 archive targets Arch-family systems. Fedora, Ubuntu, Debian,
+and other distributions should build from source for now. A standalone
+`PKGBUILD` is also provided for clean Arch builds. The archive installer checks
+its required libraries before installing anything.
 
 ### 3. Configure dictation
 

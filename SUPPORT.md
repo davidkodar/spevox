@@ -1,7 +1,7 @@
 # Support
 
-Spevox is an unofficial Linux port in public prerelease preview. Support is
-best-effort and currently targets KDE Plasma on Wayland.
+Spevox is still under development and currently targets KDE Plasma on Wayland.
+Support is provided through GitHub when time allows.
 
 ## Where to ask
 
@@ -11,8 +11,8 @@ best-effort and currently targets KDE Plasma on Wayland.
 - Ask the upstream FluidVoice project about its macOS application, subscriptions,
   services, and proprietary components.
 
-Before reporting a bug, test the newest prerelease, review the README setup and
-diagnostic guidance, and search existing issues. Include the Spevox version,
+Before reporting a bug, try the newest release, check the setup and diagnostic
+steps in the README, and search existing issues. Include the Spevox version,
 Linux distribution, Plasma and KWin versions, selected speech engine, compute
 backend, and sanitized logs needed to reproduce the problem.
 

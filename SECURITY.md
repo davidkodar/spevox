@@ -6,9 +6,8 @@ therefore handled privately until a fix is available.
 
 ## Supported versions
 
-The project is currently a public prerelease preview. Only the newest published prerelease
-and the current `main` branch receive security fixes. Older prereleases should
-be upgraded rather than patched independently.
+Only the newest published preview and the current `main` branch receive
+security fixes. Please upgrade older versions instead of continuing to use them.
 
 ## Reporting a vulnerability
 

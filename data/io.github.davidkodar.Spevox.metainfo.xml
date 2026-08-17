@@ -17,22 +17,22 @@
   <content_rating type="oars-1.1"/>
   <releases>
     <release version="0.6.0" date="2026-08-17">
-      <description><p>Introduces the independent Spevox name and original branding, migrates desktop and package identifiers, and preserves compatibility with existing preview settings, models, and history.</p></description>
+      <description><p>Renames the app to Spevox, adds the new icon, and keeps existing settings, models, and history working.</p></description>
     </release>
     <release version="0.5.1" date="2026-08-17">
-      <description><p>Adds public-preview attribution and legal notices, a complete generated Rust dependency-license bundle, locked license and source-origin policy, portable release checksums, build-path-redacted binaries, and stronger release archive validation.</p></description>
+      <description><p>Adds project credits, dependency licenses, release checksums, cleaner release binaries, and stronger package checks.</p></description>
     </release>
     <release version="0.5.0" date="2026-08-17">
-      <description><p>Adds conservative language-aware AI cleanup, deterministic preprocessing, model quality and privacy guidance, cleanup policy and language metadata in History exports, real controller module boundaries, responsive background I/O, consolidated runtime and delivery policies, hardened private storage and local-provider networking, expanded regression coverage, and complete release validation.</p></description>
+      <description><p>Improves multilingual AI cleanup, model and privacy guidance, History exports, interface responsiveness, private storage, local networking, tests, and release checks.</p></description>
     </release>
     <release version="0.4.0" date="2026-08-16">
-      <description><p>Adds privacy-safe audio history, configurable overlays, complete Write Mode, stronger Wayland delivery, automatic application profiles, advanced dictionary workflows, richer statistics, segmented meeting transcription, a secure loopback API, signed release archives, Arch packaging, a developer-preview Flatpak manifest, and an experimental local speech-server bridge.</p></description>
+      <description><p>Adds optional audio history, configurable overlays, Write Mode, app profiles, dictionary tools, statistics, meeting transcription, a local API, Arch packaging, and experimental local speech-server support.</p></description>
     </release>
     <release version="0.3.0" date="2026-08-16">
-      <description><p>Adds optional local and cloud AI enhancement, guided Ollama setup and model downloads, local-only privacy controls, streaming cleanup, application profiles, selected-text rewriting, safe Command Mode actions, richer history exports, and broad local audio decoding.</p></description>
+      <description><p>Adds optional local and cloud AI cleanup, Ollama setup, local-only privacy controls, app profiles, selected-text rewriting, Command Mode, History exports, and more audio formats.</p></description>
     </release>
     <release version="0.2.0" date="2026-08-16">
-      <description><p>Adds Vulkan acceleration, KDE-aware appearance settings, upstream-style navigation, model management, and local productivity features.</p></description>
+      <description><p>Adds Vulkan acceleration, KDE appearance settings, model management, and productivity tools.</p></description>
     </release>
     <release version="0.1.0" date="2026-08-15">
       <description><p>Initial development preview with native KDE Wayland dictation, PipeWire capture, local Whisper transcription, and clipboard delivery.</p></description>

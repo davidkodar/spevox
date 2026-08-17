@@ -8,14 +8,13 @@ distributed under the GNU General Public License, version 3 only.
 
 ## Original FluidVoice project
 
-This work is based on and informed by the GPLv3 FluidVoice project for macOS,
-created by Altic and the upstream FluidVoice contributors:
+Spevox builds on ideas and GPLv3 code from FluidVoice for macOS, created by
+Altic and the FluidVoice contributors:
 
 https://github.com/altic-dev/FluidVoice
 
-The upstream project established the FluidVoice product concept and macOS user
-experience that inspired this work. Spevox is not sponsored, approved, or
-endorsed by Altic or the upstream maintainers.
+FluidVoice provided the starting point for this Linux app. Spevox is a separate
+project and is not sponsored or endorsed by Altic.
 
 Spevox 0.6.0 and later use an original name, application icon, tray icon, and
 wordmark created for this project. Private preview versions through 0.5.x used
