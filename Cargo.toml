@@ -26,3 +26,11 @@ pedantic = "warn"
 lto = "thin"
 codegen-units = 1
 strip = "symbols"
+
+[patch.crates-io]
+# libspa 0.10 asks Bindgen to evaluate SPA_ID_INVALID. Clang 22 currently
+# drops that cast-style macro from generated bindings, breaking clean builds.
+# Keep the released crate locally with the sentinel expressed directly until
+# pipewire-rs ships its upstream compatibility fix.
+libspa = { path = "vendor/libspa" }
+pipewire = { path = "vendor/pipewire" }
