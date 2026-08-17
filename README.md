@@ -366,6 +366,13 @@ packages, and wider testing across Plasma distributions and GPU vendors.
 
 ### Planned after 0.4.0
 
+- **Structural refactoring and hardening:** execute the ordered
+  [post-0.4 refactoring milestone](docs/REFACTORING_MILESTONE.md), covering real
+  controller module boundaries, removal of remaining Qt-thread I/O,
+  deduplicated policies, integration/privacy hardening, metadata cleanup, and
+  the missing persistence/audio regression tests. This is deliberately
+  separated from the validated 0.4.0 defect remediation.
+
 - **Multilingual intelligent dictation cleanup:** expand the current compact AI
   prompt into a constrained, upstream-inspired cleanup pipeline covering
   punctuation and question detection, capitalization, minimal unambiguous
