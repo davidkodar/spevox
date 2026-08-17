@@ -32,5 +32,5 @@ check() {
 
 package() {
   cd "$pkgname-$pkgver"
-  DESTDIR="$pkgdir" PREFIX=/usr ./packaging/install.sh
+  SPEVOX_SKIP_BUILD=1 DESTDIR="$pkgdir" PREFIX=/usr ./packaging/install.sh
 }

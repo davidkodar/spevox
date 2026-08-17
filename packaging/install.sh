@@ -15,14 +15,15 @@ command -v ldd >/dev/null || {
   echo "ldd is required to verify the prebuilt binary's runtime libraries." >&2
   exit 2
 }
-if [[ -f Cargo.toml ]]; then
+if [[ -f Cargo.toml && "${SPEVOX_SKIP_BUILD:-0}" != 1 ]]; then
   command -v cargo >/dev/null || {
     echo "Cargo is required to build this source checkout." >&2
     exit 2
   }
   [[ -f /usr/include/vulkan/vulkan.h ]] || { echo "Vulkan development headers are required." >&2; exit 2; }
   QMAKE=${QMAKE:-/usr/bin/qmake6} cargo build --release --locked -p spevox-ui
-elif [[ ! -x target/release/spevox ]]; then
+fi
+if [[ ! -x target/release/spevox ]]; then
   echo "This package does not contain a usable prebuilt Spevox binary." >&2
   exit 2
 fi
