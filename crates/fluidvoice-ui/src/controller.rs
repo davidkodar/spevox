@@ -3101,9 +3101,15 @@ impl ffi::FluidVoiceController {
             let stream_language = native_model
                 .map(|model| native_language_for_model(model, &language))
                 .unwrap_or_default();
+            // The pinned GGML Vulkan streaming path currently crashes on real
+            // Nemotron audio (ne3/ne13 assertion). Keep Vulkan for the fast
+            // full-utterance result and use the stable Whisper overlay until
+            // the upstream streaming backend is fixed.
+            let native_realtime = parakeet_backend == ParakeetBackend::Cpu
+                && native_model.is_some_and(|model| model.realtime);
             let native_preview_worker =
                 native_model
-                    .filter(|model| model.realtime)
+                    .filter(|_| native_realtime)
                     .map(|native_model| {
                         std::thread::spawn(move || {
                             let ready = stream_supervisor
@@ -3140,7 +3146,7 @@ impl ffi::FluidVoiceController {
                 // Native engines receive lossless PCM chunks through NeMo's
                 // realtime WebSocket. Whisper keeps its bounded periodic
                 // snapshots; a custom server remains final-result-only.
-                if speech_engine == 5 || native_model.is_some_and(|model| model.realtime) {
+                if speech_engine == 5 || native_realtime {
                     return;
                 }
                 let Some(model) = preview_model else { return };
@@ -3206,7 +3212,7 @@ impl ffi::FluidVoiceController {
                     preview_sender.try_send(audio).ok();
                 },
                 move |audio| {
-                    if native_model.is_some_and(|model| model.realtime) {
+                    if native_realtime {
                         stream_sender.send(audio).ok();
                     }
                 },
@@ -3315,7 +3321,20 @@ impl ffi::FluidVoiceController {
                     .map_err(|error| error.to_string());
                 match primary {
                     Ok(transcript) => (Ok(transcript), None),
-                    Err(error) => (whisper_transcription(), Some(error)),
+                    Err(error) => {
+                        let fallback_thread = qt_thread.clone();
+                        fallback_thread
+                            .queue(|mut controller| {
+                                controller.as_mut().set_status_text(QString::from(
+                                    "Native engine failed · running Whisper fallback…",
+                                ));
+                                controller.as_mut().set_live_transcript(QString::from(
+                                    "Native engine failed; recovering with Whisper…",
+                                ));
+                            })
+                            .ok();
+                        (whisper_transcription(), Some(error))
+                    }
                 }
             } else {
                 (whisper_transcription(), None)
@@ -3444,6 +3463,10 @@ impl ffi::FluidVoiceController {
                             }
                             controller.set_status_text(QString::from(if let Some(error) = ai_error {
                                 format!("AI enhancement failed · raw transcript delivered · {error}")
+                            } else if let Some(error) = parakeet_fallback.as_deref() {
+                                format!(
+                                    "Native speech engine failed · Whisper fallback delivered · {error}"
+                                )
                             } else if delivery_result.is_ok() {
                                 format!("Dictated {:.1}s · {detected_language} · pasted or copied", duration.as_secs_f32())
                             } else {

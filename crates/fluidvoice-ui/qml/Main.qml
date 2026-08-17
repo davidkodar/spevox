@@ -2238,7 +2238,7 @@ ApplicationWindow {
                 RowLayout {
                     Layout.fillWidth: true
                     Text {
-                        text: controller.recording ? qsTr("Listening") : controller.transcribing ? qsTr("Improving text") : qsTr("Dictation ready")
+                        text: controller.recording ? qsTr("Listening") : controller.transcribing ? (controller.aiEnabled ? qsTr("Transcribing and improving") : qsTr("Transcribing")) : qsTr("Dictation ready")
                         color: controller.recording ? root.accent : "#f2f2f2"
                         font.pixelSize: 14
                         font.weight: Font.DemiBold

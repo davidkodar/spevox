@@ -5,6 +5,11 @@ All notable changes to FluidVoice Linux are documented here. The project uses
 
 ## 0.4.0 - 2026-08-16
 
+- Disabled native realtime previews on the pinned Vulkan runtime after tracing
+  real Nemotron audio to an upstream GGML tensor assertion. Vulkan remains the
+  fast final-inference backend, while the stable Whisper overlay is used for
+  live text; fallback activity is now labeled explicitly instead of appearing
+  to be AI enhancement.
 - Added true realtime native-engine previews through NeMo-Speech.cpp's
   loopback WebSocket protocol, including lossless incremental PCM16 capture,
   cold-start buffering, cumulative partials, final-event reconciliation,

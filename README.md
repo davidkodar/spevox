@@ -184,6 +184,11 @@ starts queue audio without blocking PipeWire, chunks are sent in NeMo's native
 final transcription. Parakeet TDT v3 is explicitly full-utterance-only in the
 pinned runtime, so it retains the periodic Whisper preview instead of opening
 an unsupported stream. Whisper fallback remains available if the final fails.
+With the currently pinned runtime, native realtime is enabled on CPU only: its
+Vulkan streaming path can crash on real Nemotron audio in upstream GGML code.
+Vulkan remains enabled for fast full-utterance final inference, while the live
+overlay safely uses Whisper. Any native-engine failure is reported explicitly
+before FluidVoice runs the slower Whisper recovery path.
 
 User data follows XDG conventions:
 
