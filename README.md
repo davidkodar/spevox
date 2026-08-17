@@ -26,6 +26,8 @@ configures.
 - Tiny, Base, Small, Medium, Large Turbo, and Large v3 model management.
 - Vulkan acceleration on compatible NVIDIA, AMD, and Intel GPUs with CPU fallback.
 - Configurable live transcript overlay with animated typewriter-style updates,
+  direct editor delivery on shortcut release, and an optional persistent result
+  popup with an upstream-style recovery actions menu,
   three sizes, placement, opacity, text visibility, and recovery actions.
 - Wayland-aware direct paste where available, with verified clipboard recovery.
 - Native Plasma system tray, single-instance activation, and correct desktop identity.
@@ -124,7 +126,7 @@ usable but does not yet match the depth of the current macOS implementation.
 | --- | --- | --- | --- |
 | Global hold-to-dictate | Available | Available | Linux uses the XDG Global Shortcuts portal. |
 | Direct typing into applications | Partial | Available | Linux uses Wayland portal/clipboard delivery; application support can vary. |
-| Live transcript overlay | Available | Available | Linux provides compact/standard/expanded layouts, placement, opacity, text visibility, streamed AI retry, copy, raw recovery, and undo. Streaming-capable native engines use NeMo's realtime endpoint for true partial results; built-in Whisper and full-utterance-only Parakeet TDT v3 use bounded Whisper previews. |
+| Live transcript overlay | Available | Available | Linux provides compact/standard/expanded layouts, placement, opacity, text visibility, direct editor delivery with automatic dismissal, and an optional persistent result/recovery menu. Streaming-capable native engines use NeMo's realtime endpoint for true partial results; built-in Whisper and full-utterance-only Parakeet TDT v3 use bounded Whisper previews. |
 | Whisper models | Available | Available | Linux supports all six listed multilingual GGML sizes. |
 | Parakeet, Nemotron, Cohere, Apple Speech | Partial | Available | Linux provides one-click managed Parakeet TDT v3, Nemotron 3.5 multilingual, Nemotron Streaming English, and Parakeet CTC 1.1B engines through native NeMo-Speech.cpp, plus a custom loopback ASR bridge. CoreML-only Cohere/Parakeet Flash and Apple Speech are not Linux runtimes. |
 | Vulkan GPU acceleration | Available | Not applicable | Linux supports cross-vendor Vulkan with CPU fallback. |

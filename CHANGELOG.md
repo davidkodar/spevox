@@ -5,6 +5,12 @@ All notable changes to FluidVoice Linux are documented here. The project uses
 
 ## 0.5.0 - 2026-08-17
 
+- Changed the dictation overlay to dismiss after delivering text by default, so
+  shortcut-driven dictation flows directly into the focused editor without a
+  persistent interruption. Users can opt into keeping the final result popup.
+- Replaced the result popup's permanent action-button row with a compact
+  upstream-style actions menu for copy, raw recovery, AI undo, and reprocessing.
+
 - Began the 0.5 intelligent-cleanup milestone with one conservative,
   language-aware editing contract for local and cloud providers. It explicitly
   preserves meaning and code-switching, applies punctuation and minimal repair,

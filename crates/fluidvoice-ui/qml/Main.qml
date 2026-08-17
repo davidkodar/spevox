@@ -1378,7 +1378,7 @@ ApplicationWindow {
                 Rectangle {
                     visible: root.settingsSection === 0
                     Layout.fillWidth: true
-                    height: 204
+                    height: 276
                     radius: 16
                     color: root.panel
                     border.color: root.hairline
@@ -1425,7 +1425,7 @@ ApplicationWindow {
                                 anchors.verticalCenter: parent.verticalCenter
                                 spacing: 4
                                 Text { text: qsTr("Dictation popup"); color: root.primaryText; font.pixelSize: 14; font.weight: Font.Medium }
-                                Text { text: qsTr("Show listening, live text, and result actions above other windows."); color: root.secondaryText; font.pixelSize: 12 }
+                                Text { text: qsTr("Show listening and live text above other windows while dictating."); color: root.secondaryText; font.pixelSize: 12 }
                             }
                             Switch {
                                 id: overlaySwitch
@@ -1433,6 +1433,30 @@ ApplicationWindow {
                                 anchors.verticalCenter: parent.verticalCenter
                                 checked: controller.overlayEnabled
                                 onToggled: controller.updateOverlayEnabled(checked)
+                            }
+                        }
+
+                        Rectangle { Layout.fillWidth: true; height: 1; color: root.hairline }
+
+                        Item {
+                            Layout.fillWidth: true
+                            height: 56
+                            Column {
+                                anchors.left: parent.left
+                                anchors.right: resultOverlaySwitch.left
+                                anchors.rightMargin: 24
+                                anchors.verticalCenter: parent.verticalCenter
+                                spacing: 4
+                                Text { text: qsTr("Keep result popup"); color: root.primaryText; font.pixelSize: 14; font.weight: Font.Medium }
+                                Text { text: qsTr("Keep the final text and recovery menu visible after it is pasted."); color: root.secondaryText; font.pixelSize: 12 }
+                            }
+                            Switch {
+                                id: resultOverlaySwitch
+                                anchors.right: parent.right
+                                anchors.verticalCenter: parent.verticalCenter
+                                enabled: controller.overlayEnabled
+                                checked: controller.overlayKeepResult
+                                onToggled: controller.updateOverlayKeepResult(checked)
                             }
                         }
                     }
@@ -2431,9 +2455,9 @@ ApplicationWindow {
     Window {
         id: overlay
         readonly property int listeningWidth: controller.selectedOverlaySize === 0 ? 300 : controller.selectedOverlaySize === 2 ? 560 : 380
-        width: controller.overlayResultAvailable ? Math.max(listeningWidth, 540) : listeningWidth
+        width: controller.overlayResultAvailable ? Math.max(listeningWidth, 420) : listeningWidth
         height: controller.overlayResultAvailable
-                ? (controller.overlayShowText ? 218 : 170)
+                ? (controller.overlayShowText ? 174 : 126)
                 : controller.selectedOverlaySize === 0
                   ? (controller.overlayShowText ? 112 : 84)
                   : controller.selectedOverlaySize === 2
@@ -2540,13 +2564,25 @@ ApplicationWindow {
                     Button {
                         visible: controller.overlayResultAvailable
                         flat: true
-                        text: "×"
-                        font.pixelSize: 18
+                        text: "⋯"
+                        font.pixelSize: 20
                         Layout.preferredWidth: 30
                         Layout.preferredHeight: 28
                         ToolTip.visible: hovered
-                        ToolTip.text: qsTr("Dismiss")
-                        onClicked: controller.dismissOverlay()
+                        ToolTip.text: qsTr("Last dictation actions")
+                        onClicked: resultActions.open()
+
+                        Menu {
+                            id: resultActions
+                            y: parent.height
+                            MenuItem { text: qsTr("Copy last transcription"); onTriggered: controller.copyLastResult(false) }
+                            MenuItem { text: qsTr("Copy raw transcription"); visible: controller.aiEnabled; enabled: controller.lastRawText.length > 0; onTriggered: controller.copyLastResult(true) }
+                            MenuSeparator { visible: controller.aiEnabled }
+                            MenuItem { text: qsTr("Undo AI on last"); visible: controller.aiEnabled; enabled: controller.lastRawText.length > 0 && controller.lastRawText !== controller.transcriptText; onTriggered: controller.undoLastAi() }
+                            MenuItem { text: qsTr("Reprocess last dictation"); visible: controller.aiEnabled; enabled: controller.lastRawText.length > 0 && !controller.transcribing; onTriggered: controller.retryLastAi() }
+                            MenuSeparator { }
+                            MenuItem { text: qsTr("Dismiss"); onTriggered: controller.dismissOverlay() }
+                        }
                     }
                 }
 
@@ -2566,16 +2602,6 @@ ApplicationWindow {
                     elide: Text.ElideRight
                     maximumLineCount: controller.selectedOverlaySize === 2 ? 4 : 3
                     verticalAlignment: Text.AlignVCenter
-                }
-
-                RowLayout {
-                    visible: controller.overlayResultAvailable
-                    Layout.fillWidth: true
-                    spacing: 8
-                    Button { Layout.fillWidth: true; Layout.minimumWidth: 0; text: qsTr("Copy"); onClicked: controller.copyLastResult(false) }
-                    Button { visible: controller.aiEnabled; Layout.fillWidth: true; Layout.minimumWidth: 0; text: qsTr("Copy raw"); enabled: controller.lastRawText.length > 0; onClicked: controller.copyLastResult(true) }
-                    Button { visible: controller.aiEnabled; Layout.fillWidth: true; Layout.minimumWidth: 0; text: qsTr("Undo AI"); enabled: controller.lastRawText.length > 0 && controller.lastRawText !== controller.transcriptText; onClicked: controller.undoLastAi() }
-                    Button { visible: controller.aiEnabled; Layout.fillWidth: true; Layout.minimumWidth: 0; text: qsTr("Retry AI"); enabled: controller.lastRawText.length > 0 && !controller.transcribing; onClicked: controller.retryLastAi() }
                 }
 
                 RowLayout {

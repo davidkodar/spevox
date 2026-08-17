@@ -19,6 +19,7 @@ pub(super) struct Preferences {
     pub(super) input: String,
     pub(super) gain_db: f32,
     pub(super) overlay_enabled: bool,
+    pub(super) overlay_keep_result: bool,
     pub(super) overlay_size: i32,
     pub(super) overlay_position: i32,
     pub(super) overlay_show_text: bool,
@@ -178,6 +179,7 @@ impl Default for Preferences {
             input: String::new(),
             gain_db: 0.0,
             overlay_enabled: true,
+            overlay_keep_result: false,
             overlay_size: 1,
             overlay_position: 0,
             overlay_show_text: true,
@@ -242,6 +244,8 @@ impl Preferences {
                 preferences.gain_db = value.parse().unwrap_or(0.0);
             } else if let Some(value) = line.strip_prefix("overlay_enabled=") {
                 preferences.overlay_enabled = value == "true";
+            } else if let Some(value) = line.strip_prefix("overlay_keep_result=") {
+                preferences.overlay_keep_result = value == "true";
             } else if let Some(value) = line.strip_prefix("overlay_size=") {
                 preferences.overlay_size = value.parse().unwrap_or(1).clamp(0, 2);
             } else if let Some(value) = line.strip_prefix("overlay_position=") {
@@ -358,6 +362,7 @@ mod tests {
     fn versioned_preferences_round_trip() {
         let preferences = Preferences {
             language: "de".to_owned(),
+            overlay_keep_result: true,
             ai_prompt: "Preserve = and newlines\nexactly".to_owned(),
             ..Preferences::default()
         };
@@ -368,6 +373,12 @@ mod tests {
         .unwrap();
         let parsed = Preferences::parse(&serialized);
         assert_eq!(parsed.language, "de");
+        assert!(parsed.overlay_keep_result);
         assert_eq!(parsed.ai_prompt, preferences.ai_prompt);
+    }
+
+    #[test]
+    fn result_popup_is_opt_in() {
+        assert!(!Preferences::default().overlay_keep_result);
     }
 }

@@ -20,6 +20,7 @@ pub mod ffi {
         #[qproperty(bool, recording)]
         #[qproperty(bool, overlay_visible, cxx_name = "overlayVisible")]
         #[qproperty(bool, overlay_enabled, cxx_name = "overlayEnabled")]
+        #[qproperty(bool, overlay_keep_result, cxx_name = "overlayKeepResult")]
         #[qproperty(QStringList, overlay_sizes, cxx_name = "overlaySizes")]
         #[qproperty(i32, selected_overlay_size, cxx_name = "selectedOverlaySize")]
         #[qproperty(QStringList, overlay_positions, cxx_name = "overlayPositions")]
@@ -183,6 +184,10 @@ pub mod ffi {
         #[qinvokable]
         #[cxx_name = "updateOverlayEnabled"]
         fn update_overlay_enabled(self: Pin<&mut Self>, enabled: bool);
+
+        #[qinvokable]
+        #[cxx_name = "updateOverlayKeepResult"]
+        fn update_overlay_keep_result(self: Pin<&mut Self>, enabled: bool);
 
         #[qinvokable]
         #[cxx_name = "updateOverlayPreferences"]
@@ -519,6 +524,7 @@ pub struct FluidVoiceControllerRust {
     recording: bool,
     overlay_visible: bool,
     overlay_enabled: bool,
+    overlay_keep_result: bool,
     overlay_sizes: QStringList,
     selected_overlay_size: i32,
     overlay_positions: QStringList,
@@ -815,6 +821,7 @@ impl Default for FluidVoiceControllerRust {
             recording: false,
             overlay_visible: false,
             overlay_enabled: preferences.overlay_enabled,
+            overlay_keep_result: preferences.overlay_keep_result,
             overlay_sizes: ["Compact", "Standard", "Expanded"]
                 .into_iter()
                 .map(QString::from)
@@ -1525,6 +1532,14 @@ impl ffi::FluidVoiceController {
         self.as_ref().rust().save_preferences();
     }
 
+    pub fn update_overlay_keep_result(mut self: Pin<&mut Self>, enabled: bool) {
+        self.as_mut().set_overlay_keep_result(enabled);
+        if !enabled && *self.as_ref().overlay_result_available() {
+            self.as_mut().set_overlay_visible(false);
+        }
+        self.as_ref().rust().save_preferences();
+    }
+
     pub fn update_overlay_preferences(
         mut self: Pin<&mut Self>,
         size: i32,
@@ -1643,15 +1658,20 @@ impl ffi::FluidVoiceController {
                             controller
                                 .as_mut()
                                 .set_live_transcript(QString::from(&text));
-                            controller.set_status_text(QString::from(if copied {
-                                "AI enhancement retried · result pasted or copied"
-                            } else {
-                                "AI retry succeeded · clipboard delivery failed"
-                            }));
+                            controller
+                                .as_mut()
+                                .set_status_text(QString::from(if copied {
+                                    "AI enhancement retried · result pasted or copied"
+                                } else {
+                                    "AI retry succeeded · clipboard delivery failed"
+                                }));
                         }
-                        Err(error) => controller.set_status_text(QString::from(&format!(
+                        Err(error) => controller.as_mut().set_status_text(QString::from(&format!(
                             "AI retry failed · raw text remains available · {error}"
                         ))),
+                    }
+                    if !*controller.as_ref().overlay_keep_result() {
+                        controller.as_mut().set_overlay_visible(false);
                     }
                 })
                 .ok();
@@ -2430,7 +2450,9 @@ impl ffi::FluidVoiceController {
                                 controller.as_mut().set_transcript_text(QString::from(&text));
                                 controller.as_mut().set_live_transcript(QString::from(&text));
                                 controller.as_mut().set_overlay_result_available(true);
-                                if *controller.as_ref().overlay_enabled() {
+                                if *controller.as_ref().overlay_enabled()
+                                    && *controller.as_ref().overlay_keep_result()
+                                {
                                     controller.as_mut().set_overlay_visible(true);
                                 }
                                 controller.as_mut().set_ai_status(QString::from(
@@ -2549,7 +2571,9 @@ impl ffi::FluidVoiceController {
                                     .as_mut()
                                     .set_live_transcript(QString::from(&text));
                                 controller.as_mut().set_overlay_result_available(true);
-                                if *controller.as_ref().overlay_enabled() {
+                                if *controller.as_ref().overlay_enabled()
+                                    && *controller.as_ref().overlay_keep_result()
+                                {
                                     controller.as_mut().set_overlay_visible(true);
                                 }
                                 controller
@@ -3558,6 +3582,7 @@ impl FluidVoiceControllerRust {
             input: self.capture_target.clone().unwrap_or_default(),
             gain_db: self.gain_db,
             overlay_enabled: self.overlay_enabled,
+            overlay_keep_result: self.overlay_keep_result,
             overlay_size: self.selected_overlay_size,
             overlay_position: self.selected_overlay_position,
             overlay_show_text: self.overlay_show_text,
@@ -4001,7 +4026,8 @@ fn apply_dictation_completion(
                 .as_mut()
                 .set_transcript_text(QString::from(&completed.processed_text));
             controller.as_mut().set_overlay_result_available(true);
-            if *controller.as_ref().overlay_enabled() {
+            if *controller.as_ref().overlay_enabled() && *controller.as_ref().overlay_keep_result()
+            {
                 controller.as_mut().set_overlay_visible(true);
             }
             controller.set_status_text(QString::from(if let Some(error) = completed.ai_error {
