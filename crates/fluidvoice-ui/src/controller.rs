@@ -3559,6 +3559,7 @@ impl ffi::FluidVoiceController {
         let parakeet_backend =
             effective_parakeet_backend(*self.as_ref().selected_compute_backend());
         let ai_config = self.as_ref().rust().ai_config();
+        let command_mode_enabled = self.as_ref().rust().command_mode_enabled;
         let retain_audio = *self.as_ref().audio_history_enabled();
         let audio_budget_bytes =
             u64::try_from(*self.as_ref().audio_history_budget_mb()).unwrap_or(500) * 1_048_576;
@@ -3733,6 +3734,13 @@ impl ffi::FluidVoiceController {
             } else {
                 None
             };
+            let dictionary = load_lines(&dictionary_path());
+            let text_result = resolve_final_text(
+                transcription,
+                enhancement,
+                command_mode_enabled,
+                &dictionary,
+            );
             qt_thread
                 .queue(move |mut controller| {
                     controller.as_mut().set_transcribing(false);
@@ -3740,29 +3748,14 @@ impl ffi::FluidVoiceController {
                     if let Err(error) = diagnostic_dump {
                         eprintln!("Failed to save FLUIDVOICE_ASR_DUMP: {error}");
                     }
-                    match transcription {
-                        Ok(transcript) if !transcript.text.is_empty() => {
-                            let (enhanced_text, ai_error) = match enhancement {
-                                Some(Ok(text)) => (text, None),
-                                Some(Err(error)) => (transcript.text.clone(), Some(error)),
-                                None => (transcript.text.clone(), None),
-                            };
-                            let processed = process_transcript(
-                                &enhanced_text,
-                                controller.as_ref().rust().command_mode_enabled,
-                                &load_lines(&dictionary_path()),
-                            );
-                            let detected_language = transcript
-                                .detected_language
-                                .as_deref()
-                                .and_then(language_display_name)
-                                .unwrap_or("Unknown language");
+                    match text_result {
+                        DictationTextResult::Complete(completed) => {
                             controller
                                 .as_mut()
-                                .set_live_transcript(QString::from(&processed));
+                                .set_live_transcript(QString::from(&completed.processed_text));
                             controller
                                 .as_mut()
-                                .set_last_raw_text(QString::from(&transcript.text));
+                                .set_last_raw_text(QString::from(&completed.raw_text));
                             if let Some(error) = parakeet_fallback.as_deref() {
                                 controller.as_mut().set_parakeet_status(QString::from(&format!(
                                     "Parakeet unavailable; Whisper fallback succeeded: {error}"
@@ -3772,17 +3765,17 @@ impl ffi::FluidVoiceController {
                             let delivery_succeeded = deliver_transcript(
                                 &mut rust.clipboard,
                                 rust.desktop_sender.as_ref(),
-                                &processed,
+                                &completed.processed_text,
                             );
                             let ai_status = if ai_config.enabled {
-                                if ai_error.is_some() { "fallback" } else { "enhanced" }
+                                if completed.ai_error.is_some() { "fallback" } else { "enhanced" }
                             } else {
                                 "disabled"
                             };
                             let history_update = record_history(
-                                &processed,
+                                &completed.processed_text,
                                 &HistoryContext {
-                                    raw_text: &transcript.text,
+                                    raw_text: &completed.raw_text,
                                     provider: ai_provider_name(&ai_config),
                                     model: &ai_config.model,
                                     ai_status,
@@ -3798,24 +3791,26 @@ impl ffi::FluidVoiceController {
                             controller.as_mut().set_audio_history_status(QString::from(
                                 audio_history_summary(),
                             ));
-                            controller.as_mut().set_transcript_text(QString::from(&processed));
+                            controller.as_mut().set_transcript_text(QString::from(
+                                &completed.processed_text,
+                            ));
                             controller.as_mut().set_overlay_result_available(true);
                             if *controller.as_ref().overlay_enabled() {
                                 controller.as_mut().set_overlay_visible(true);
                             }
-                            controller.set_status_text(QString::from(if let Some(error) = ai_error {
+                            controller.set_status_text(QString::from(if let Some(error) = completed.ai_error {
                                 format!("AI enhancement failed · raw transcript delivered · {error}")
                             } else if let Some(error) = parakeet_fallback.as_deref() {
                                 format!(
                                     "Native speech engine failed · Whisper fallback delivered · {error}"
                                 )
                             } else if delivery_succeeded {
-                                format!("Dictated {:.1}s · {detected_language} · pasted or copied", duration.as_secs_f32())
+                                format!("Dictated {:.1}s · {} · pasted or copied", duration.as_secs_f32(), completed.detected_language)
                             } else {
-                                format!("Transcribed {:.1}s · {detected_language} · clipboard unavailable", duration.as_secs_f32())
+                                format!("Transcribed {:.1}s · {} · clipboard unavailable", duration.as_secs_f32(), completed.detected_language)
                             }));
                         }
-                        Ok(_) => {
+                        DictationTextResult::Empty => {
                             controller.as_mut().set_transcript_text(QString::from(&format!(
                                 "No speech recognized (ASR peak {:.0}%). Increase the microphone or interface hardware gain if this persists.",
                                 asr_peak * 100.0
@@ -3825,7 +3820,7 @@ impl ffi::FluidVoiceController {
                                 asr_peak * 100.0
                             )));
                         }
-                        Err(error) => {
+                        DictationTextResult::Failed(error) => {
                             controller
                                 .as_mut()
                                 .set_transcript_text(QString::from(&format!(
@@ -4227,8 +4222,9 @@ mod dictation;
 #[path = "speech_runtime.rs"]
 mod speech_runtime;
 use dictation::{
-    EnhancementResult, FinalAsrRequest, FinalAsrResult, PreviewConfig, PreviewSession,
-    capture_audio, deliver_transcript, enhance_transcript, transcribe_final,
+    DictationTextResult, EnhancementResult, FinalAsrRequest, FinalAsrResult, PreviewConfig,
+    PreviewSession, capture_audio, deliver_transcript, enhance_transcript, resolve_final_text,
+    transcribe_final,
 };
 #[cfg(test)]
 use dictionary::parse_csv_record;

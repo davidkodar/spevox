@@ -21,8 +21,52 @@ use crate::{
 };
 
 use super::{
-    DesktopCommand, ParakeetBackend, asr_gain, native_language_for_model, suspicious_single_word,
+    DesktopCommand, ParakeetBackend, asr_gain, language_display_name, native_language_for_model,
+    process_transcript, suspicious_single_word,
 };
+
+pub(super) struct CompletedDictation {
+    pub(super) processed_text: String,
+    pub(super) raw_text: String,
+    pub(super) detected_language: &'static str,
+    pub(super) ai_error: Option<String>,
+}
+
+pub(super) enum DictationTextResult {
+    Complete(CompletedDictation),
+    Empty,
+    Failed(String),
+}
+
+pub(super) fn resolve_final_text(
+    transcription: Result<Transcript, String>,
+    enhancement: Option<Result<String, String>>,
+    command_mode_enabled: bool,
+    dictionary: &[String],
+) -> DictationTextResult {
+    let transcript = match transcription {
+        Ok(transcript) if transcript.text.is_empty() => return DictationTextResult::Empty,
+        Ok(transcript) => transcript,
+        Err(error) => return DictationTextResult::Failed(error),
+    };
+    let (enhanced_text, ai_error) = match enhancement {
+        Some(Ok(text)) => (text, None),
+        Some(Err(error)) => (transcript.text.clone(), Some(error)),
+        None => (transcript.text.clone(), None),
+    };
+    let processed_text = process_transcript(&enhanced_text, command_mode_enabled, dictionary);
+    let detected_language = transcript
+        .detected_language
+        .as_deref()
+        .and_then(language_display_name)
+        .unwrap_or("Unknown language");
+    DictationTextResult::Complete(CompletedDictation {
+        processed_text,
+        raw_text: transcript.text,
+        detected_language,
+        ai_error,
+    })
+}
 
 pub(super) struct PreviewConfig {
     pub(super) speech_engine: i32,
@@ -308,7 +352,9 @@ pub(super) fn transcribe_final(
 
 #[cfg(test)]
 mod tests {
-    use super::{AiConfig, enhance_transcript};
+    use fluidvoice_transcription::Transcript;
+
+    use super::{AiConfig, DictationTextResult, enhance_transcript, resolve_final_text};
 
     #[test]
     fn disabled_enhancement_is_an_immediate_noop() {
@@ -328,5 +374,39 @@ mod tests {
         assert!(result.result.is_none());
         assert_eq!(result.duration_ms, 0);
         assert_eq!(updates, 0);
+    }
+
+    #[test]
+    fn failed_enhancement_falls_back_to_processed_raw_text() {
+        let transcript = Transcript {
+            text: "hello fluid voice".to_owned(),
+            detected_language: Some("en".to_owned()),
+            ..Transcript::default()
+        };
+        let result = resolve_final_text(
+            Ok(transcript),
+            Some(Err("provider offline".to_owned())),
+            false,
+            &["fluid voice\tFluidVoice".to_owned()],
+        );
+        let DictationTextResult::Complete(result) = result else {
+            panic!("expected completed dictation");
+        };
+        assert_eq!(result.processed_text, "hello FluidVoice");
+        assert_eq!(result.raw_text, "hello fluid voice");
+        assert_eq!(result.detected_language, "English");
+        assert_eq!(result.ai_error.as_deref(), Some("provider offline"));
+    }
+
+    #[test]
+    fn empty_and_failed_transcriptions_remain_distinct() {
+        assert!(matches!(
+            resolve_final_text(Ok(Transcript::default()), None, false, &[]),
+            DictationTextResult::Empty
+        ));
+        assert!(matches!(
+            resolve_final_text(Err("backend failed".to_owned()), None, false, &[]),
+            DictationTextResult::Failed(error) if error == "backend failed"
+        ));
     }
 }
