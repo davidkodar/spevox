@@ -1,40 +1,30 @@
 # Contributing
 
-Spevox uses a lightweight release-branch workflow. Keep changes small,
-reviewable, and based on the branch appropriate to their purpose.
+Spevox uses a single-branch workflow. Keep changes small and reviewable.
 
 ## Branches
 
-- `main` contains release-ready code. Release tags are created only from this
-  branch.
-- `develop` is the integration branch for the next version.
-- `feature/<short-name>` branches start from `develop` and return to `develop`.
-- `fix/<short-name>` branches start from `develop` for unreleased defects.
-- `release/<version>` branches start from `develop` only when a stabilization
-  period is useful. They receive release-only fixes, then merge into both
-  `main` and `develop` before `v<version>` is tagged.
-- `hotfix/<version>` branches start from `main` for urgent released defects and
-  merge into both `main` and `develop`.
+- `main` is the only long-lived branch. It must always be releasable, and
+  release tags are created only from it.
+- All work happens on short-lived branches (for example `fix/<short-name>` or
+  `feature/<short-name>`) that start from `main` and come back through a pull
+  request. Merged branches are deleted automatically.
 
-Delete short-lived branches after they are merged. Do not rewrite published
-release tags or replace their assets silently.
+Do not rewrite published release tags or replace their assets silently.
 
 ## Change workflow
 
-1. Update local `develop` and create a short-lived feature or fix branch.
+1. Update local `main` and create a short-lived branch.
 2. Make focused commits and add regression coverage where practical.
-3. Run formatting, tests, Clippy, and any checks relevant to the change.
-4. Merge the reviewed branch into `develop` and test the integrated result.
-5. Promote to `main` only after the complete release gate passes.
+3. Run formatting, tests, and Clippy locally.
+4. Open a pull request against `main`; CI must pass before merging.
+5. Squash-merge once green.
 
-The local release gate is:
+Before tagging a release, run the full local gate on KDE Plasma Wayland:
 
 ```bash
 CARGO_HOME="$PWD/.cargo-home" ./packaging/release-check.sh
 ```
-
-Hosted workflows are intentionally manual while CI capacity is limited. A
-successful local gate is therefore required before promotion to `main`.
 
 ## Releases
 
