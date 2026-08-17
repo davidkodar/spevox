@@ -1564,13 +1564,7 @@ impl ffi::FluidVoiceController {
             return;
         }
         let rust = self.as_mut().rust_mut().get_mut();
-        if rust.clipboard.is_none() {
-            rust.clipboard = ClipboardDelivery::connect().ok();
-        }
-        let copied = rust
-            .clipboard
-            .as_mut()
-            .is_some_and(|clipboard| clipboard.copy_transcript(&text).is_ok());
+        let copied = copy_to_clipboard(&mut rust.clipboard, &text).is_ok();
         self.as_mut().set_status_text(QString::from(if copied {
             if raw {
                 "Raw transcript copied"
@@ -1588,13 +1582,7 @@ impl ffi::FluidVoiceController {
             return;
         }
         let rust = self.as_mut().rust_mut().get_mut();
-        if rust.clipboard.is_none() {
-            rust.clipboard = ClipboardDelivery::connect().ok();
-        }
-        let copied = rust
-            .clipboard
-            .as_mut()
-            .is_some_and(|clipboard| clipboard.copy_transcript(&raw).is_ok());
+        let copied = copy_to_clipboard(&mut rust.clipboard, &raw).is_ok();
         if copied {
             if let Some(sender) = self.as_ref().rust().desktop_sender.as_ref() {
                 sender.send(DesktopCommand::Paste).ok();
@@ -1654,13 +1642,7 @@ impl ffi::FluidVoiceController {
                     match result {
                         Ok(text) => {
                             let rust = controller.as_mut().rust_mut().get_mut();
-                            if rust.clipboard.is_none() {
-                                rust.clipboard = ClipboardDelivery::connect().ok();
-                            }
-                            let copied = rust
-                                .clipboard
-                                .as_mut()
-                                .is_some_and(|clipboard| clipboard.copy_transcript(&text).is_ok());
+                            let copied = copy_to_clipboard(&mut rust.clipboard, &text).is_ok();
                             if copied
                                 && let Some(sender) =
                                     controller.as_ref().rust().desktop_sender.as_ref()
@@ -2466,13 +2448,7 @@ impl ffi::FluidVoiceController {
                             controller.as_mut().set_write_mode_retry_available(true);
                             controller.as_mut().set_last_raw_text(QString::from(&selected));
                             let rust = controller.as_mut().rust_mut().get_mut();
-                            if rust.clipboard.is_none() {
-                                rust.clipboard = ClipboardDelivery::connect().ok();
-                            }
-                            let copied = rust
-                                .clipboard
-                                .as_mut()
-                                .is_some_and(|clipboard| clipboard.copy_transcript(&text).is_ok());
+                            let copied = copy_to_clipboard(&mut rust.clipboard, &text).is_ok();
                             if copied {
                                 if let Some(sender) = controller.as_ref().rust().desktop_sender.as_ref() {
                                     sender.send(DesktopCommand::Paste).ok();
@@ -2530,13 +2506,7 @@ impl ffi::FluidVoiceController {
                     match result {
                         Ok(text) => {
                             let rust = controller.as_mut().rust_mut().get_mut();
-                            if rust.clipboard.is_none() {
-                                rust.clipboard = ClipboardDelivery::connect().ok();
-                            }
-                            let copied = rust
-                                .clipboard
-                                .as_mut()
-                                .is_some_and(|clipboard| clipboard.copy_transcript(&text).is_ok());
+                            let copied = copy_to_clipboard(&mut rust.clipboard, &text).is_ok();
                             controller.as_mut().set_last_raw_text(QString::default());
                             controller
                                 .as_mut()
@@ -2605,13 +2575,7 @@ impl ffi::FluidVoiceController {
                     match result {
                         Ok(text) => {
                             let rust = controller.as_mut().rust_mut().get_mut();
-                            if rust.clipboard.is_none() {
-                                rust.clipboard = ClipboardDelivery::connect().ok();
-                            }
-                            let copied = rust
-                                .clipboard
-                                .as_mut()
-                                .is_some_and(|clipboard| clipboard.copy_transcript(&text).is_ok());
+                            let copied = copy_to_clipboard(&mut rust.clipboard, &text).is_ok();
                             if copied {
                                 if paste_result
                                     && let Some(sender) =
@@ -3346,18 +3310,7 @@ impl ffi::FluidVoiceController {
     pub fn copy_history_text(mut self: Pin<&mut Self>, entry: &QString, mode: i32) {
         let entry = entry.to_string();
         let (text, label) = history_clipboard_text(&entry, mode);
-        let result = self
-            .as_mut()
-            .rust_mut()
-            .get_mut()
-            .clipboard
-            .as_mut()
-            .ok_or_else(|| "Clipboard integration is not ready".to_owned())
-            .and_then(|clipboard| {
-                clipboard
-                    .copy_transcript(&text)
-                    .map_err(|error| error.to_string())
-            });
+        let result = copy_to_clipboard(&mut self.as_mut().rust_mut().get_mut().clipboard, &text);
         self.as_mut().set_status_text(QString::from(match result {
             Ok(()) => label.to_owned(),
             Err(error) => format!("History copy failed · {error}"),
@@ -4082,7 +4035,7 @@ mod dictation;
 mod speech_runtime;
 use dictation::{
     EnhancementResult, FinalAsrRequest, FinalAsrResult, PersistedDictationResult, PreviewConfig,
-    PreviewSession, capture_audio, deliver_transcript, enhance_transcript,
+    PreviewSession, capture_audio, copy_to_clipboard, deliver_transcript, enhance_transcript,
     persist_dictation_result, resolve_final_text, transcribe_final,
 };
 #[cfg(test)]

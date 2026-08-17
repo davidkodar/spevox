@@ -11,7 +11,7 @@ use std::{
 };
 
 use fluidvoice_audio::{AudioBuffer, CaptureStopToken, MonoAudioBuffer, PipeWireCapture};
-use fluidvoice_delivery::ClipboardDelivery;
+use fluidvoice_delivery::{ClipboardDelivery, ClipboardDeliveryError};
 use fluidvoice_transcription::{LocalSpeechServer, Transcript};
 use tokio::sync::mpsc as tokio_mpsc;
 
@@ -298,16 +298,24 @@ pub(super) fn deliver_transcript(
     desktop_sender: Option<&tokio_mpsc::UnboundedSender<DesktopCommand>>,
     text: &str,
 ) -> bool {
-    if clipboard.is_none() {
-        *clipboard = ClipboardDelivery::connect().ok();
-    }
-    let delivered = clipboard
-        .as_mut()
-        .is_some_and(|delivery| delivery.copy_transcript(text).is_ok());
+    let delivered = copy_to_clipboard(clipboard, text).is_ok();
     if delivered && let Some(sender) = desktop_sender {
         sender.send(DesktopCommand::Paste).ok();
     }
     delivered
+}
+
+pub(super) fn copy_to_clipboard(
+    clipboard: &mut Option<ClipboardDelivery>,
+    text: &str,
+) -> Result<(), ClipboardDeliveryError> {
+    if clipboard.is_none() {
+        *clipboard = Some(ClipboardDelivery::connect()?);
+    }
+    clipboard
+        .as_mut()
+        .expect("clipboard was initialized above")
+        .copy_transcript(text)
 }
 
 pub(super) fn enhance_transcript(

@@ -29,6 +29,9 @@ All notable changes to FluidVoice Linux are documented here. The project uses
   as Whisper downloads.
 - Virtualized the searchable History results so large transcript collections
   create only the visible cards instead of eagerly instantiating every row.
+- Consolidated dictation, AI retry, Write Mode, result recovery, and History
+  copies behind one lazy clipboard helper; History actions now initialize the
+  desktop clipboard themselves and preserve the underlying failure detail.
 - Closed follow-up audit regressions in meeting-file retry, local AI proxy
   isolation, IPv6 loopback ASR, Write Mode retry semantics, cancellable Whisper
   previews, model integrity checks, local API lifecycle handling, and native
