@@ -3741,94 +3741,24 @@ impl ffi::FluidVoiceController {
                 command_mode_enabled,
                 &dictionary,
             );
+            let audio_path = retained_audio
+                .as_deref()
+                .and_then(std::path::Path::to_str)
+                .unwrap_or("");
+            let persisted_result =
+                persist_dictation_result(text_result, &ai_config, ai_duration_ms, audio_path);
             qt_thread
                 .queue(move |mut controller| {
-                    controller.as_mut().set_transcribing(false);
-                    controller.as_mut().set_overlay_visible(false);
-                    if let Err(error) = diagnostic_dump {
-                        eprintln!("Failed to save FLUIDVOICE_ASR_DUMP: {error}");
-                    }
-                    match text_result {
-                        DictationTextResult::Complete(completed) => {
-                            controller
-                                .as_mut()
-                                .set_live_transcript(QString::from(&completed.processed_text));
-                            controller
-                                .as_mut()
-                                .set_last_raw_text(QString::from(&completed.raw_text));
-                            if let Some(error) = parakeet_fallback.as_deref() {
-                                controller.as_mut().set_parakeet_status(QString::from(&format!(
-                                    "Parakeet unavailable; Whisper fallback succeeded: {error}"
-                                )));
-                            }
-                            let rust = controller.as_mut().rust_mut().get_mut();
-                            let delivery_succeeded = deliver_transcript(
-                                &mut rust.clipboard,
-                                rust.desktop_sender.as_ref(),
-                                &completed.processed_text,
-                            );
-                            let ai_status = if ai_config.enabled {
-                                if completed.ai_error.is_some() { "fallback" } else { "enhanced" }
-                            } else {
-                                "disabled"
-                            };
-                            let history_update = record_history(
-                                &completed.processed_text,
-                                &HistoryContext {
-                                    raw_text: &completed.raw_text,
-                                    provider: ai_provider_name(&ai_config),
-                                    model: &ai_config.model,
-                                    ai_status,
-                                    ai_duration_ms,
-                                    source: "dictation",
-                                    audio_path: retained_audio
-                                        .as_deref()
-                                        .and_then(std::path::Path::to_str)
-                                        .unwrap_or(""),
-                                },
-                            );
-                            apply_history_update(controller.as_mut(), history_update);
-                            controller.as_mut().set_audio_history_status(QString::from(
-                                audio_history_summary(),
-                            ));
-                            controller.as_mut().set_transcript_text(QString::from(
-                                &completed.processed_text,
-                            ));
-                            controller.as_mut().set_overlay_result_available(true);
-                            if *controller.as_ref().overlay_enabled() {
-                                controller.as_mut().set_overlay_visible(true);
-                            }
-                            controller.set_status_text(QString::from(if let Some(error) = completed.ai_error {
-                                format!("AI enhancement failed · raw transcript delivered · {error}")
-                            } else if let Some(error) = parakeet_fallback.as_deref() {
-                                format!(
-                                    "Native speech engine failed · Whisper fallback delivered · {error}"
-                                )
-                            } else if delivery_succeeded {
-                                format!("Dictated {:.1}s · {} · pasted or copied", duration.as_secs_f32(), completed.detected_language)
-                            } else {
-                                format!("Transcribed {:.1}s · {} · clipboard unavailable", duration.as_secs_f32(), completed.detected_language)
-                            }));
-                        }
-                        DictationTextResult::Empty => {
-                            controller.as_mut().set_transcript_text(QString::from(&format!(
-                                "No speech recognized (ASR peak {:.0}%). Increase the microphone or interface hardware gain if this persists.",
-                                asr_peak * 100.0
-                            )));
-                            controller.set_status_text(QString::from(&format!(
-                                "No speech recognized · ASR peak {:.0}%",
-                                asr_peak * 100.0
-                            )));
-                        }
-                        DictationTextResult::Failed(error) => {
-                            controller
-                                .as_mut()
-                                .set_transcript_text(QString::from(&format!(
-                                    "Transcription failed: {error}"
-                                )));
-                            controller.set_status_text(QString::from("Transcription failed"));
-                        }
-                    }
+                    apply_dictation_completion(
+                        controller.as_mut(),
+                        DictationUiContext {
+                            result: persisted_result,
+                            duration,
+                            asr_peak,
+                            native_fallback_error: parakeet_fallback,
+                            diagnostic_dump,
+                        },
+                    );
                 })
                 .ok();
         });
@@ -4222,9 +4152,9 @@ mod dictation;
 #[path = "speech_runtime.rs"]
 mod speech_runtime;
 use dictation::{
-    DictationTextResult, EnhancementResult, FinalAsrRequest, FinalAsrResult, PreviewConfig,
-    PreviewSession, capture_audio, deliver_transcript, enhance_transcript, resolve_final_text,
-    transcribe_final,
+    EnhancementResult, FinalAsrRequest, FinalAsrResult, PersistedDictationResult, PreviewConfig,
+    PreviewSession, capture_audio, deliver_transcript, enhance_transcript,
+    persist_dictation_result, resolve_final_text, transcribe_final,
 };
 #[cfg(test)]
 use dictionary::parse_csv_record;
@@ -4260,6 +4190,95 @@ fn apply_history_update(
     controller
         .as_mut()
         .set_dictated_word_count(dictated_word_count);
+}
+
+struct DictationUiContext {
+    result: PersistedDictationResult,
+    duration: Duration,
+    asr_peak: f32,
+    native_fallback_error: Option<String>,
+    diagnostic_dump: Result<(), String>,
+}
+
+fn apply_dictation_completion(
+    mut controller: Pin<&mut ffi::FluidVoiceController>,
+    context: DictationUiContext,
+) {
+    controller.as_mut().set_transcribing(false);
+    controller.as_mut().set_overlay_visible(false);
+    if let Err(error) = context.diagnostic_dump {
+        eprintln!("Failed to save FLUIDVOICE_ASR_DUMP: {error}");
+    }
+    match context.result {
+        PersistedDictationResult::Complete(persisted) => {
+            let completed = persisted.completed;
+            controller
+                .as_mut()
+                .set_live_transcript(QString::from(&completed.processed_text));
+            controller
+                .as_mut()
+                .set_last_raw_text(QString::from(&completed.raw_text));
+            if let Some(error) = context.native_fallback_error.as_deref() {
+                controller
+                    .as_mut()
+                    .set_parakeet_status(QString::from(&format!(
+                        "Parakeet unavailable; Whisper fallback succeeded: {error}"
+                    )));
+            }
+            let rust = controller.as_mut().rust_mut().get_mut();
+            let delivery_succeeded = deliver_transcript(
+                &mut rust.clipboard,
+                rust.desktop_sender.as_ref(),
+                &completed.processed_text,
+            );
+            apply_history_update(controller.as_mut(), persisted.history_update);
+            controller
+                .as_mut()
+                .set_audio_history_status(QString::from(&persisted.audio_history_status));
+            controller
+                .as_mut()
+                .set_transcript_text(QString::from(&completed.processed_text));
+            controller.as_mut().set_overlay_result_available(true);
+            if *controller.as_ref().overlay_enabled() {
+                controller.as_mut().set_overlay_visible(true);
+            }
+            controller.set_status_text(QString::from(if let Some(error) = completed.ai_error {
+                format!("AI enhancement failed · raw transcript delivered · {error}")
+            } else if let Some(error) = context.native_fallback_error.as_deref() {
+                format!("Native speech engine failed · Whisper fallback delivered · {error}")
+            } else if delivery_succeeded {
+                format!(
+                    "Dictated {:.1}s · {} · pasted or copied",
+                    context.duration.as_secs_f32(),
+                    completed.detected_language
+                )
+            } else {
+                format!(
+                    "Transcribed {:.1}s · {} · clipboard unavailable",
+                    context.duration.as_secs_f32(),
+                    completed.detected_language
+                )
+            }));
+        }
+        PersistedDictationResult::Empty => {
+            controller
+                .as_mut()
+                .set_transcript_text(QString::from(&format!(
+                    "No speech recognized (ASR peak {:.0}%). Increase the microphone or interface hardware gain if this persists.",
+                    context.asr_peak * 100.0
+                )));
+            controller.set_status_text(QString::from(&format!(
+                "No speech recognized · ASR peak {:.0}%",
+                context.asr_peak * 100.0
+            )));
+        }
+        PersistedDictationResult::Failed(error) => {
+            controller
+                .as_mut()
+                .set_transcript_text(QString::from(&format!("Transcription failed: {error}")));
+            controller.set_status_text(QString::from("Transcription failed"));
+        }
+    }
 }
 #[cfg(test)]
 mod tests {

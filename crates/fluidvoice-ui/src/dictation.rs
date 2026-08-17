@@ -21,8 +21,9 @@ use crate::{
 };
 
 use super::{
-    DesktopCommand, ParakeetBackend, asr_gain, language_display_name, native_language_for_model,
-    process_transcript, suspicious_single_word,
+    DesktopCommand, HistoryContext, HistoryUpdate, ParakeetBackend, ai_provider_name, asr_gain,
+    audio_history_summary, language_display_name, native_language_for_model, process_transcript,
+    record_history, suspicious_single_word,
 };
 
 pub(super) struct CompletedDictation {
@@ -36,6 +37,57 @@ pub(super) enum DictationTextResult {
     Complete(CompletedDictation),
     Empty,
     Failed(String),
+}
+
+pub(super) struct PersistedDictation {
+    pub(super) completed: CompletedDictation,
+    pub(super) history_update: HistoryUpdate,
+    pub(super) audio_history_status: String,
+}
+
+pub(super) enum PersistedDictationResult {
+    Complete(PersistedDictation),
+    Empty,
+    Failed(String),
+}
+
+pub(super) fn persist_dictation_result(
+    result: DictationTextResult,
+    ai_config: &AiConfig,
+    ai_duration_ms: u128,
+    audio_path: &str,
+) -> PersistedDictationResult {
+    let completed = match result {
+        DictationTextResult::Complete(completed) => completed,
+        DictationTextResult::Empty => return PersistedDictationResult::Empty,
+        DictationTextResult::Failed(error) => return PersistedDictationResult::Failed(error),
+    };
+    let ai_status = if ai_config.enabled {
+        if completed.ai_error.is_some() {
+            "fallback"
+        } else {
+            "enhanced"
+        }
+    } else {
+        "disabled"
+    };
+    let history_update = record_history(
+        &completed.processed_text,
+        &HistoryContext {
+            raw_text: &completed.raw_text,
+            provider: ai_provider_name(ai_config),
+            model: &ai_config.model,
+            ai_status,
+            ai_duration_ms,
+            source: "dictation",
+            audio_path,
+        },
+    );
+    PersistedDictationResult::Complete(PersistedDictation {
+        completed,
+        history_update,
+        audio_history_status: audio_history_summary(),
+    })
 }
 
 pub(super) fn resolve_final_text(
