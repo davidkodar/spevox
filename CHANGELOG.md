@@ -9,6 +9,9 @@ All notable changes to FluidVoice Linux are documented here. The project uses
   isolation, IPv6 loopback ASR, Write Mode retry semantics, cancellable Whisper
   previews, model integrity checks, local API lifecycle handling, and native
   speech port selection. Cloud keyring reads no longer block the Qt thread.
+- Moved one-time integrity migration for pre-marker Whisper downloads off the
+  Qt thread. Read-only model directories now retain a fast length-based legacy
+  fallback instead of re-hashing multi-gigabyte models on every use.
 - Made the full Rust workspace Clippy-clean under `-D warnings`: removed
   redundant clones and conditions, completed HTTP test reads, centralized
   bounded UI/sample numeric conversions, tightened path APIs, and documented

@@ -208,28 +208,42 @@ fn model_file_valid(path: &PathBuf, model: &WhisperModel) -> bool {
         return false;
     }
     let marker = path.with_extension("bin.sha256");
-    if fs::read_to_string(&marker).is_ok_and(|value| value.trim() == model.sha256) {
-        return true;
+    if marker.exists() {
+        return fs::read_to_string(marker).is_ok_and(|value| value.trim() == model.sha256);
     }
-    let Ok(mut file) = fs::File::open(path) else {
-        return false;
-    };
-    let mut hasher = Sha256::new();
-    let mut buffer = vec![0_u8; 64 * 1024];
-    loop {
-        let Ok(count) = file.read(&mut buffer) else {
-            return false;
-        };
-        if count == 0 {
-            break;
+    // Models downloaded before integrity markers were introduced were already
+    // size-checked. Keep startup non-blocking and verify them once on a worker.
+    true
+}
+
+fn verify_unmarked_whisper_models() {
+    for model in whisper_model_catalog() {
+        let path = managed_model_directory().join(model.file_name);
+        let marker = path.with_extension("bin.sha256");
+        if marker.exists()
+            || !fs::metadata(&path)
+                .is_ok_and(|metadata| metadata.is_file() && metadata.len() == model.expected_bytes)
+        {
+            continue;
         }
-        hasher.update(&buffer[..count]);
+        let Ok(mut file) = fs::File::open(&path) else {
+            continue;
+        };
+        let mut hasher = Sha256::new();
+        let mut buffer = vec![0_u8; 64 * 1024];
+        let digest = loop {
+            match file.read(&mut buffer) {
+                Ok(0) => break Some(format!("{:x}", hasher.finalize())),
+                Ok(count) => hasher.update(&buffer[..count]),
+                Err(_) => break None,
+            }
+        };
+        if let Some(digest) = digest {
+            // Write the observed digest even on mismatch so future checks are
+            // constant-time and reject a corrupt exact-length model.
+            fs::write(marker, format!("{digest}\n")).ok();
+        }
     }
-    let valid = format!("{:x}", hasher.finalize()) == model.sha256;
-    if valid {
-        fs::write(marker, format!("{}\n", model.sha256)).ok();
-    }
-    valid
 }
 
 fn download_whisper_model(

@@ -975,6 +975,13 @@ impl ffi::FluidVoiceController {
         let (desktop_sender, mut desktop_receiver) = mpsc::unbounded_channel();
         self.as_mut().rust_mut().get_mut().desktop_sender = Some(desktop_sender);
         let qt_thread = self.qt_thread();
+        let model_thread = qt_thread.clone();
+        std::thread::spawn(move || {
+            verify_unmarked_whisper_models();
+            model_thread
+                .queue(|mut controller| controller.as_mut().refresh_model_catalog())
+                .ok();
+        });
         let key_provider = ai_provider(*self.as_ref().selected_ai_provider());
         if !key_provider.local {
             let key_thread = qt_thread.clone();
