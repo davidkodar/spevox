@@ -505,7 +505,6 @@ use crate::ai::{self, AiConfig};
 use crate::local_api::{self, LocalApiAction};
 use crate::parakeet::{self, Backend as ParakeetBackend};
 use crate::updates::check_latest_release;
-use crate::whisper_cache;
 
 static HISTORY_IO_LOCK: Mutex<()> = Mutex::new(());
 
@@ -3581,114 +3580,31 @@ impl ffi::FluidVoiceController {
         std::thread::spawn(move || {
             let level_thread = qt_thread.clone();
             let preview_thread = qt_thread.clone();
-            let (preview_sender, preview_receiver) =
-                std::sync::mpsc::sync_channel::<AudioBuffer>(1);
-            // Never block PipeWire while the native server performs a cold
-            // start. The capture itself is capped at two minutes, so this
-            // startup queue remains naturally bounded by the recording limit.
-            let (stream_sender, stream_receiver) = std::sync::mpsc::channel::<AudioBuffer>();
-            let preview_model = model.clone();
-            let preview_language = language.clone();
-            let preview_stop = Arc::new(AtomicBool::new(false));
-            let preview_worker_stop = Arc::clone(&preview_stop);
-            let stream_thread = qt_thread.clone();
-            let stream_supervisor = Arc::clone(&parakeet_supervisor);
-            let stream_language = native_model
-                .map(|model| native_language_for_model(model, &language))
-                .unwrap_or_default();
-            // The pinned GGML Vulkan streaming path currently crashes on real
-            // Nemotron audio (ne3/ne13 assertion). Keep Vulkan for the fast
-            // full-utterance result and use the stable Whisper overlay until
-            // the upstream streaming backend is fixed.
-            let native_realtime = parakeet_backend == ParakeetBackend::Cpu
-                && native_model.is_some_and(|model| model.realtime);
-            let native_preview_worker =
-                native_model
-                    .filter(|_| native_realtime)
-                    .map(|native_model| {
-                        std::thread::spawn(move || {
-                            let endpoint = stream_supervisor
-                                .lock()
-                                .map_err(|_| {
-                                    "Native speech supervisor lock was poisoned".to_owned()
-                                })
-                                .and_then(|mut supervisor| {
-                                    supervisor.ensure_ready(parakeet_backend, native_model)?;
-                                    Ok(supervisor.endpoint())
-                                });
-                            let Ok(endpoint) = endpoint else { return };
-                            parakeet::stream_transcript(
-                                &endpoint,
-                                &stream_receiver,
-                                stream_language,
-                                gain,
-                                move |text| {
-                                    stream_thread
-                                        .queue(move |mut controller| {
-                                            if *controller.as_ref().recording() {
-                                                controller
-                                                    .as_mut()
-                                                    .set_live_transcript(QString::from(&text));
-                                            }
-                                        })
-                                        .ok();
-                                },
-                            )
-                            .ok();
-                        })
-                    });
-            let preview_worker = std::thread::spawn(move || {
-                // Native engines receive lossless PCM chunks through NeMo's
-                // realtime WebSocket. Whisper keeps its bounded periodic
-                // snapshots; a custom server remains final-result-only.
-                if speech_engine == 5 || native_realtime {
-                    return;
-                }
-                let Some(model) = preview_model else { return };
-                let automatic_language = preview_language.is_empty();
-                let Ok(transcriber) = whisper_cache::get(&model, use_gpu) else {
-                    return;
-                };
-                while let Ok(audio) = preview_receiver.recv() {
-                    if preview_worker_stop.load(Ordering::Acquire) {
-                        return;
-                    }
-                    let preview_duration = audio.duration();
-                    if automatic_language && preview_duration < Duration::from_millis(2_500) {
-                        // Language classification on sub-second phonemes is
-                        // strongly English-biased in Tiny/Base. Wait for a
-                        // meaningful phrase before publishing automatic-mode
-                        // preview text.
-                        continue;
-                    }
-                    let mono = audio.to_asr_mono();
-                    let preview_audio = mono.amplified(asr_gain(mono.peak(), gain));
-                    let Ok(transcript) = transcriber.transcribe_cancellable(
-                        &preview_audio,
-                        (!preview_language.is_empty()).then_some(preview_language.as_str()),
-                        Arc::clone(&preview_worker_stop),
-                    ) else {
-                        continue;
-                    };
-                    if preview_worker_stop.load(Ordering::Acquire) {
-                        return;
-                    }
-                    if transcript.text.is_empty()
-                        || suspicious_single_word(&transcript.text, preview_duration)
-                    {
-                        continue;
-                    }
+            let preview_session = PreviewSession::start(
+                PreviewConfig {
+                    speech_engine,
+                    whisper_model: model.clone(),
+                    language: language.clone(),
+                    use_gpu,
+                    gain,
+                    native_model,
+                    native_backend: parakeet_backend,
+                    native_supervisor: Arc::clone(&parakeet_supervisor),
+                },
+                move |text| {
                     preview_thread
                         .queue(move |mut controller| {
                             if *controller.as_ref().recording() {
                                 controller
                                     .as_mut()
-                                    .set_live_transcript(QString::from(&transcript.text));
+                                    .set_live_transcript(QString::from(&text));
                             }
                         })
                         .ok();
-                }
-            });
+                },
+            );
+            let preview_sender = preview_session.preview_sender();
+            let stream_sender = preview_session.stream_sender();
             let result = capture_audio(
                 capture_target.as_deref(),
                 &stop_token,
@@ -3707,11 +3623,12 @@ impl ffi::FluidVoiceController {
                     preview_sender.try_send(audio).ok();
                 },
                 move |audio| {
-                    if native_realtime {
+                    if let Some(stream_sender) = &stream_sender {
                         stream_sender.send(audio).ok();
                     }
                 },
             );
+            preview_session.stop_and_join();
 
             let audio = match result {
                 Ok(audio) => audio,
@@ -3745,12 +3662,6 @@ impl ffi::FluidVoiceController {
                     controller.set_status_text(QString::from("Transcribing locally…"));
                 })
                 .ok();
-            preview_stop.store(true, Ordering::Release);
-            preview_worker.join().ok();
-            if let Some(worker) = native_preview_worker {
-                worker.join().ok();
-            }
-
             let mono = audio.to_asr_mono().trim_silence();
             let combined_gain = asr_gain(mono.peak(), gain);
             let asr_audio = mono.amplified(combined_gain);
@@ -4316,8 +4227,8 @@ mod dictation;
 #[path = "speech_runtime.rs"]
 mod speech_runtime;
 use dictation::{
-    EnhancementResult, FinalAsrRequest, FinalAsrResult, capture_audio, deliver_transcript,
-    enhance_transcript, transcribe_final,
+    EnhancementResult, FinalAsrRequest, FinalAsrResult, PreviewConfig, PreviewSession,
+    capture_audio, deliver_transcript, enhance_transcript, transcribe_final,
 };
 #[cfg(test)]
 use dictionary::parse_csv_record;

@@ -1,20 +1,152 @@
 use std::{
     path::Path,
-    sync::{Arc, Mutex},
+    path::PathBuf,
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+        mpsc::{self, Sender, SyncSender},
+    },
+    thread::JoinHandle,
     time::{Duration, Instant},
 };
 
 use fluidvoice_audio::{AudioBuffer, CaptureStopToken, MonoAudioBuffer, PipeWireCapture};
 use fluidvoice_delivery::ClipboardDelivery;
 use fluidvoice_transcription::{LocalSpeechServer, Transcript};
-use tokio::sync::mpsc;
+use tokio::sync::mpsc as tokio_mpsc;
 
 use crate::{
     ai::{self, AiConfig},
     parakeet, whisper_cache,
 };
 
-use super::{DesktopCommand, ParakeetBackend, native_language_for_model};
+use super::{
+    DesktopCommand, ParakeetBackend, asr_gain, native_language_for_model, suspicious_single_word,
+};
+
+pub(super) struct PreviewConfig {
+    pub(super) speech_engine: i32,
+    pub(super) whisper_model: Option<PathBuf>,
+    pub(super) language: String,
+    pub(super) use_gpu: bool,
+    pub(super) gain: f32,
+    pub(super) native_model: Option<parakeet::Model>,
+    pub(super) native_backend: ParakeetBackend,
+    pub(super) native_supervisor: Arc<Mutex<parakeet::Supervisor>>,
+}
+
+pub(super) struct PreviewSession {
+    preview_sender: SyncSender<AudioBuffer>,
+    stream_sender: Option<Sender<AudioBuffer>>,
+    stop: Arc<AtomicBool>,
+    workers: Vec<JoinHandle<()>>,
+}
+
+impl PreviewSession {
+    pub(super) fn start(
+        config: PreviewConfig,
+        publish: impl Fn(String) + Send + Sync + 'static,
+    ) -> Self {
+        let publish = Arc::new(publish);
+        let (preview_sender, preview_receiver) = mpsc::sync_channel::<AudioBuffer>(1);
+        let stop = Arc::new(AtomicBool::new(false));
+        let native_realtime = config.native_backend == ParakeetBackend::Cpu
+            && config.native_model.is_some_and(|model| model.realtime);
+        let mut workers = Vec::with_capacity(2);
+
+        let stream_sender =
+            if let Some(native_model) = config.native_model.filter(|_| native_realtime) {
+                let (stream_sender, stream_receiver) = mpsc::channel::<AudioBuffer>();
+                let supervisor = Arc::clone(&config.native_supervisor);
+                let language = native_language_for_model(native_model, &config.language);
+                let gain = config.gain;
+                let backend = config.native_backend;
+                let native_publish = Arc::clone(&publish);
+                workers.push(std::thread::spawn(move || {
+                    let endpoint = supervisor
+                        .lock()
+                        .map_err(|_| "Native speech supervisor lock was poisoned".to_owned())
+                        .and_then(|mut supervisor| {
+                            supervisor.ensure_ready(backend, native_model)?;
+                            Ok(supervisor.endpoint())
+                        });
+                    let Ok(endpoint) = endpoint else { return };
+                    parakeet::stream_transcript(
+                        &endpoint,
+                        &stream_receiver,
+                        language,
+                        gain,
+                        move |text| native_publish(text),
+                    )
+                    .ok();
+                }));
+                Some(stream_sender)
+            } else {
+                None
+            };
+        let worker_stop = Arc::clone(&stop);
+        workers.push(std::thread::spawn(move || {
+            if config.speech_engine == 5 || native_realtime {
+                return;
+            }
+            let Some(model) = config.whisper_model else {
+                return;
+            };
+            let automatic_language = config.language.is_empty();
+            let Ok(transcriber) = whisper_cache::get(&model, config.use_gpu) else {
+                return;
+            };
+            while let Ok(audio) = preview_receiver.recv() {
+                if worker_stop.load(Ordering::Acquire) {
+                    return;
+                }
+                let preview_duration = audio.duration();
+                if automatic_language && preview_duration < Duration::from_millis(2_500) {
+                    continue;
+                }
+                let mono = audio.to_asr_mono();
+                let preview_audio = mono.amplified(asr_gain(mono.peak(), config.gain));
+                let Ok(transcript) = transcriber.transcribe_cancellable(
+                    &preview_audio,
+                    (!config.language.is_empty()).then_some(config.language.as_str()),
+                    Arc::clone(&worker_stop),
+                ) else {
+                    continue;
+                };
+                if worker_stop.load(Ordering::Acquire)
+                    || transcript.text.is_empty()
+                    || suspicious_single_word(&transcript.text, preview_duration)
+                {
+                    continue;
+                }
+                publish(transcript.text);
+            }
+        }));
+        Self {
+            preview_sender,
+            stream_sender,
+            stop,
+            workers,
+        }
+    }
+
+    pub(super) fn preview_sender(&self) -> SyncSender<AudioBuffer> {
+        self.preview_sender.clone()
+    }
+
+    pub(super) fn stream_sender(&self) -> Option<Sender<AudioBuffer>> {
+        self.stream_sender.clone()
+    }
+
+    pub(super) fn stop_and_join(self) {
+        self.stop.store(true, Ordering::Release);
+        drop(self.preview_sender);
+        drop(self.stream_sender);
+        for worker in self.workers {
+            worker.join().ok();
+        }
+    }
+}
 
 pub(super) struct FinalAsrRequest<'a> {
     pub(super) audio: &'a MonoAudioBuffer,
@@ -67,7 +199,7 @@ pub(super) fn capture_audio(
 
 pub(super) fn deliver_transcript(
     clipboard: &mut Option<ClipboardDelivery>,
-    desktop_sender: Option<&mpsc::UnboundedSender<DesktopCommand>>,
+    desktop_sender: Option<&tokio_mpsc::UnboundedSender<DesktopCommand>>,
     text: &str,
 ) -> bool {
     if clipboard.is_none() {
