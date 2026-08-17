@@ -12,7 +12,7 @@ use std::{
     time::Duration,
 };
 
-use fluidvoice_audio::MonoAudioBuffer;
+use fluidvoice_audio::{MonoAudioBuffer, encode_pcm16_wav};
 use url::{Host, Url};
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
 
@@ -141,7 +141,8 @@ impl LocalSpeechServer {
             ));
         }
         let boundary = "fluidvoice-local-asr-boundary";
-        let wav = pcm16_wav(audio.samples(), 16_000);
+        let wav =
+            encode_pcm16_wav(audio).map_err(|error| TranscriptionError::new(error.to_string()))?;
         let mut body = Vec::with_capacity(wav.len() + 512);
         append_form_field(&mut body, boundary, "model", "default");
         append_form_field(&mut body, boundary, "response_format", "json");
@@ -218,29 +219,6 @@ fn append_form_field(body: &mut Vec<u8>, boundary: &str, name: &str, value: &str
         )
         .as_bytes(),
     );
-}
-
-#[allow(clippy::cast_possible_truncation)] // Clamping makes the PCM16 conversion intentional.
-fn pcm16_wav(samples: &[f32], sample_rate: u32) -> Vec<u8> {
-    let data_size = u32::try_from(samples.len().saturating_mul(2)).unwrap_or(u32::MAX);
-    let mut wav = Vec::with_capacity(44 + samples.len() * 2);
-    wav.extend_from_slice(b"RIFF");
-    wav.extend_from_slice(&(36 + data_size).to_le_bytes());
-    wav.extend_from_slice(b"WAVEfmt ");
-    wav.extend_from_slice(&16_u32.to_le_bytes());
-    wav.extend_from_slice(&1_u16.to_le_bytes());
-    wav.extend_from_slice(&1_u16.to_le_bytes());
-    wav.extend_from_slice(&sample_rate.to_le_bytes());
-    wav.extend_from_slice(&(sample_rate * 2).to_le_bytes());
-    wav.extend_from_slice(&2_u16.to_le_bytes());
-    wav.extend_from_slice(&16_u16.to_le_bytes());
-    wav.extend_from_slice(b"data");
-    wav.extend_from_slice(&data_size.to_le_bytes());
-    for sample in samples {
-        let encoded = (sample.clamp(-1.0, 1.0) * f32::from(i16::MAX)) as i16;
-        wav.extend_from_slice(&encoded.to_le_bytes());
-    }
-    wav
 }
 
 impl WhisperTranscriber {
@@ -397,7 +375,7 @@ fn default_thread_count() -> i32 {
 
 #[cfg(test)]
 mod tests {
-    use super::{LocalSpeechServer, TranscriptionConfig, WhisperTranscriber, pcm16_wav};
+    use super::{LocalSpeechServer, TranscriptionConfig, WhisperTranscriber};
     use std::path::Path;
     use std::{
         io::{Read, Write},
@@ -439,14 +417,6 @@ mod tests {
         assert!(LocalSpeechServer::new("http://127.0.0.1.example.com").is_err());
         assert!(LocalSpeechServer::new("http://localhost:1@evil.example/").is_err());
         assert!(LocalSpeechServer::new("http://127.0.0.2:8080").is_ok());
-    }
-
-    #[test]
-    fn encodes_standard_mono_pcm_wav() {
-        let wav = pcm16_wav(&[0.0, 1.0, -1.0], 16_000);
-        assert_eq!(&wav[..4], b"RIFF");
-        assert_eq!(&wav[8..12], b"WAVE");
-        assert_eq!(wav.len(), 50);
     }
 
     #[test]

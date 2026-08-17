@@ -40,6 +40,11 @@ All notable changes to FluidVoice Linux are documented here. The project uses
   the existing `0…9` settings-file and QML index mapping.
 - Made each Write Mode job own its prompt, request input, paste policy, and
   retry-success messaging so draft and rewrite behavior share one definition.
+- Centralized mono PCM16 WAV encoding across transcription, retained audio,
+  meeting diarization, and diagnostics, with checked format bounds and one
+  byte-exact test surface.
+- Replaced the hand-written preferences serializer with a versioned JSON model;
+  existing line-based files migrate transparently on their next save.
 - Closed follow-up audit regressions in meeting-file retry, local AI proxy
   isolation, IPv6 loopback ASR, Write Mode retry semantics, cancellable Whisper
   previews, model integrity checks, local API lifecycle handling, and native

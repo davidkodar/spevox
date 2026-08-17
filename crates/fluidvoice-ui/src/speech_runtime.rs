@@ -10,12 +10,6 @@ pub(super) fn display_ratio(numerator: u64, denominator: u64) -> f64 {
     numerator as f64 / denominator.max(1) as f64
 }
 
-/// Input is clamped and rounded into the complete i16 range before conversion.
-#[allow(clippy::cast_possible_truncation)]
-pub(super) fn pcm_i16(sample: f32) -> i16 {
-    (sample.clamp(-1.0, 1.0) * f32::from(i16::MAX)).round() as i16
-}
-
 pub(super) fn shortcut_triggers() -> &'static [(&'static str, &'static str)] {
     &[
         ("Ctrl  Alt  D", "CTRL+ALT+D"),
@@ -177,21 +171,8 @@ pub(super) fn dump_asr_audio(audio: &fluidvoice_audio::MonoAudioBuffer) -> Resul
     let Some(path) = std::env::var_os("FLUIDVOICE_ASR_DUMP").map(PathBuf::from) else {
         return Ok(());
     };
-    let specification = hound::WavSpec {
-        channels: 1,
-        sample_rate: audio.sample_rate(),
-        bits_per_sample: 16,
-        sample_format: hound::SampleFormat::Int,
-    };
-    let mut writer = hound::WavWriter::create(&path, specification)
-        .map_err(|error| format!("{}: {error}", path.display()))?;
-    for &sample in audio.samples() {
-        let value = pcm_i16(sample);
-        writer
-            .write_sample(value)
-            .map_err(|error| error.to_string())?;
-    }
-    writer.finalize().map_err(|error| error.to_string())
+    let wav = fluidvoice_audio::encode_pcm16_wav(audio).map_err(|error| error.to_string())?;
+    fs::write(&path, wav).map_err(|error| format!("{}: {error}", path.display()))
 }
 
 pub(super) fn meter_level(peak: f32) -> f32 {
@@ -232,7 +213,7 @@ pub(super) fn suspicious_single_word(text: &str, duration: Duration) -> bool {
     matches!(normalized.as_str(), "you" | "thanks" | "thank you")
 }
 use super::{
-    AtomicBool, Duration, FluidVoiceControllerRust, Instant, ParakeetBackend, PathBuf,
+    AtomicBool, Duration, FluidVoiceControllerRust, Instant, ParakeetBackend, PathBuf, fs,
     model_file_valid, parakeet, supported_languages, whisper_model_catalog,
 };
 

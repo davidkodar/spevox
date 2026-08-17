@@ -1,11 +1,16 @@
 use super::{
-    PathBuf, ProviderId, ai_profiles_path, atomic_write_private, escape_setting, fs,
-    preferences_path, unescape_setting,
+    PathBuf, ProviderId, ai_profiles_path, atomic_write_private, fs, preferences_path,
+    unescape_setting,
 };
+use serde::{Deserialize, Serialize};
+
+const PREFERENCES_VERSION: u32 = 1;
 
 // Persisted feature switches are independent user choices rather than one
 // state machine, so explicit booleans make migrations and defaults auditable.
 #[allow(clippy::struct_excessive_bools)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(default)]
 pub(super) struct Preferences {
     pub(super) onboarding_completed: bool,
     pub(super) language: String,
@@ -206,6 +211,17 @@ impl Preferences {
         let Ok(contents) = fs::read_to_string(preferences_path()) else {
             return Self::default();
         };
+        Self::parse(&contents)
+    }
+
+    fn parse(contents: &str) -> Self {
+        if let Ok(document) = serde_json::from_str::<PreferencesDocument>(contents) {
+            return document.preferences.sanitized();
+        }
+        Self::parse_legacy(contents).sanitized()
+    }
+
+    fn parse_legacy(contents: &str) -> Self {
         let mut preferences = Self {
             onboarding_completed: true,
             ..Self::default()
@@ -284,46 +300,74 @@ impl Preferences {
         preferences
     }
 
+    fn sanitized(mut self) -> Self {
+        self.gain_db = self.gain_db.clamp(-24.0, 24.0);
+        self.overlay_size = self.overlay_size.clamp(0, 2);
+        self.overlay_position = self.overlay_position.clamp(0, 2);
+        self.overlay_opacity = self.overlay_opacity.clamp(0.55, 1.0);
+        self.typing_wpm = self.typing_wpm.clamp(10, 250);
+        self.audio_history_budget_mb = self.audio_history_budget_mb.clamp(100, 10_000);
+        self.local_api_port = self.local_api_port.clamp(1024, 65_535);
+        self.speech_engine = self.speech_engine.clamp(0, 5);
+        self
+    }
+
     pub(super) fn save(&self) -> Result<(), String> {
         let path = preferences_path();
         let parent = path
             .parent()
             .ok_or_else(|| "preferences path has no parent".to_owned())?;
         fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-        let contents = format!(
-            "language={}\nmodel={}\nshortcut={}\ninput={}\ngain_db={}\noverlay_enabled={}\noverlay_size={}\noverlay_position={}\noverlay_show_text={}\noverlay_opacity={}\ncommand_mode_enabled={}\ncompute_backend={}\ntheme={}\naccent={}\nai_enabled={}\nai_provider={}\nai_model={}\nai_base_url={}\nai_prompt={}\nai_local_only={}\nauto_profiles_enabled={}\ntyping_wpm={}\nskip_weekends={}\naudio_history_enabled={}\naudio_history_budget_mb={}\nlocal_api_enabled={}\nlocal_api_port={}\nspeech_engine={}\nlocal_speech_url={}\ndiarization_enabled={}\nonboarding_completed={}\n",
-            self.language,
-            self.model.display(),
-            self.shortcut,
-            self.input,
-            self.gain_db,
-            self.overlay_enabled,
-            self.overlay_size,
-            self.overlay_position,
-            self.overlay_show_text,
-            self.overlay_opacity,
-            self.command_mode_enabled,
-            self.compute_backend,
-            self.theme,
-            self.accent,
-            self.ai_enabled,
-            self.ai_provider,
-            escape_setting(&self.ai_model),
-            escape_setting(&self.ai_base_url),
-            escape_setting(&self.ai_prompt),
-            self.ai_local_only,
-            self.auto_profiles_enabled,
-            self.typing_wpm,
-            self.skip_weekends,
-            self.audio_history_enabled,
-            self.audio_history_budget_mb,
-            self.local_api_enabled,
-            self.local_api_port,
-            self.speech_engine,
-            escape_setting(&self.local_speech_url),
-            self.diarization_enabled,
-            self.onboarding_completed
+        let contents = serde_json::to_vec_pretty(&PreferencesDocumentRef {
+            version: PREFERENCES_VERSION,
+            preferences: self,
+        })
+        .map_err(|error| error.to_string())?;
+        atomic_write_private(&path, &contents)
+    }
+}
+
+#[derive(Deserialize)]
+struct PreferencesDocument {
+    #[allow(dead_code)]
+    version: u32,
+    preferences: Preferences,
+}
+
+#[derive(Serialize)]
+struct PreferencesDocumentRef<'a> {
+    version: u32,
+    preferences: &'a Preferences,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn migrates_legacy_preferences_without_losing_escaped_values() {
+        let parsed = Preferences::parse(
+            "language=sv\noverlay_opacity=0.8\nai_prompt=one\\ntwo\nonboarding_completed=false\n",
         );
-        atomic_write_private(&path, contents.as_bytes())
+        assert_eq!(parsed.language, "sv");
+        assert_eq!(parsed.ai_prompt, "one\ntwo");
+        assert!(!parsed.onboarding_completed);
+    }
+
+    #[test]
+    fn versioned_preferences_round_trip() {
+        let preferences = Preferences {
+            language: "de".to_owned(),
+            ai_prompt: "Preserve = and newlines\nexactly".to_owned(),
+            ..Preferences::default()
+        };
+        let serialized = serde_json::to_string(&PreferencesDocumentRef {
+            version: PREFERENCES_VERSION,
+            preferences: &preferences,
+        })
+        .unwrap();
+        let parsed = Preferences::parse(&serialized);
+        assert_eq!(parsed.language, "de");
+        assert_eq!(parsed.ai_prompt, preferences.ai_prompt);
     }
 }

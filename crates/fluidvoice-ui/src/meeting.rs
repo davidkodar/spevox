@@ -1,8 +1,8 @@
 use super::{
     AtomicBool, AudioBuffer, Command, HISTORY_IO_LOCK, OpenOptions, OpenOptionsExt, Ordering,
     ParakeetBackend, PathBuf, PermissionsExt, QString, Read, TranscriptionConfig,
-    WhisperTranscriber, display_ratio, fs, history_field, history_path, history_value, load_lines,
-    parakeet, progress_ratio, save_lines,
+    WhisperTranscriber, Write, display_ratio, fs, history_field, history_path, history_value,
+    load_lines, parakeet, progress_ratio, save_lines,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -131,27 +131,15 @@ fn write_temporary_diarization_wav(
         "fluidvoice-diarization-{}-{nonce}.wav",
         std::process::id()
     ));
-    let spec = hound::WavSpec {
-        channels: 1,
-        sample_rate: 16_000,
-        bits_per_sample: 16,
-        sample_format: hound::SampleFormat::Int,
-    };
-    let file = OpenOptions::new()
+    let wav = fluidvoice_audio::encode_pcm16_wav(audio).map_err(|error| error.to_string())?;
+    let mut file = OpenOptions::new()
         .create_new(true)
         .write(true)
         .mode(0o600)
         .open(&path)
         .map_err(|error| error.to_string())?;
-    let mut writer = hound::WavWriter::new(file, spec).map_err(|error| error.to_string())?;
-    for sample in audio.samples() {
-        #[allow(clippy::cast_possible_truncation)]
-        let value = (sample.clamp(-1.0, 1.0) * f32::from(i16::MAX)).round() as i16;
-        writer
-            .write_sample(value)
-            .map_err(|error| error.to_string())?;
-    }
-    writer.finalize().map_err(|error| error.to_string())?;
+    file.write_all(&wav).map_err(|error| error.to_string())?;
+    file.sync_all().map_err(|error| error.to_string())?;
     Ok(path)
 }
 

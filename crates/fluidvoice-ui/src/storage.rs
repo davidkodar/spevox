@@ -1,6 +1,6 @@
 use super::{
     HISTORY_IO_LOCK, OpenOptions, OpenOptionsExt, PathBuf, PermissionsExt, Pin, QString, Write,
-    display_ratio, ffi, fs, history_field, history_value, pcm_i16,
+    display_ratio, ffi, fs, history_field, history_value,
 };
 
 pub(super) fn data_directory() -> PathBuf {
@@ -122,20 +122,16 @@ pub(super) fn save_audio_history(
         .duration_since(UNIX_EPOCH)
         .map_or(0, |duration| duration.as_millis());
     let path = directory.join(format!("dictation-{timestamp}.wav"));
-    let spec = hound::WavSpec {
-        channels: 1,
-        sample_rate: audio.sample_rate(),
-        bits_per_sample: 16,
-        sample_format: hound::SampleFormat::Int,
-    };
-    let mut writer = hound::WavWriter::create(&path, spec).map_err(|error| error.to_string())?;
-    for sample in audio.samples() {
-        let value = pcm_i16(*sample);
-        writer
-            .write_sample(value)
-            .map_err(|error| error.to_string())?;
-    }
-    writer.finalize().map_err(|error| error.to_string())?;
+    let wav = fluidvoice_audio::encode_pcm16_wav(audio).map_err(|error| error.to_string())?;
+    let mut output = OpenOptions::new()
+        .create(true)
+        .truncate(true)
+        .write(true)
+        .mode(0o600)
+        .open(&path)
+        .map_err(|error| error.to_string())?;
+    output.write_all(&wav).map_err(|error| error.to_string())?;
+    output.sync_all().map_err(|error| error.to_string())?;
     prune_audio_history(budget_bytes)?;
     Ok(path)
 }

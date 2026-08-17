@@ -3813,13 +3813,6 @@ fn valid_ollama_model_name(model: &str) -> bool {
             .all(|character| character.is_ascii_alphanumeric() || "._-/:".contains(character))
 }
 
-fn escape_setting(value: &str) -> String {
-    value
-        .replace('\\', "\\\\")
-        .replace('\n', "\\n")
-        .replace('\r', "\\r")
-}
-
 fn unescape_setting(value: &str) -> String {
     let mut result = String::with_capacity(value.len());
     let mut escaped = false;
@@ -3910,7 +3903,7 @@ pub(crate) use speech_runtime::progress_ratio;
 use speech_runtime::{
     asr_gain, compute_backend_summary, display_ratio, dump_asr_audio, effective_parakeet_backend,
     install_native_runtime, language_display_name, meter_level, native_language_for_model,
-    native_model_for_engine, parakeet_runtime_available, pcm_i16, peak_db, prepare_native_model,
+    native_model_for_engine, parakeet_runtime_available, peak_db, prepare_native_model,
     selected_language_code, selected_model_path, selected_shortcut_trigger, shortcut_triggers,
     suspicious_single_word, valid_index,
 };
