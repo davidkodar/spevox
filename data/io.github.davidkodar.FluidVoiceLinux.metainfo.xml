@@ -16,6 +16,9 @@
   <categories><category>Utility</category><category>Accessibility</category></categories>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="0.5.0" date="2026-08-17">
+      <description><p>Adds conservative language-aware AI cleanup, deterministic preprocessing, model quality and privacy guidance, cleanup policy and language metadata in History exports, real controller module boundaries, responsive background I/O, consolidated runtime and delivery policies, hardened private storage and local-provider networking, expanded regression coverage, and complete release validation.</p></description>
+    </release>
     <release version="0.4.0" date="2026-08-16">
       <description><p>Adds privacy-safe audio history, configurable overlays, complete Write Mode, stronger Wayland delivery, automatic application profiles, advanced dictionary workflows, richer statistics, segmented meeting transcription, a secure loopback API, signed release archives, Arch packaging, a developer-preview Flatpak manifest, and an experimental local speech-server bridge.</p></description>
     </release>

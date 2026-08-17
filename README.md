@@ -6,7 +6,7 @@ Native, local-first voice dictation for KDE Plasma on Wayland.
 > This is an unofficial Linux port inspired by
 > [FluidVoice for macOS](https://github.com/altic-dev/FluidVoice). It is not
 > sponsored or endorsed by Altic or the upstream maintainers. Development is
-> version 0.4.0 remains a private preview and is not yet
+> version 0.5.0 remains a private preview and is not yet
 > packaged for general distribution.
 
 FluidVoice Linux combines a Rust 2024 core, Qt Quick/CXX-Qt interface,
@@ -36,6 +36,9 @@ configures.
 - Optional post-transcription cleanup through standard cloud providers, Ollama,
   LM Studio, or a custom OpenAI-compatible endpoint, with local model discovery
   and raw-text fallback.
+- Conservative language-aware cleanup, deterministic spoken formatting,
+  model-quality guidance, and observable raw/final results with provider,
+  latency, language, policy, and fallback metadata.
 - Persistent application/workflow profiles with profile-specific cleanup prompts.
 - Upstream-style local statistics with configurable typing speed, weekend-aware
   streaks, 7/30-day activity, milestones, insights, records, and AI edit impact.
@@ -117,7 +120,7 @@ the settings window leaves FluidVoice running in the system tray.
 This table is intentionally conservative. “Partial” means the Linux feature is
 usable but does not yet match the depth of the current macOS implementation.
 
-| Capability | Linux 0.4.0 | Current macOS FluidVoice | Notes |
+| Capability | Linux 0.5.0 | Current macOS FluidVoice | Notes |
 | --- | --- | --- | --- |
 | Global hold-to-dictate | Available | Available | Linux uses the XDG Global Shortcuts portal. |
 | Direct typing into applications | Partial | Available | Linux uses Wayland portal/clipboard delivery; application support can vary. |
@@ -143,7 +146,7 @@ usable but does not yet match the depth of the current macOS implementation.
 | Automatic updates / beta channel | Partial | Available | The app checks GitHub releases but does not yet install updates unattended or provide a separate beta feed; release checks remain unavailable while the repository is private. |
 
 The macOS feature set changes quickly. This matrix reflects the upstream source
-and README reviewed during 0.4.0 development; it is not a promise of identical
+and README reviewed during 0.5.0 development; it is not a promise of identical
 platform behavior.
 
 ## Models, languages, and storage
@@ -160,7 +163,7 @@ minutes, or responses above 1 MiB. Live preview is unavailable because the
 external process receives audio only after recording stops. This keeps native
 ASR runtimes independently updateable; [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx)
 is a promising Linux/Rust route with offline, streaming, Parakeet/NeMo-class,
-and diarization support, but 0.4.0 does not bundle its rapidly evolving native
+and diarization support, but 0.5.0 does not bundle its rapidly evolving native
 runtime or model catalog.
 
 **Native NVIDIA speech engines (beta)** are managed by the application without
@@ -364,20 +367,20 @@ release packaging are operational. Before a general public release, priorities
 are guided local-model setup, accessibility review, signed distribution-native
 packages, and wider testing across Plasma distributions and GPU vendors.
 
-### 0.5.0 milestone
+### Completed in 0.5.0
 
 - **Structural refactoring and hardening:** the ordered
   [post-0.4 refactoring milestone](docs/REFACTORING_MILESTONE.md) is complete.
 
-- **Multilingual intelligent dictation cleanup:** expand the current compact AI
+- **Multilingual intelligent dictation cleanup:** expanded the compact AI
   prompt into a constrained, upstream-inspired cleanup pipeline covering
   punctuation and question detection, capitalization, minimal unambiguous
   grammatical repairs, filler and false-start removal, self-corrections,
-  spoken formatting, and number normalization. The work will include
+  spoken formatting, and number normalization. The implementation includes
   deterministic formatting where an LLM is unnecessary, language-aware prompt
   guidance, model recommendations, and regression fixtures that compare raw
   dictation with expected output across English, Swedish, and additional
-  languages. This targets reliable behavior with local and cloud providers; it
+  languages. It targets reliable behavior with local and cloud providers; it
   does not claim compatibility with or reproduction of the privately
   maintained Fluid Intelligence model.
 

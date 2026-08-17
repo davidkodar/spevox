@@ -3,7 +3,7 @@
 All notable changes to FluidVoice Linux are documented here. The project uses
 [Semantic Versioning](https://semver.org/) while it remains in private preview.
 
-## 0.5.0 - Unreleased
+## 0.5.0 - 2026-08-17
 
 - Began the 0.5 intelligent-cleanup milestone with one conservative,
   language-aware editing contract for local and cloud providers. It explicitly
@@ -12,6 +12,9 @@ All notable changes to FluidVoice Linux are documented here. The project uses
 - Added bounded deterministic preprocessing before optional AI, model-quality
   and privacy guidance, and backward-compatible cleanup-mode/language metadata
   in History and JSON/CSV exports.
+- Completed the five-phase structural, responsiveness, privacy, metadata, and
+  regression-coverage milestone; the release gate is Clippy-clean, RustSec
+  clean, and validates QML, AppStream, installation, and release packaging.
 
 ## 0.4.0 - 2026-08-16
 
