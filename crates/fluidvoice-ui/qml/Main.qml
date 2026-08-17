@@ -1015,6 +1015,34 @@ ApplicationWindow {
                                 spacing: 10
                                 Text { text: controller.speechEngines[controller.selectedSpeechEngine]; color: root.primaryText; font.pixelSize: 15; font.weight: Font.DemiBold }
                                 Text { Layout.fillWidth: true; text: controller.nativeModelDetail; color: root.tertiaryText; font.pixelSize: 11; wrapMode: Text.Wrap }
+                                Rectangle {
+                                    visible: controller.selectedSpeechEngine === 2
+                                    Layout.preferredWidth: supportNotice.implicitWidth + 20
+                                    Layout.preferredHeight: 28
+                                    radius: 14
+                                    color: root.selectionSurface
+                                    border.color: root.accent
+                                    Text {
+                                        id: supportNotice
+                                        anchors.centerIn: parent
+                                        text: qsTr("Language support varies")
+                                        color: root.accent
+                                        font.pixelSize: 11
+                                        font.weight: Font.Medium
+                                    }
+                                    HoverHandler { id: supportNoticeHover }
+                                    ToolTip.visible: supportNoticeHover.hovered
+                                    ToolTip.delay: 350
+                                    ToolTip.text: qsTr("Recognition quality varies by language. Languages outside Nemotron's primary transcription tier may be less accurate. For maximum multilingual accuracy, try Whisper Medium or Large Turbo.")
+                                }
+                                Text {
+                                    visible: controller.selectedSpeechEngine === 2
+                                    Layout.fillWidth: true
+                                    text: qsTr("Recognition quality varies by language. For maximum multilingual accuracy, try Whisper Medium or Large Turbo.")
+                                    color: root.secondaryText
+                                    font.pixelSize: 11
+                                    wrapMode: Text.Wrap
+                                }
                                 Text { Layout.fillWidth: true; text: controller.parakeetStatus; color: root.secondaryText; font.pixelSize: 12; wrapMode: Text.Wrap }
                                 RowLayout {
                                     visible: controller.parakeetBusy
