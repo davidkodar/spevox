@@ -29,16 +29,18 @@ pub struct Model {
     pub bytes: u64,
     pub sha256: &'static str,
     pub url: &'static str,
+    pub realtime: bool,
 }
 
 pub const PARAKEET_V3: Model = Model {
     id: "parakeet-v3",
     name: "Parakeet TDT v3",
-    detail: "25 European languages · self-punctuating · 681 MiB",
+    detail: "25 European languages · full-utterance/offline · 681 MiB",
     file: "parakeet-tdt-0.6b-v3.q8_0.gguf",
     bytes: 713_975_456,
     sha256: "e3880d0aaaaf2c308ea2c35016b2b895c423eb3fda924c1b463d1c19b7f4d32e",
     url: "https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3/resolve/main/parakeet-tdt-0.6b-v3.q8_0.gguf",
+    realtime: false,
 };
 pub const NEMOTRON_35: Model = Model {
     id: "nemotron-35",
@@ -48,6 +50,7 @@ pub const NEMOTRON_35: Model = Model {
     bytes: 741_548_352,
     sha256: "a5c435f294eea8f88ce68dd27b8c3bfea7f777cb2fbba04fcd30eaa555f429ae",
     url: "https://huggingface.co/nvidia/nemotron-3.5-asr-streaming-0.6b/resolve/main/nemotron-3.5-asr-streaming-0.6b.q8_0.gguf",
+    realtime: true,
 };
 pub const NEMOTRON_EN: Model = Model {
     id: "nemotron-en",
@@ -57,6 +60,7 @@ pub const NEMOTRON_EN: Model = Model {
     bytes: 699_872_960,
     sha256: "d9a01898d2a611c8764e23a1c2f45e70bbd5a425dc4de93692ac951dd603812d",
     url: "https://huggingface.co/nvidia/nemotron-speech-streaming-en-0.6b/resolve/main/nemotron-speech-streaming-en-0.6b.q8_0.gguf",
+    realtime: true,
 };
 pub const PARAKEET_CTC: Model = Model {
     id: "parakeet-ctc",
@@ -66,6 +70,7 @@ pub const PARAKEET_CTC: Model = Model {
     bytes: 1_178_100_960,
     sha256: "6584fc0fdacf1c220401ea4c3a1d5b44454b655c141cb8672178072c203d92b8",
     url: "https://huggingface.co/nvidia/parakeet-ctc-1.1b/resolve/main/parakeet-ctc-1.1b.q8_0.gguf",
+    realtime: true,
 };
 
 #[cfg(test)]
@@ -582,6 +587,10 @@ mod tests {
             assert!(model.bytes > 600_000_000);
             assert!(model.url.starts_with("https://huggingface.co/nvidia/"));
         }
+        assert!(!PARAKEET_V3.realtime);
+        assert!(NEMOTRON_35.realtime);
+        assert!(NEMOTRON_EN.realtime);
+        assert!(PARAKEET_CTC.realtime);
     }
 
     #[test]

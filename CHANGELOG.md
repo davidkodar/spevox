@@ -12,6 +12,9 @@ All notable changes to FluidVoice Linux are documented here. The project uses
 - Prevented realtime preview from delaying final transcription by eliminating
   per-PipeWire-chunk read waits and cancelling the preview session on release
   instead of redundantly running both WebSocket and HTTP final inference.
+- Made realtime preview capability model-specific: Nemotron and buffered CTC
+  use native partials, while full-utterance-only Parakeet TDT v3 keeps the
+  established Whisper preview and no longer opens a rejected realtime session.
 - Clarified in the native-engine interface that Vulkan acceleration works
   across AMD, Intel, and NVIDIA GPUs without requiring CUDA or NVIDIA hardware.
 - Added a verified native speech catalog with one-click installation for

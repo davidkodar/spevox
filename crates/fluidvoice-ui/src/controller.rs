@@ -3101,41 +3101,46 @@ impl ffi::FluidVoiceController {
             let stream_language = native_model
                 .map(|model| native_language_for_model(model, &language))
                 .unwrap_or_default();
-            let native_preview_worker = native_model.map(|native_model| {
-                std::thread::spawn(move || {
-                    let ready = stream_supervisor
-                        .lock()
-                        .map_err(|_| "Native speech supervisor lock was poisoned".to_owned())
-                        .and_then(|mut supervisor| {
-                            supervisor.ensure_ready(parakeet_backend, native_model)
-                        });
-                    if ready.is_err() {
-                        return;
-                    }
-                    parakeet::stream_transcript(
-                        &stream_receiver,
-                        stream_language,
-                        gain,
-                        move |text| {
-                            stream_thread
-                                .queue(move |mut controller| {
-                                    if *controller.as_ref().recording() {
-                                        controller
-                                            .as_mut()
-                                            .set_live_transcript(QString::from(&text));
-                                    }
+            let native_preview_worker =
+                native_model
+                    .filter(|model| model.realtime)
+                    .map(|native_model| {
+                        std::thread::spawn(move || {
+                            let ready = stream_supervisor
+                                .lock()
+                                .map_err(|_| {
+                                    "Native speech supervisor lock was poisoned".to_owned()
                                 })
-                                .ok();
-                        },
-                    )
-                    .ok();
-                })
-            });
+                                .and_then(|mut supervisor| {
+                                    supervisor.ensure_ready(parakeet_backend, native_model)
+                                });
+                            if ready.is_err() {
+                                return;
+                            }
+                            parakeet::stream_transcript(
+                                &stream_receiver,
+                                stream_language,
+                                gain,
+                                move |text| {
+                                    stream_thread
+                                        .queue(move |mut controller| {
+                                            if *controller.as_ref().recording() {
+                                                controller
+                                                    .as_mut()
+                                                    .set_live_transcript(QString::from(&text));
+                                            }
+                                        })
+                                        .ok();
+                                },
+                            )
+                            .ok();
+                        })
+                    });
             let preview_worker = std::thread::spawn(move || {
                 // Native engines receive lossless PCM chunks through NeMo's
                 // realtime WebSocket. Whisper keeps its bounded periodic
                 // snapshots; a custom server remains final-result-only.
-                if speech_engine != 0 {
+                if speech_engine == 5 || native_model.is_some_and(|model| model.realtime) {
                     return;
                 }
                 let Some(model) = preview_model else { return };
@@ -3201,7 +3206,7 @@ impl ffi::FluidVoiceController {
                     preview_sender.try_send(audio).ok();
                 },
                 move |audio| {
-                    if native_model.is_some() {
+                    if native_model.is_some_and(|model| model.realtime) {
                         stream_sender.send(audio).ok();
                     }
                 },
