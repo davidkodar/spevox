@@ -9,3 +9,6 @@ target/
 *.profraw
 *.profdata
 AUDIT_REPORT*.md
+
+# Editor-local QML language server config (contains absolute build paths)
+.qmlls.ini
