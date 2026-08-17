@@ -480,7 +480,8 @@ impl Supervisor {
         let stdout =
             fs::File::create(log_dir.join("nemo-speech.log")).map_err(|error| error.to_string())?;
         let stderr = stdout.try_clone().map_err(|error| error.to_string())?;
-        let child = Command::new(&executable)
+        let mut command = Command::new(&executable);
+        command
             .args(["serve", "--asr-model"])
             .arg(model_path(model))
             .args([
@@ -493,7 +494,20 @@ impl Supervisor {
                 "16",
                 "--threads",
                 "2",
-            ])
+            ]);
+        // FluidVoice uses Nemotron for completed dictation rather than a
+        // latency-critical voice-agent stream. NVIDIA's largest trained
+        // right-context geometry materially improves broad-coverage languages
+        // such as Swedish, so prefer accuracy over the runtime's 160 ms default.
+        if model == NEMOTRON_35 {
+            command.args([
+                "--asr.streaming.chunk_size",
+                "1.12",
+                "--asr.streaming.rnnt_right_context",
+                "13",
+            ]);
+        }
+        let child = command
             .stdin(Stdio::null())
             .stdout(Stdio::from(stdout))
             .stderr(Stdio::from(stderr))
