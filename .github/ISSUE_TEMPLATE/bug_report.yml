@@ -1,11 +1,11 @@
 name: Bug report
-description: Report reproducible incorrect behavior in FluidVoice Linux
+description: Report reproducible incorrect behavior in Spevox
 title: "[Bug]: "
 labels: [bug]
 body:
   - type: markdown
     attributes:
-      value: Thanks for helping improve FluidVoice Linux. Do not include recordings, transcripts, API keys, or other private data.
+      value: Thanks for helping improve Spevox. Do not include recordings, transcripts, API keys, or other private data.
   - type: checkboxes
     attributes:
       label: Before submitting
@@ -16,9 +16,9 @@ body:
           required: true
   - type: input
     attributes:
-      label: FluidVoice version
+      label: Spevox version
       description: Release version or commit hash.
-      placeholder: 0.5.0 or 44a2b74
+      placeholder: 0.6.0 or a commit hash
     validations:
       required: true
   - type: input
@@ -58,4 +58,3 @@ body:
         - Yes
     validations:
       required: true
-

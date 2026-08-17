@@ -31,12 +31,12 @@ jobs:
       - name: Release build
         env:
           QMAKE: /usr/bin/qmake6
-        run: cargo build --release --locked -p fluidvoice-ui
+        run: cargo build --release --locked -p spevox-ui
       - name: Validate AppStream metadata
-        run: sudo apt-get install -y appstream && appstreamcli validate --no-net data/io.github.davidkodar.FluidVoiceLinux.metainfo.xml
+        run: sudo apt-get install -y appstream && appstreamcli validate --no-net data/io.github.davidkodar.Spevox.metainfo.xml
       - name: Validate packaging scripts and manifests
         run: |
           bash -n packaging/*.sh
-          python3 -c 'import yaml; yaml.safe_load(open("packaging/flatpak/io.github.davidkodar.FluidVoiceLinux.yml"))'
+          python3 -c 'import yaml; yaml.safe_load(open("packaging/flatpak/io.github.davidkodar.Spevox.yml"))'
         env:
           PYTHONWARNINGS: error

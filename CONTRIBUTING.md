@@ -1,6 +1,6 @@
 # Contributing
 
-FluidVoice Linux uses a lightweight release-branch workflow. Keep changes small,
+Spevox uses a lightweight release-branch workflow. Keep changes small,
 reviewable, and based on the branch appropriate to their purpose.
 
 ## Branches

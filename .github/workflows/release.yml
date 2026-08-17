@@ -48,10 +48,10 @@ jobs:
           RELEASE_TAG: ${{ inputs.tag }}
         run: |
           version="${RELEASE_TAG#v}"
-          git archive --format=tar.gz --prefix="fluidvoice-linux-$version/" -o "target/package/fluidvoice-linux-$version.tar.gz" HEAD
-          source_checksum="$(sha256sum "target/package/fluidvoice-linux-$version.tar.gz" | cut -d ' ' -f1)"
+          git archive --format=tar.gz --prefix="spevox-$version/" -o "target/package/spevox-$version.tar.gz" HEAD
+          source_checksum="$(sha256sum "target/package/spevox-$version.tar.gz" | cut -d ' ' -f1)"
           sed -e "s/@VERSION@/$version/g" -e "s/@SOURCE_SHA256@/$source_checksum/g" packaging/arch/PKGBUILD.in > target/package/PKGBUILD
-          (cd target/package && sha256sum "fluidvoice-linux-$version.tar.gz" > "fluidvoice-linux-$version.tar.gz.sha256")
+          (cd target/package && sha256sum "spevox-$version.tar.gz" > "spevox-$version.tar.gz.sha256")
       - uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3
       - name: Sign release artifacts with GitHub OIDC
         shell: bash

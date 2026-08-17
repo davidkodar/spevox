@@ -1,4 +1,4 @@
-# FluidVoice Linux release checklist
+# Spevox release checklist
 
 ## Automated gate
 
@@ -13,7 +13,7 @@
 
 ## Fresh-user acceptance
 
-- Install into a disposable user or VM with no existing FluidVoice config or
+- Install into a disposable user or VM with no existing Spevox config or
   data directory. Confirm onboarding appears exactly once and can be reopened.
 - Verify the application icon, task manager entry, tray icon, single-instance
   activation, close-to-tray behavior, and explicit Quit action.

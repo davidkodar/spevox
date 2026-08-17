@@ -14,7 +14,7 @@ Keeping the owner alive is required because Linux Wayland and X11 clipboards are
 
 The diagnostic copied:
 
-> FluidVoice Linux clipboard roundtrip 2026-08-15
+> Spevox clipboard roundtrip 2026-08-15
 
 The application read-back matched exactly. While the application still owned the selection, KDE Klipper independently returned the same text through `org.kde.klipper.klipper.getClipboardContents`.
 

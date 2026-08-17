@@ -22,11 +22,11 @@ Signal levels were near silence during validation (peak 0.0002 or lower), so thi
 
 ## Chunk-offset correction
 
-Follow-up testing against Reaper revealed that Input 1 was known to be active while FluidVoice reported near-silence. The capture callback honored `spa_chunk.size` but initially ignored `spa_chunk.offset`, causing it to decode the wrong part of mapped PipeWire buffers. After correcting the slice to use both fields, Input 1 produced a peak of 0.0062 during a five-second capture. A regression test now covers non-zero PipeWire chunk offsets.
+Follow-up testing against Reaper revealed that Input 1 was known to be active while Spevox reported near-silence. The capture callback honored `spa_chunk.size` but initially ignored `spa_chunk.offset`, causing it to decode the wrong part of mapped PipeWire buffers. After correcting the slice to use both fields, Input 1 produced a peak of 0.0062 during a five-second capture. A regression test now covers non-zero PipeWire chunk offsets.
 
 ## Commands
 
 ```bash
-cargo run -p fluidvoice-app -- --diagnose-audio 5
-cargo run -p fluidvoice-app -- --diagnose-audio 5 alsa_input.usb-Focusrite_Scarlett_Solo_USB_XXXXXXXXXXXXXX-00.HiFi__Mic1__source
+cargo run -p spevox-cli -- --diagnose-audio 5
+cargo run -p spevox-cli -- --diagnose-audio 5 alsa_input.usb-Focusrite_Scarlett_Solo_USB_XXXXXXXXXXXXXX-00.HiFi__Mic1__source
 ```

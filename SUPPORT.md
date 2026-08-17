@@ -1,6 +1,6 @@
 # Support
 
-FluidVoice Linux is an unofficial Linux port in public prerelease preview. Support is
+Spevox is an unofficial Linux port in public prerelease preview. Support is
 best-effort and currently targets KDE Plasma on Wayland.
 
 ## Where to ask
@@ -12,7 +12,7 @@ best-effort and currently targets KDE Plasma on Wayland.
   services, and proprietary components.
 
 Before reporting a bug, test the newest prerelease, review the README setup and
-diagnostic guidance, and search existing issues. Include the FluidVoice version,
+diagnostic guidance, and search existing issues. Include the Spevox version,
 Linux distribution, Plasma and KWin versions, selected speech engine, compute
 backend, and sanitized logs needed to reproduce the problem.
 
@@ -26,4 +26,4 @@ The supported installation path is the package attached to the newest GitHub
 prerelease or a local build using its matching `PKGBUILD`. Flatpak remains a
 developer preview. Hardware-specific speech runtimes, third-party AI services,
 and external model servers may require their own vendor support when the failure
-cannot be reproduced in FluidVoice itself.
+cannot be reproduced in Spevox itself.

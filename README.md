@@ -1,21 +1,23 @@
-# FluidVoice Linux
+# Spevox
+
+![Spevox logo](data/branding/spevox-logo.png)
 
 Native, local-first voice dictation for KDE Plasma on Wayland.
 
 > [!IMPORTANT]
-> This is an unofficial Linux port inspired by
+> Spevox is an independent Linux application inspired by
 > [FluidVoice for macOS](https://github.com/altic-dev/FluidVoice). It is not
-> sponsored or endorsed by Altic or the upstream maintainers. FluidVoice Linux
-> is an independent Linux implementation by David Bolin, informed by the
-> upstream GPLv3 source and user experience. It remains a prerelease preview.
+> sponsored or endorsed by Altic or the upstream maintainers. Spevox is
+> authored by David Bolin and informed by the upstream GPLv3 source and user
+> experience. It remains a prerelease preview.
 
 Credit belongs to Altic and the upstream FluidVoice contributors for the
-original macOS project and visual identity. This port reuses the upstream
-application and menu-bar artwork under GPLv3 from the exact revision recorded
-in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). See
+original macOS project and product concept. Spevox uses its own name and
+original artwork; historical artwork provenance from earlier private preview
+builds remains recorded in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). See
 [CREDITS.md](CREDITS.md) for authorship and relationship details.
 
-FluidVoice Linux combines a Rust 2024 core, Qt Quick/CXX-Qt interface,
+Spevox combines a Rust 2024 core, Qt Quick/CXX-Qt interface,
 PipeWire capture, XDG desktop portals, and local whisper.cpp inference. The
 normal dictation path does not send audio or transcripts to a cloud service.
 Optional AI cleanup can use a local server or a provider the user explicitly
@@ -40,7 +42,7 @@ configures.
 - Persistent custom spellings and optional spoken formatting commands.
 - Local MP3, FLAC, Ogg/Opus, M4A/AAC, WebM, MP4, and WAV transcription through
   FFmpeg, plus transcript history and usage statistics.
-- KDE system theme/accent defaults plus explicit FluidVoice dark, light, and accent options.
+- KDE system theme/accent defaults plus explicit Spevox dark, light, and accent options.
 - Optional post-transcription cleanup through standard cloud providers, Ollama,
   LM Studio, or a custom OpenAI-compatible endpoint, with local model discovery
   and raw-text fallback.
@@ -84,23 +86,23 @@ Run the installer as your normal user. It builds with your Rust toolchain and
 uses `sudo` only when copying files into `/usr/local`.
 
 ```bash
-git clone https://github.com/davidkodar/fluidvoice-linux.git
-cd fluidvoice-linux
+git clone https://github.com/davidkodar/spevox.git
+cd spevox
 ./packaging/install.sh
-fluidvoice-ui
+spevox
 ```
 
 For a development run without installation:
 
 ```bash
-QMAKE=/usr/bin/qmake6 cargo run -p fluidvoice-ui
+QMAKE=/usr/bin/qmake6 cargo run -p spevox-ui
 ```
 
 Release tags publish a checksummed binary archive and an Arch `PKGBUILD`.
 Automated release runs also publish Sigstore keyless signatures/certificates.
 Verify a signed
 download with `cosign verify-blob --certificate-identity-regexp
-'github.com/davidkodar/fluidvoice-linux' --certificate-oidc-issuer
+'github.com/davidkodar/spevox' --certificate-oidc-issuer
 'https://token.actions.githubusercontent.com' --certificate FILE.pem
 --signature FILE.sig FILE`. The manifest under `packaging/flatpak` is a
 developer preview and is not published as a release artifact: host KWin
@@ -129,14 +131,14 @@ cannot launch.
    to transcribe and paste.
 
 Plasma may ask you to approve or choose the shortcut the first time. Closing
-the settings window leaves FluidVoice running in the system tray.
+the settings window leaves Spevox running in the system tray.
 
 ## Linux and macOS feature comparison
 
 This table is intentionally conservative. “Partial” means the Linux feature is
 usable but does not yet match the depth of the current macOS implementation.
 
-| Capability | Linux 0.5.0 | Current macOS FluidVoice | Notes |
+| Capability | Spevox 0.6.0 | Current macOS FluidVoice | Notes |
 | --- | --- | --- | --- |
 | Global hold-to-dictate | Available | Available | Linux uses the XDG Global Shortcuts portal. |
 | Direct typing into applications | Partial | Available | Linux uses Wayland portal/clipboard delivery; application support can vary. |
@@ -157,7 +159,7 @@ usable but does not yet match the depth of the current macOS implementation.
 | Usage statistics | Available | Available | Linux provides today/all-time totals, estimated time saved, configurable typing speed, weekend-aware streaks, 7/30-day charts, milestones, insights, records, and AI enhancement impact/provider activity. |
 | Per-application configuration | Available | Available | Linux provides persistent named prompt profiles and opt-in automatic matching through a packaged KWin script. Only application class and window title cross the local session bus; the reporting KWin script is disabled by default. |
 | Audio recording history | Available | Available | Optional and off by default; Linux retains local mono WAV recordings within a configurable budget, supports playback and deletion, and exports audio plus metadata as ZIP. |
-| Adaptive themes and accents | Available | Available | System/KDE defaults plus explicit FluidVoice themes and colors. |
+| Adaptive themes and accents | Available | Available | System/KDE defaults plus explicit Spevox themes and colors. |
 | Tray/menu-bar integration | Available | Available | Plasma tray is the Linux equivalent of the macOS menu bar item. |
 | Automatic updates / beta channel | Partial | Available | The app checks public GitHub releases but does not yet install updates unattended or provide a separate beta feed. Hosted release automation remains manually triggered while CI capacity is limited. |
 
@@ -173,7 +175,7 @@ downloads come from the official
 
 Built-in Whisper is the supported default. **Local speech server
 (experimental)** accepts an OpenAI-compatible `/v1/audio/transcriptions`
-service at HTTP loopback only. FluidVoice encodes the captured mono signal as
+service at HTTP loopback only. Spevox encodes the captured mono signal as
 PCM WAV and will reject remote hosts, HTTPS URLs, recordings longer than two
 minutes, or responses above 1 MiB. Live preview is unavailable because the
 external process receives audio only after recording stops. This keeps native
@@ -193,7 +195,7 @@ codes such as `sv-SE`; the two English-only engines deliberately force English.
 GPU acceleration uses cross-vendor Vulkan on supported AMD, Intel, and NVIDIA
 drivers, requires no CUDA installation, and retains a CPU fallback.
 The helper listens only on `127.0.0.1`, starts on first use, and is supervised
-by FluidVoice. If setup, startup, or transcription fails, the captured audio is
+by Spevox. If setup, startup, or transcription fails, the captured audio is
 sent through the selected local Whisper model instead of being lost. Installing
 the runtime from source requires Git, CMake 3.26+, Ninja, and a C++17 compiler.
 Its pinned private SentencePiece dependency is built automatically. Automatic
@@ -210,7 +212,7 @@ With the currently pinned runtime, native realtime is enabled on CPU only: its
 Vulkan streaming path can crash on real Nemotron audio in upstream GGML code.
 Vulkan remains enabled for fast full-utterance final inference, while the live
 overlay safely uses Whisper. Any native-engine failure is reported explicitly
-before FluidVoice runs the slower Whisper recovery path.
+before Spevox runs the slower Whisper recovery path.
 
 **Speaker diarization (experimental)** is an optional file-transcription mode,
 not part of the normal dictation hot path. One-click setup reuses the pinned
@@ -219,8 +221,8 @@ conversion of NVIDIA's Sortformer 4-speaker v2 checkpoint. It runs locally on
 CPU or cross-vendor Vulkan, assigns each timestamped Whisper segment to the
 speaker with the greatest time overlap, and carries those labels into History
 and every meeting export format. If the model, runtime, or inference fails,
-FluidVoice retains the complete Whisper transcript without speaker labels.
-The consumable GGUF is generated by the documented FluidVoice release process
+Spevox retains the complete Whisper transcript without speaker labels.
+The consumable GGUF is generated by the documented Spevox release process
 rather than published by NVIDIA and is labelled accordingly in the app.
 Sortformer supports at most four
 speakers and was trained primarily on English; noisy, overlapping, non-English,
@@ -231,27 +233,33 @@ Maintainers can reproduce the downloadable Q8 artifact with
 checkpoint and NeMo-Speech.cpp converter revisions, uses a temporary CPU-only
 Python environment, verifies the source and output SHA-256 values, and leaves
 only `target/package/sortformer-v2-q8_0.gguf`. Python and PyTorch are build-time
-conversion tools only; neither is installed or invoked by FluidVoice.
+conversion tools only; neither is installed or invoked by Spevox.
 
 User data follows XDG conventions:
 
-- Models: `$XDG_DATA_HOME/fluidvoice/models` or `~/.local/share/fluidvoice/models`.
-- Dictionary: `$XDG_DATA_HOME/fluidvoice/dictionary.txt`.
-- History: `$XDG_DATA_HOME/fluidvoice/history.tsv` (legacy entries are migrated
+- Models: `$XDG_DATA_HOME/spevox/models` or `~/.local/share/spevox/models`.
+- Dictionary: `$XDG_DATA_HOME/spevox/dictionary.txt`.
+- History: `$XDG_DATA_HOME/spevox/history.tsv` (legacy entries are migrated
   compatibly as new enriched entries are appended).
-- Settings: `$XDG_CONFIG_HOME/fluidvoice/settings.conf` or `~/.config/fluidvoice/settings.conf`.
-- Application profiles: `$XDG_DATA_HOME/fluidvoice/ai-profiles.json`.
-- Command history: `$XDG_DATA_HOME/fluidvoice/command-history.tsv`.
-- Local API token: `$XDG_CONFIG_HOME/fluidvoice/local-api.token` (mode `0600`).
+- Settings: `$XDG_CONFIG_HOME/spevox/settings.conf` or `~/.config/spevox/settings.conf`.
+- Application profiles: `$XDG_DATA_HOME/spevox/ai-profiles.json`.
+- Command history: `$XDG_DATA_HOME/spevox/command-history.tsv`.
+- Local API token: `$XDG_CONFIG_HOME/spevox/local-api.token` (mode `0600`).
+
+When upgrading from a 0.5.x private preview, Spevox continues using the legacy
+`fluidvoice` XDG directory if no corresponding `spevox` directory exists. This
+keeps settings, downloaded models, history, dictionaries, retained audio, API
+tokens, and provider secrets available without copying or deleting user data.
+New installations use the `spevox` paths above.
 
 Audio is processed locally and is not retained unless optional Audio History is
 explicitly enabled. Retained recordings use
-`$XDG_DATA_HOME/fluidvoice/audio-history`, are capped by the selected budget,
+`$XDG_DATA_HOME/spevox/audio-history`, are capped by the selected budget,
 and are removed when History is cleared. History and dictionary data can be
 cleared from the interface or removed from the paths above.
 
 AI enhancement is disabled by default. Ollama and LM Studio can keep the
-cleanup step local, and FluidVoice can query either server for installed models.
+cleanup step local, and Spevox can query either server for installed models.
 When Ollama is selected, the AI Enhancement page distinguishes a missing
 installation from a stopped server or an empty model library. It links to the
 official Linux installer, can start `ollama serve`, and runs validated
@@ -264,27 +272,27 @@ must be explicitly switched off before a cloud provider can be selected. When
 a cloud provider is enabled, the cleanup prompt and
 raw transcript—not microphone audio—are sent to that provider. API keys are
 stored through the desktop Secret Service using `secret-tool`; they are never
-written to `settings.conf`. If enhancement is unavailable or fails, FluidVoice
+written to `settings.conf`. If enhancement is unavailable or fails, Spevox
 delivers the unenhanced transcript. Provider responses are time-bounded,
 size-limited, and transient failures are retried before fallback.
 
 Automatic application profiles are also disabled by default. The installer
-ships `fluidvoiceprofiles`, a small KWin script, but it is enabled only when the
+ships `spevoxprofiles`, a small KWin script, but it is enabled only when the
 user turns on **Automatic KWin profile selection**. KWin then reports the active
-application class and window title to FluidVoice's session-local D-Bus endpoint.
+application class and window title to Spevox's session-local D-Bus endpoint.
 Profile rules use comma-separated, case-insensitive fragments; blank rules stay
 manual-only. Disabling the option disables the KWin script again.
 
 ## Local automation API
 
 The local API is disabled by default. Enable it under **Settings → Local API**,
-choose a non-privileged port, and restart FluidVoice. It binds exclusively to
+choose a non-privileged port, and restart Spevox. It binds exclusively to
 IPv4 loopback (`127.0.0.1`), rejects browser `Origin` requests, limits request
 headers, applies short I/O timeouts, and never accepts filesystem paths or shell
 commands. Copy or rotate its 256-bit bearer token from the same settings card.
 
 ```bash
-TOKEN="$(cat "${XDG_CONFIG_HOME:-$HOME/.config}/fluidvoice/local-api.token")"
+TOKEN="$(cat "${XDG_CONFIG_HOME:-$HOME/.config}/spevox/local-api.token")"
 curl http://127.0.0.1:43128/v1/health
 curl -H "Authorization: Bearer $TOKEN" http://127.0.0.1:43128/v1/status
 curl -X POST -H "Authorization: Bearer $TOKEN" \
@@ -307,7 +315,7 @@ ggml_vulkan: 0 = NVIDIA GeForce RTX 4080
 whisper_backend_init_gpu: using Vulkan0 backend
 ```
 
-If FluidVoice reports `no GPU found`, verify the system independently:
+If Spevox reports `no GPU found`, verify the system independently:
 
 ```bash
 nvidia-smi              # NVIDIA only
@@ -329,11 +337,11 @@ cargo test --workspace
 Useful diagnostics include:
 
 ```bash
-cargo run -p fluidvoice-app -- --diagnose-shortcut
-cargo run -p fluidvoice-app -- --diagnose-text-delivery
-cargo run -p fluidvoice-app -- --diagnose-audio 3 [PIPEWIRE_NODE]
-cargo run -p fluidvoice-app -- --diagnose-transcription /path/to/model.bin 5 [PIPEWIRE_NODE]
-cargo run -p fluidvoice-app -- --diagnose-workflow /path/to/model.bin 5 [PIPEWIRE_NODE]
+cargo run -p spevox-cli -- --diagnose-shortcut
+cargo run -p spevox-cli -- --diagnose-text-delivery
+cargo run -p spevox-cli -- --diagnose-audio 3 [PIPEWIRE_NODE]
+cargo run -p spevox-cli -- --diagnose-transcription /path/to/model.bin 5 [PIPEWIRE_NODE]
+cargo run -p spevox-cli -- --diagnose-workflow /path/to/model.bin 5 [PIPEWIRE_NODE]
 ```
 
 The Voice Engine page also reports the selected CPU/Vulkan policy and provides
@@ -346,7 +354,7 @@ automated formatting, QML, test, release-build, staged-install, and package
 checks. The manual fresh-user, accessibility, and optional-runtime acceptance
 steps are documented in `docs/RELEASE_CHECKLIST.md`.
 
-The application ID is `io.github.davidkodar.FluidVoiceLinux`. The matching
+The application ID is `io.github.davidkodar.Spevox`. The matching
 desktop entry, icon, AppStream metadata, and GPL license are installed by
 `packaging/install.sh`. Use `packaging/install-dev.sh` when iterating on a debug
 build, or `packaging/uninstall.sh` to remove application files without deleting
@@ -386,7 +394,12 @@ software while guided local-model setup, accessibility review, signed
 distribution-native packages, and testing across more Plasma distributions and
 GPU vendors continue.
 
-### Completed in 0.5.0
+### Completed in 0.6.0
+
+- **Independent Spevox identity:** renamed the Linux application from its
+  former development name, introduced an original icon and wordmark, and
+  migrated desktop, package, executable, and application identifiers while
+  retaining access to existing 0.5.x settings, models, and history.
 
 - **Structural refactoring and hardening:** controller responsibilities now use
   explicit Rust modules, blocking startup and persistence work is bounded or
@@ -405,22 +418,22 @@ GPU vendors continue.
   does not claim compatibility with or reproduction of the privately
   maintained Fluid Intelligence model.
 
-Please use [GitHub Issues](https://github.com/davidkodar/fluidvoice-linux/issues)
+Please use [GitHub Issues](https://github.com/davidkodar/spevox/issues)
 for reproducible bugs and focused feature proposals.
 
 ## Upstream relationship and licensing
 
-This independent Linux implementation is GPLv3 and is based on the
+Spevox is an independent GPLv3 Linux implementation inspired by the
 GPLv3-licensed [FluidVoice](https://github.com/altic-dev/FluidVoice) macOS
-project created by Altic and the upstream contributors. FluidVoice Linux is
-authored and maintained by David Bolin. It reuses upstream application and
-menu-bar icons under GPLv3. See [LICENSE](LICENSE), [CREDITS.md](CREDITS.md), and
+project created by Altic and the upstream contributors. Spevox is authored
+and maintained by David Bolin and uses original branding. See
+[LICENSE](LICENSE), [CREDITS.md](CREDITS.md), and
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for authorship, license, and
 exact asset-provenance details. The generated
 [THIRD_PARTY_LICENSES.html](THIRD_PARTY_LICENSES.html) bundles the license texts
 and crate attribution for the locked Rust dependency graph.
 
 Fluid Intelligence is a separate, privately maintained component and is not
-part of this repository. FluidVoice names and artwork remain associated with
+part of this repository. FluidVoice and its artwork remain associated with
 their respective owners; no trademark license or upstream endorsement is
-claimed, and this Linux port clearly identifies itself as unofficial.
+claimed.

@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.davidkodar.Spevox</id>
+  <name>Spevox</name>
+  <summary>Private, local voice dictation for KDE Plasma</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-only</project_license>
+  <developer id="github.com/davidkodar"><name>David Bolin</name></developer>
+  <url type="homepage">https://github.com/davidkodar/spevox</url>
+  <url type="bugtracker">https://github.com/davidkodar/spevox/issues</url>
+  <description>
+    <p>Spevox provides private local speech recognition, optional local or user-configured AI cleanup, a global hold-to-dictate shortcut, and Wayland-aware text delivery for KDE Plasma.</p>
+  </description>
+  <launchable type="desktop-id">io.github.davidkodar.Spevox.desktop</launchable>
+  <provides><binary>spevox</binary></provides>
+  <categories><category>Utility</category><category>Accessibility</category></categories>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="0.6.0" date="2026-08-17">
+      <description><p>Introduces the independent Spevox name and original branding, migrates desktop and package identifiers, and preserves compatibility with existing preview settings, models, and history.</p></description>
+    </release>
+    <release version="0.5.1" date="2026-08-17">
+      <description><p>Adds public-preview attribution and legal notices, a complete generated Rust dependency-license bundle, locked license and source-origin policy, portable release checksums, build-path-redacted binaries, and stronger release archive validation.</p></description>
+    </release>
+    <release version="0.5.0" date="2026-08-17">
+      <description><p>Adds conservative language-aware AI cleanup, deterministic preprocessing, model quality and privacy guidance, cleanup policy and language metadata in History exports, real controller module boundaries, responsive background I/O, consolidated runtime and delivery policies, hardened private storage and local-provider networking, expanded regression coverage, and complete release validation.</p></description>
+    </release>
+    <release version="0.4.0" date="2026-08-16">
+      <description><p>Adds privacy-safe audio history, configurable overlays, complete Write Mode, stronger Wayland delivery, automatic application profiles, advanced dictionary workflows, richer statistics, segmented meeting transcription, a secure loopback API, signed release archives, Arch packaging, a developer-preview Flatpak manifest, and an experimental local speech-server bridge.</p></description>
+    </release>
+    <release version="0.3.0" date="2026-08-16">
+      <description><p>Adds optional local and cloud AI enhancement, guided Ollama setup and model downloads, local-only privacy controls, streaming cleanup, application profiles, selected-text rewriting, safe Command Mode actions, richer history exports, and broad local audio decoding.</p></description>
+    </release>
+    <release version="0.2.0" date="2026-08-16">
+      <description><p>Adds Vulkan acceleration, KDE-aware appearance settings, upstream-style navigation, model management, and local productivity features.</p></description>
+    </release>
+    <release version="0.1.0" date="2026-08-15">
+      <description><p>Initial development preview with native KDE Wayland dictation, PipeWire capture, local Whisper transcription, and clipboard delivery.</p></description>
+    </release>
+  </releases>
+</component>

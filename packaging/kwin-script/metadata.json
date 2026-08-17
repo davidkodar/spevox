@@ -7,11 +7,11 @@
         "Name": "David Bolin"
       }
     ],
-    "Description": "Opt-in active-application bridge for FluidVoice profiles",
-    "Icon": "io.github.davidkodar.FluidVoiceLinux",
-    "Id": "fluidvoiceprofiles",
+    "Description": "Opt-in active-application bridge for Spevox profiles",
+    "Icon": "io.github.davidkodar.Spevox",
+    "Id": "spevoxprofiles",
     "License": "GPL-3.0-or-later",
-    "Name": "FluidVoice Application Profiles"
+    "Name": "Spevox Application Profiles"
   },
   "X-Plasma-API": "javascript"
 }

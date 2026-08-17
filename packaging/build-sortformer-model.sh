@@ -18,7 +18,7 @@ for tool in git curl uv sha256sum; do
 done
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-build_root="$(mktemp -d -t fluidvoice-sortformer-build.XXXXXX)"
+build_root="$(mktemp -d -t spevox-sortformer-build.XXXXXX)"
 trap 'rm -rf -- "${build_root}"' EXIT
 
 git clone --filter=blob:none --no-checkout https://github.com/NVIDIA/NeMo-Speech.cpp.git "${build_root}/nemo-speech"

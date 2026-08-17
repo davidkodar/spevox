@@ -1,0 +1,17 @@
+[package]
+name = "spevox-transcription"
+description = "Local whisper.cpp transcription boundary for Spevox"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+spevox-audio = { path = "../spevox-audio" }
+serde_json = "1.0.149"
+ureq = { version = "3.1.4", default-features = false, features = ["rustls"] }
+url = "2.5"
+whisper-rs = { version = "0.16.0", features = ["vulkan"] }
+
+[lints]
+workspace = true

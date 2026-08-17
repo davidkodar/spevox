@@ -1,14 +1,15 @@
 # Third-party notices
 
-FluidVoice Linux is an independent Linux implementation authored and maintained
-by David Bolin. The original FluidVoice macOS project and the artwork identified
-below are the work of Altic and the upstream FluidVoice contributors. This port
-is not sponsored or endorsed by them.
+Spevox is an independent Linux application authored and maintained by David
+Bolin. The original FluidVoice macOS project is the work of Altic and the
+upstream FluidVoice contributors. Spevox is not sponsored or endorsed by them.
 
 ## FluidVoice artwork
 
-This unofficial Linux port includes copies of the application icon and menu-bar
-icon from the upstream FluidVoice project:
+Current Spevox releases use original branding and do not distribute FluidVoice
+icons. Private preview versions through 0.5.x included copies of the application
+and menu-bar icons from the upstream FluidVoice project. Their provenance is
+retained here as a historical compliance record:
 
 - Source: https://github.com/altic-dev/FluidVoice
 - Upstream revision: `ac9b3ad3cef4a669bf8a1345f313bbc57e5b1442`
@@ -20,7 +21,7 @@ icon from the upstream FluidVoice project:
 - Copyright: the FluidVoice contributors
 - License: GNU General Public License, version 3
 
-The assets are redistributed for use by this modified, unofficial Linux port.
+Those historical assets were redistributed in the private preview under GPLv3.
 FluidVoice and its artwork may identify the upstream project; this project does
 not claim sponsorship, endorsement, or a trademark license from Altic or the
 upstream maintainers. The copied files match these upstream Git blobs:
@@ -33,8 +34,8 @@ The complete GPLv3 license is provided in [`LICENSE`](LICENSE).
 
 ## NVIDIA NeMo-Speech.cpp
 
-FluidVoice can optionally download and build the native NeMo-Speech.cpp
-runtime. It is not linked into the FluidVoice executable.
+Spevox can optionally download and build the native NeMo-Speech.cpp runtime.
+It is not linked into the Spevox executable.
 
 - Source: https://github.com/NVIDIA/NeMo-Speech.cpp
 - Pinned revision: `9bc876635af36df537d9bc6d3f57ad1b76e4f74a`
@@ -44,7 +45,7 @@ runtime. It is not linked into the FluidVoice executable.
 ## NVIDIA Parakeet TDT 0.6B v3 model
 
 The optional quantized multilingual model is downloaded separately at the
-user's request and is never redistributed in the FluidVoice source tree.
+user's request and is never redistributed in the Spevox source tree.
 
 - Source: https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3
 - File: `parakeet-tdt-0.6b-v3.q8_0.gguf`
@@ -74,7 +75,7 @@ Copyright for these models is held by NVIDIA Corporation.
 ## Sortformer speaker diarization model
 
 The optional experimental diarization model is downloaded separately only
-after the user selects setup. The GGUF is a FluidVoice conversion of NVIDIA's
+after the user selects setup. The GGUF is a Spevox conversion of NVIDIA's
 public Sortformer 4-speaker v2 checkpoint and is not presented as an
 NVIDIA-published binary. It is created with the converter from the pinned
 NeMo-Speech.cpp source revision listed above.

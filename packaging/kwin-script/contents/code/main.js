@@ -3,9 +3,9 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-const service = "io.github.davidkodar.FluidVoiceLinux.Profiles";
+const service = "io.github.davidkodar.Spevox.Profiles";
 const path = "/Profiles";
-const iface = "io.github.davidkodar.FluidVoiceLinux.Profiles";
+const iface = "io.github.davidkodar.Spevox.Profiles";
 
 function reportActiveApplication(window) {
     if (!window || !window.normalWindow)

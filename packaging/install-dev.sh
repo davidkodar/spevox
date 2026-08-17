@@ -27,38 +27,38 @@ fi
 if ! command -v ffmpeg >/dev/null; then
   echo "Note: FFmpeg was not found; file transcription will be limited to 16-bit PCM WAV." >&2
 fi
-QMAKE=${QMAKE:-/usr/bin/qmake6} cargo build --release -p fluidvoice-ui
+QMAKE=${QMAKE:-/usr/bin/qmake6} cargo build --release -p spevox-ui
 
 install_command=(install)
 if [[ -z "$destination" && ( "$prefix" == /usr || "$prefix" == /usr/* ) ]]; then
   install_command=(sudo install)
 fi
 
-"${install_command[@]}" -Dm755 target/release/fluidvoice-ui "$destination$prefix/bin/fluidvoice-ui"
-"${install_command[@]}" -Dm644 data/io.github.davidkodar.FluidVoiceLinux.desktop \
-  "$destination$prefix/share/applications/io.github.davidkodar.FluidVoiceLinux.desktop"
-"${install_command[@]}" -Dm644 data/io.github.davidkodar.FluidVoiceLinux.metainfo.xml \
-  "$destination$prefix/share/metainfo/io.github.davidkodar.FluidVoiceLinux.metainfo.xml"
-"${install_command[@]}" -Dm644 crates/fluidvoice-ui/assets/fluidvoice-app.png \
-  "$destination$prefix/share/icons/hicolor/256x256/apps/io.github.davidkodar.FluidVoiceLinux.png"
-"${install_command[@]}" -Dm644 data/icons/hicolor/512x512/apps/io.github.davidkodar.FluidVoiceLinux.png \
-  "$destination$prefix/share/icons/hicolor/512x512/apps/io.github.davidkodar.FluidVoiceLinux.png"
-"${install_command[@]}" -Dm644 LICENSE "$destination$prefix/share/licenses/fluidvoice-linux/LICENSE"
+"${install_command[@]}" -Dm755 target/release/spevox "$destination$prefix/bin/spevox"
+"${install_command[@]}" -Dm644 data/io.github.davidkodar.Spevox.desktop \
+  "$destination$prefix/share/applications/io.github.davidkodar.Spevox.desktop"
+"${install_command[@]}" -Dm644 data/io.github.davidkodar.Spevox.metainfo.xml \
+  "$destination$prefix/share/metainfo/io.github.davidkodar.Spevox.metainfo.xml"
+"${install_command[@]}" -Dm644 crates/spevox-ui/assets/spevox-app.png \
+  "$destination$prefix/share/icons/hicolor/256x256/apps/io.github.davidkodar.Spevox.png"
+"${install_command[@]}" -Dm644 data/icons/hicolor/512x512/apps/io.github.davidkodar.Spevox.png \
+  "$destination$prefix/share/icons/hicolor/512x512/apps/io.github.davidkodar.Spevox.png"
+"${install_command[@]}" -Dm644 LICENSE "$destination$prefix/share/licenses/spevox/LICENSE"
 "${install_command[@]}" -Dm644 packaging/kwin-script/metadata.json \
-  "$destination$prefix/share/kwin/scripts/fluidvoiceprofiles/metadata.json"
+  "$destination$prefix/share/kwin/scripts/spevoxprofiles/metadata.json"
 "${install_command[@]}" -Dm644 packaging/kwin-script/contents/code/main.js \
-  "$destination$prefix/share/kwin/scripts/fluidvoiceprofiles/contents/code/main.js"
+  "$destination$prefix/share/kwin/scripts/spevoxprofiles/contents/code/main.js"
 
 if [[ -z "$destination" ]]; then
   # KDE gives per-user desktop entries priority. Replace the early development
   # entry that used Icon=audio-input-microphone so it cannot shadow the
   # correctly packaged application identity and artwork.
   user_data_home=${XDG_DATA_HOME:-$HOME/.local/share}
-  install -Dm644 data/io.github.davidkodar.FluidVoiceLinux.desktop \
-    "$user_data_home/applications/io.github.davidkodar.FluidVoiceLinux.desktop"
+  install -Dm644 data/io.github.davidkodar.Spevox.desktop \
+    "$user_data_home/applications/io.github.davidkodar.Spevox.desktop"
   if command -v kbuildsycoca6 >/dev/null; then
     kbuildsycoca6 --noincremental
   fi
 fi
 
-echo "FluidVoice Linux installed under $destination$prefix"
+echo "Spevox installed under $destination$prefix"

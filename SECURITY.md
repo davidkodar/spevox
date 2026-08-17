@@ -1,6 +1,6 @@
 # Security policy
 
-FluidVoice Linux processes microphone audio, dictated text, optional AI-provider
+Spevox processes microphone audio, dictated text, optional AI-provider
 credentials, and locally retained history. Security and privacy reports are
 therefore handled privately until a fix is available.
 

@@ -1,7 +1,21 @@
 # Changelog
 
-All notable changes to FluidVoice Linux are documented here. The project uses
+All notable changes to Spevox are documented here. The project uses
 [Semantic Versioning](https://semver.org/) while it remains a prerelease preview.
+
+## 0.6.0 - 2026-08-17
+
+- Renamed the independent Linux application from its former development name
+  to **Spevox**, with the new `io.github.davidkodar.Spevox` desktop identity,
+  `spevox` executable, package names, and repository links.
+- Replaced the previously reused upstream preview artwork with an original
+  Spevox icon, tray icon, and wordmark designed for this project.
+- Preserved compatibility with existing 0.5.x settings, models, history,
+  dictionaries, API tokens, and Wayland portal restore tokens by falling back
+  to legacy per-user locations when no Spevox location exists.
+- Updated packaging, release validation, documentation, credits, and legal
+  notices for the independent product identity while retaining clear credit to
+  FluidVoice for macOS and its contributors.
 
 ## 0.5.1 - 2026-08-17
 
@@ -155,7 +169,7 @@ All notable changes to FluidVoice Linux are documented here. The project uses
   and non-destructive fallback to the complete Whisper transcript.
 - Isolated the application-profile D-Bus integration test under a unique bus
   name with bounded waits, preventing the full validation suite from hanging
-  when a real FluidVoice instance is already running during local release QA.
+  when a real Spevox instance is already running during local release QA.
 - Added a persistent four-step first-run onboarding wizard covering microphone
   and privacy expectations, practical Whisper speed/accuracy/size guidance,
   cross-vendor Vulkan behavior, experimental-engine limitations, and a final
@@ -296,8 +310,8 @@ All notable changes to FluidVoice Linux are documented here. The project uses
 - Persistent custom dictionary and optional spoken formatting commands.
 - Local 16-bit PCM WAV transcription.
 - Local transcript history, usage totals, onboarding, and feedback pages.
-- KDE system, FluidVoice Dark, and FluidVoice Light themes.
-- KDE system accent plus FluidVoice cyan, green, and purple accents.
+- KDE system, Spevox Dark, and Spevox Light themes.
+- KDE system accent plus Spevox cyan, green, and purple accents.
 - Upstream-style grouped navigation and a live typewriter-style transcript overlay.
 
 ### Changed

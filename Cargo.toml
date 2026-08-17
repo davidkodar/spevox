@@ -1,16 +1,16 @@
 [workspace]
 members = [
-    "crates/fluidvoice-app",
-    "crates/fluidvoice-audio",
-    "crates/fluidvoice-delivery",
-    "crates/fluidvoice-portal",
-    "crates/fluidvoice-transcription",
-    "crates/fluidvoice-ui",
+    "crates/spevox-cli",
+    "crates/spevox-audio",
+    "crates/spevox-delivery",
+    "crates/spevox-portal",
+    "crates/spevox-transcription",
+    "crates/spevox-ui",
 ]
 resolver = "3"
 
 [workspace.package]
-version = "0.5.1"
+version = "0.6.0"
 edition = "2024"
 license = "GPL-3.0-only"
 publish = false

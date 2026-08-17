@@ -2,7 +2,7 @@
 
 ## Product boundary
 
-The Linux client is a native implementation for KDE Plasma on Wayland. The macOS FluidVoice source is a behavioral and algorithmic reference, not a portable application shell.
+Spevox is a native implementation for KDE Plasma on Wayland. The macOS FluidVoice source is a behavioral and algorithmic reference, not a portable application shell.
 
 Optional post-transcription enhancement sits behind a provider-neutral boundary.
 Cloud providers receive transcript text only after explicit opt-in; loopback
@@ -19,15 +19,15 @@ Platform metaphors are translated rather than copied blindly: the notch overlay 
 ## Implemented modules
 
 ```text
-crates/fluidvoice-app/      command-line diagnostics and integration checks
-crates/fluidvoice-audio/    PipeWire devices, capture, conversion, buffering
-crates/fluidvoice-transcription/ whisper.cpp and local-server ASR adapters
-crates/fluidvoice-portal/   XDG Global Shortcuts and permission adapters
-crates/fluidvoice-delivery/ clipboard validation and recovery
-crates/fluidvoice-ui/       CXX-Qt bridge, Qt Quick tray, overlay, settings
+crates/spevox-cli/      command-line diagnostics and integration checks
+crates/spevox-audio/    PipeWire devices, capture, conversion, buffering
+crates/spevox-transcription/ whisper.cpp and local-server ASR adapters
+crates/spevox-portal/   XDG Global Shortcuts and permission adapters
+crates/spevox-delivery/ clipboard validation and recovery
+crates/spevox-ui/       CXX-Qt bridge, Qt Quick tray, overlay, settings
 ```
 
-Within `fluidvoice-ui`, the CXX-Qt controller owns Qt-facing state and workflow
+Within `spevox-ui`, the CXX-Qt controller owns Qt-facing state and workflow
 composition. Settings and profiles, private storage, dictionary processing,
 history, meeting transcription, speech-model catalogs, speech-runtime helpers,
 update checks, and the bounded Whisper context cache are real Rust modules with

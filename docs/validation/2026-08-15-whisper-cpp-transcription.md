@@ -31,6 +31,6 @@ No remote transcription API or network request was used during inference.
 ## Commands
 
 ```bash
-cargo run -p fluidvoice-app -- --diagnose-transcription work/models/ggml-tiny.bin 7 PIPEWIRE_NODE
-cargo run -p fluidvoice-app -- --diagnose-transcription-file work/models/ggml-tiny.bin work/jfk.wav
+cargo run -p spevox-cli -- --diagnose-transcription work/models/ggml-tiny.bin 7 PIPEWIRE_NODE
+cargo run -p spevox-cli -- --diagnose-transcription-file work/models/ggml-tiny.bin work/jfk.wav
 ```
