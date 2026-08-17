@@ -508,6 +508,9 @@ use crate::whisper_cache;
 
 static HISTORY_IO_LOCK: Mutex<()> = Mutex::new(());
 
+// This is the CXX-Qt backing object: boolean fields mirror independent QML
+// properties and are intentionally not collapsed into opaque bit flags.
+#[allow(clippy::struct_excessive_bools)]
 pub struct FluidVoiceControllerRust {
     status_text: QString,
     text_delivery_status: QString,
@@ -634,6 +637,8 @@ pub struct FluidVoiceControllerRust {
 }
 
 impl Default for FluidVoiceControllerRust {
+    // Constructs the complete Q_PROPERTY snapshot atomically for QML.
+    #[allow(clippy::too_many_lines)]
     fn default() -> Self {
         let preferences = Preferences::load();
         let language_codes = supported_languages()
@@ -721,7 +726,7 @@ impl Default for FluidVoiceControllerRust {
             })
             .is_local()
         {
-            ai_base_url = provider.default_url.to_owned();
+            provider.default_url.clone_into(&mut ai_base_url);
         }
         // Keyring access may display an unlock prompt, so defer it until after
         // QML construction instead of blocking the first frame.
@@ -957,6 +962,9 @@ impl ffi::FluidVoiceController {
         }
     }
 
+    // Owns one Tokio select loop whose branches must share the same portal
+    // bindings and channels; splitting it would obscure their shutdown rules.
+    #[allow(clippy::too_many_lines)]
     pub fn initialize_desktop_runtime(mut self: Pin<&mut Self>) {
         if self.as_ref().rust().desktop_sender.is_some() {
             return;
@@ -1063,7 +1071,7 @@ impl ffi::FluidVoiceController {
                                 .queue(move |controller| {
                                     controller.set_status_text(QString::from(&format!(
                                         "Global shortcut unavailable: {error}"
-                                    )))
+                                    )));
                                 })
                                 .ok();
                             break;
@@ -1078,7 +1086,7 @@ impl ffi::FluidVoiceController {
                     let ready_status = format!("Ready · hold {requested_shortcut} to dictate");
                     qt_thread
                         .queue(move |controller| {
-                            controller.set_status_text(QString::from(&ready_status))
+                            controller.set_status_text(QString::from(&ready_status));
                         })
                         .ok();
 
@@ -1175,7 +1183,7 @@ impl ffi::FluidVoiceController {
                             application = profile_events.recv(), if profile_events_open => match application {
                                 Some(application) => {
                                     qt_thread.queue(move |mut controller| {
-                                        controller.as_mut().apply_active_application(application);
+                                        controller.as_mut().apply_active_application(&application);
                                     }).ok();
                                 }
                                 None => profile_events_open = false,
@@ -1577,12 +1585,11 @@ impl ffi::FluidVoiceController {
                                 .clipboard
                                 .as_mut()
                                 .is_some_and(|clipboard| clipboard.copy_transcript(&text).is_ok());
-                            if copied {
-                                if let Some(sender) =
+                            if copied
+                                && let Some(sender) =
                                     controller.as_ref().rust().desktop_sender.as_ref()
-                                {
-                                    sender.send(DesktopCommand::Paste).ok();
-                                }
+                            {
+                                sender.send(DesktopCommand::Paste).ok();
                             }
                             controller
                                 .as_mut()
@@ -1638,7 +1645,8 @@ impl ffi::FluidVoiceController {
             return;
         }
         let mut config = self.as_ref().rust().ai_config();
-        config.prompt = "You are FluidVoice Command Mode, a concise KDE Plasma assistant. Answer the user's question or explain how to perform the requested task. Do not claim to have executed anything. Never output shell commands unless explicitly asked, and clearly label them as suggestions.".to_owned();
+        "You are FluidVoice Command Mode, a concise KDE Plasma assistant. Answer the user's question or explain how to perform the requested task. Do not claim to have executed anything. Never output shell commands unless explicitly asked, and clearly label them as suggestions."
+            .clone_into(&mut config.prompt);
         let qt_thread = self.qt_thread();
         self.as_mut().set_assistant_busy(true);
         self.as_mut()
@@ -1660,7 +1668,7 @@ impl ffi::FluidVoiceController {
                                 .as_mut()
                                 .set_command_output(QString::from(&format!(
                                     "Command Mode failed: {error}"
-                                )))
+                                )));
                         }
                     }
                 })
@@ -1762,7 +1770,11 @@ impl ffi::FluidVoiceController {
         self.as_mut()
             .set_ai_base_url(QString::from(provider.default_url));
         let api_key = ai::load_api_key(provider.id);
-        self.as_mut().rust_mut().get_mut().ai_api_key = api_key.clone();
+        self.as_mut()
+            .rust_mut()
+            .get_mut()
+            .ai_api_key
+            .clone_from(&api_key);
         self.as_mut()
             .set_ai_key_configured(provider.local || !api_key.is_empty());
         self.as_mut().set_ai_local_models(QStringList::default());
@@ -1928,12 +1940,7 @@ impl ffi::FluidVoiceController {
         ));
         std::thread::spawn(move || {
             let installed = Command::new("ollama").arg("--version").output().is_ok();
-            let (status, models) = if !installed {
-                (
-                    "Ollama is not installed. Open the official Linux guide below, then run this check again.".to_owned(),
-                    None,
-                )
-            } else {
+            let (status, models) = if installed {
                 match ai::discover_local_models(&config) {
                     Ok(models) => (
                         format!("Ollama is ready · {} installed model(s).", models.len()),
@@ -1948,6 +1955,11 @@ impl ffi::FluidVoiceController {
                         None,
                     ),
                 }
+            } else {
+                (
+                    "Ollama is not installed. Open the official Linux guide below, then run this check again.".to_owned(),
+                    None,
+                )
             };
             qt_thread
                 .queue(move |mut controller| {
@@ -2229,7 +2241,7 @@ impl ffi::FluidVoiceController {
             }));
     }
 
-    fn apply_active_application(mut self: Pin<&mut Self>, application: ActiveApplication) {
+    fn apply_active_application(mut self: Pin<&mut Self>, application: &ActiveApplication) {
         let label = if application.title.is_empty() {
             application.resource_class.clone()
         } else {
@@ -2263,6 +2275,7 @@ impl ffi::FluidVoiceController {
         }
     }
 
+    #[allow(clippy::too_many_lines)]
     pub fn rewrite_selected_text(mut self: Pin<&mut Self>, instruction: &QString) {
         let instruction = instruction.to_string().trim().to_owned();
         if instruction.is_empty() || *self.as_ref().assistant_busy() {
@@ -2280,7 +2293,8 @@ impl ffi::FluidVoiceController {
             return;
         };
         let mut config = self.as_ref().rust().ai_config();
-        config.prompt = "Rewrite the selected text according to the user's instruction. Preserve meaning unless the instruction asks otherwise. Output only the replacement text, with no explanation or markdown fences.".to_owned();
+        "Rewrite the selected text according to the user's instruction. Preserve meaning unless the instruction asks otherwise. Output only the replacement text, with no explanation or markdown fences."
+            .clone_into(&mut config.prompt);
         let qt_thread = self.qt_thread();
         self.as_mut().set_assistant_busy(true);
         self.as_mut()
@@ -2381,7 +2395,8 @@ impl ffi::FluidVoiceController {
             return;
         }
         let mut config = self.as_ref().rust().ai_config();
-        config.prompt = "Write the requested text. Follow the user's instruction precisely. Output only the finished text, with no explanation or markdown fences.".to_owned();
+        "Write the requested text. Follow the user's instruction precisely. Output only the finished text, with no explanation or markdown fences."
+            .clone_into(&mut config.prompt);
         self.as_mut().rust_mut().get_mut().last_write_job = Some(WriteModeJob::Draft {
             instruction: instruction.clone(),
         });
@@ -2446,11 +2461,13 @@ impl ffi::FluidVoiceController {
                 instruction,
                 selected,
             } => {
-                config.prompt = "Rewrite the selected text according to the user's instruction. Preserve meaning unless the instruction asks otherwise. Output only the replacement text, with no explanation or markdown fences.".to_owned();
+                "Rewrite the selected text according to the user's instruction. Preserve meaning unless the instruction asks otherwise. Output only the replacement text, with no explanation or markdown fences."
+                    .clone_into(&mut config.prompt);
                 format!("User instruction: {instruction}\n\nSelected text:\n{selected}")
             }
             WriteModeJob::Draft { instruction } => {
-                config.prompt = "Write the requested text. Follow the user's instruction precisely. Output only the finished text, with no explanation or markdown fences.".to_owned();
+                "Write the requested text. Follow the user's instruction precisely. Output only the finished text, with no explanation or markdown fences."
+                    .clone_into(&mut config.prompt);
                 instruction
             }
         };
@@ -2686,7 +2703,7 @@ impl ffi::FluidVoiceController {
                 parakeet::download_model(model, &cancel, move |progress| {
                     progress_thread
                         .queue(move |mut controller| {
-                            controller.as_mut().set_parakeet_download_progress(progress)
+                            controller.as_mut().set_parakeet_download_progress(progress);
                         })
                         .ok();
                 })
@@ -3207,6 +3224,9 @@ impl ffi::FluidVoiceController {
         }));
     }
 
+    // Qt-facing orchestration remains here; decoding, meeting segmentation,
+    // history, and ASR live in their extracted pure-Rust boundaries.
+    #[allow(clippy::too_many_lines)]
     pub fn transcribe_file(mut self: Pin<&mut Self>, path: &QString) {
         if *self.as_ref().transcribing() || *self.as_ref().recording() {
             return;
@@ -3747,8 +3767,7 @@ impl ffi::FluidVoiceController {
                                 (!native_language.is_empty()).then_some(native_language.as_str()),
                             )
                             .map_err(|error| error.to_string())
-                    })
-                    .map_err(|error| error.to_string());
+                    });
                 match primary {
                     Ok(transcript) => (Ok(transcript), None),
                     Err(error) => {
@@ -3857,10 +3876,10 @@ impl ffi::FluidVoiceController {
                                 .and_then(|delivery| {
                                     delivery.copy_transcript(&processed).map_err(|_| ())
                                 });
-                            if delivery_result.is_ok() {
-                                if let Some(sender) = controller.as_ref().rust().desktop_sender.as_ref() {
-                                    sender.send(DesktopCommand::Paste).ok();
-                                }
+                            if delivery_result.is_ok()
+                                && let Some(sender) = controller.as_ref().rust().desktop_sender.as_ref()
+                            {
+                                sender.send(DesktopCommand::Paste).ok();
                             }
                             let ai_status = if ai_config.enabled {
                                 if ai_error.is_some() { "fallback" } else { "enhanced" }

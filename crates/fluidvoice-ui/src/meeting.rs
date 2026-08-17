@@ -12,9 +12,12 @@ struct MeetingTranscript {
     diarization_warning: Option<String>,
 }
 
+// The worker boundary takes an immutable snapshot of every relevant setting;
+// a parameter object would only move these one-shot values behind indirection.
+#[allow(clippy::too_many_arguments)]
 fn transcribe_long_audio_file(
-    path: &PathBuf,
-    model: &PathBuf,
+    path: &std::path::Path,
+    model: &std::path::Path,
     language: String,
     use_gpu: bool,
     diarization_enabled: bool,
@@ -54,7 +57,14 @@ fn transcribe_long_audio_file(
             });
         }
         let completed = index + 1;
-        progress(completed as f32 / total.max(1) as f32, completed, total);
+        progress(
+            progress_ratio(
+                u64::try_from(completed).unwrap_or(u64::MAX),
+                u64::try_from(total).unwrap_or(u64::MAX),
+            ),
+            completed,
+            total,
+        );
     }
     let mut diarization_warning = None;
     if diarization_enabled {
@@ -77,7 +87,7 @@ fn transcribe_long_audio_file(
                 Err(error) => {
                     diarization_warning = Some(format!(
                         "experimental diarization failed, so the Whisper transcript was preserved: {error}"
-                    ))
+                    ));
                 }
             }
         }
@@ -105,8 +115,7 @@ fn write_temporary_diarization_wav(
         .duration_since(UNIX_EPOCH)
         .map_or(0, |duration| duration.as_nanos());
     let directory = std::env::var_os("XDG_RUNTIME_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(std::env::temp_dir)
+        .map_or_else(std::env::temp_dir, PathBuf::from)
         .join("fluidvoice");
     fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
     fs::set_permissions(&directory, fs::Permissions::from_mode(0o700))
@@ -144,8 +153,8 @@ fn assign_speakers(
     diarization: &[parakeet::DiarizationSegment],
 ) {
     for segment in transcript {
-        let start = segment.start_milliseconds as f64 / 1_000.0;
-        let end = segment.end_milliseconds as f64 / 1_000.0;
+        let start = display_ratio(segment.start_milliseconds, 1_000);
+        let end = display_ratio(segment.end_milliseconds, 1_000);
         let speaker = diarization
             .iter()
             .filter_map(|candidate| {
@@ -178,7 +187,7 @@ fn rename_latest_file_history_speaker(current: &str, replacement: &str) -> Resul
     let path = history_path();
     let mut history = load_lines(&path);
     rename_latest_file_history_speaker_entries(&mut history, current, replacement)?;
-    save_lines(&path, &history).map_err(|error| error.to_string())
+    save_lines(&path, &history)
 }
 
 fn rename_latest_file_history_speaker_entries(
@@ -316,7 +325,7 @@ fn write_meeting_export(
     fs::write(path, contents).map_err(|error| error.to_string())
 }
 
-fn decode_audio_file(path: &PathBuf) -> Result<fluidvoice_audio::MonoAudioBuffer, String> {
+fn decode_audio_file(path: &std::path::Path) -> Result<fluidvoice_audio::MonoAudioBuffer, String> {
     const MAX_DECODED_BYTES: u64 = 16_000 * 4 * 60 * 60 * 2;
     let mut command = Command::new("ffmpeg");
     command

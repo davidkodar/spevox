@@ -1,3 +1,21 @@
+/// Converts bounded counters to a UI progress ratio. Catalog sizes and audio
+/// counters stay far below the integer precision limits of `f64`/`f32`.
+#[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation)]
+pub(crate) fn progress_ratio(numerator: u64, denominator: u64) -> f32 {
+    (numerator as f64 / denominator.max(1) as f64).clamp(0.0, 1.0) as f32
+}
+
+#[allow(clippy::cast_precision_loss)]
+fn display_ratio(numerator: u64, denominator: u64) -> f64 {
+    numerator as f64 / denominator.max(1) as f64
+}
+
+/// Input is clamped and rounded into the complete i16 range before conversion.
+#[allow(clippy::cast_possible_truncation)]
+fn pcm_i16(sample: f32) -> i16 {
+    (sample.clamp(-1.0, 1.0) * f32::from(i16::MAX)).round() as i16
+}
+
 fn shortcut_triggers() -> &'static [(&'static str, &'static str)] {
     &[
         ("Ctrl  Alt  D", "CTRL+ALT+D"),
@@ -168,7 +186,7 @@ fn dump_asr_audio(audio: &fluidvoice_audio::MonoAudioBuffer) -> Result<(), Strin
     let mut writer = hound::WavWriter::create(&path, specification)
         .map_err(|error| format!("{}: {error}", path.display()))?;
     for &sample in audio.samples() {
-        let value = (sample.clamp(-1.0, 1.0) * f32::from(i16::MAX)).round() as i16;
+        let value = pcm_i16(sample);
         writer
             .write_sample(value)
             .map_err(|error| error.to_string())?;
@@ -213,4 +231,3 @@ fn suspicious_single_word(text: &str, duration: Duration) -> bool {
         .to_ascii_lowercase();
     matches!(normalized.as_str(), "you" | "thanks" | "thank you")
 }
-

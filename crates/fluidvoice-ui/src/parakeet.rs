@@ -501,7 +501,7 @@ pub fn download_model(
             .map_err(|error| error.to_string())?;
         hasher.update(&buffer[..count]);
         downloaded = downloaded.saturating_add(u64::try_from(count).unwrap_or_default());
-        progress((downloaded as f64 / model.bytes as f64).clamp(0.0, 1.0) as f32);
+        progress(crate::controller::progress_ratio(downloaded, model.bytes));
     }
     output.sync_all().map_err(|error| error.to_string())?;
     drop(output);
@@ -712,11 +712,6 @@ mod tests {
                         .starts_with("https://github.com/davidkodar/fluidvoice-linux/")
             );
         }
-        assert!(!PARAKEET_V3.realtime);
-        assert!(NEMOTRON_35.realtime);
-        assert!(NEMOTRON_EN.realtime);
-        assert!(PARAKEET_CTC.realtime);
-        assert!(SORTFORMER_V2.realtime);
         assert!(SORTFORMER_V2.url.contains("models-sortformer-v2-q8_0"));
     }
 

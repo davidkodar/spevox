@@ -28,22 +28,21 @@ struct LifetimeStats {
 
 impl LifetimeStats {
     fn load_or_migrate(history: &[String]) -> Self {
-        if let Ok(contents) = fs::read_to_string(lifetime_stats_path()) {
-            if let Ok(value) = serde_json::from_str::<serde_json::Value>(&contents) {
-                if let (Some(transcript_count), Some(dictated_word_count)) = (
-                    value
-                        .get("transcript_count")
-                        .and_then(serde_json::Value::as_u64),
-                    value
-                        .get("dictated_word_count")
-                        .and_then(serde_json::Value::as_u64),
-                ) {
-                    return Self {
-                        transcript_count,
-                        dictated_word_count,
-                    };
-                }
-            }
+        if let Ok(contents) = fs::read_to_string(lifetime_stats_path())
+            && let Ok(value) = serde_json::from_str::<serde_json::Value>(&contents)
+            && let (Some(transcript_count), Some(dictated_word_count)) = (
+                value
+                    .get("transcript_count")
+                    .and_then(serde_json::Value::as_u64),
+                value
+                    .get("dictated_word_count")
+                    .and_then(serde_json::Value::as_u64),
+            )
+        {
+            return Self {
+                transcript_count,
+                dictated_word_count,
+            };
         }
         let stats = history
             .iter()
@@ -97,13 +96,13 @@ fn audio_history_summary() -> String {
     let (count, bytes) = entries
         .flatten()
         .filter_map(|entry| entry.metadata().ok())
-        .filter(|metadata| metadata.is_file())
+        .filter(std::fs::Metadata::is_file)
         .fold((0_u64, 0_u64), |(count, bytes), metadata| {
             (count + 1, bytes.saturating_add(metadata.len()))
         });
     format!(
         "{count} retained recording(s) · {:.1} MB used",
-        bytes as f64 / 1_048_576.0
+        display_ratio(bytes, 1_048_576)
     )
 }
 
@@ -126,7 +125,7 @@ fn save_audio_history(
     };
     let mut writer = hound::WavWriter::create(&path, spec).map_err(|error| error.to_string())?;
     for sample in audio.samples() {
-        let value = (sample.clamp(-1.0, 1.0) * f32::from(i16::MAX)).round() as i16;
+        let value = pcm_i16(*sample);
         writer
             .write_sample(value)
             .map_err(|error| error.to_string())?;
@@ -183,7 +182,7 @@ fn clear_missing_audio_history_references() -> Result<(), String> {
         }
     }
     if changed {
-        save_lines(&path, &history).map_err(|error| error.to_string())?;
+        save_lines(&path, &history)?;
     }
     Ok(())
 }
@@ -274,7 +273,7 @@ fn load_lines(path: &PathBuf) -> Vec<String> {
         .unwrap_or_default()
 }
 
-fn save_lines(path: &PathBuf, lines: &[String]) -> Result<(), String> {
+fn save_lines(path: &std::path::Path, lines: &[String]) -> Result<(), String> {
     let mut contents = lines.join("\n");
     if !contents.is_empty() {
         contents.push('\n');
@@ -316,4 +315,3 @@ fn atomic_write_private(path: &std::path::Path, contents: &[u8]) -> Result<(), S
         error.to_string()
     })
 }
-

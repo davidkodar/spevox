@@ -146,13 +146,17 @@ fn parse_csv_record(line: &str) -> Vec<String> {
 }
 
 fn write_dictionary_csv(path: &PathBuf, entries: &[DictionaryEntry]) -> Result<(), String> {
+    use std::fmt::Write as _;
+
     let mut output = "spoken,preferred\n".to_owned();
     for entry in entries {
-        output.push_str(&format!(
-            "\"{}\",\"{}\"\n",
+        writeln!(
+            output,
+            "\"{}\",\"{}\"",
             spreadsheet_safe(&entry.spoken).replace('"', "\"\""),
             spreadsheet_safe(&entry.preferred).replace('"', "\"\"")
-        ));
+        )
+        .map_err(|error| error.to_string())?;
     }
     fs::write(path, output).map_err(|error| error.to_string())
 }
@@ -189,4 +193,3 @@ fn replace_ascii_case_insensitive(text: &str, needle: &str, replacement: &str) -
     result.push_str(&text[cursor..]);
     result
 }
-

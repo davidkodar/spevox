@@ -1,3 +1,4 @@
+#[allow(clippy::too_many_lines)] // Static ISO/Whisper catalog, not control flow.
 fn supported_languages() -> &'static [(&'static str, &'static str)] {
     &[
         ("Automatic detection", ""),
@@ -248,7 +249,7 @@ fn download_whisper_model(
             .map_err(|error| error.to_string())?;
         hasher.update(&buffer[..count]);
         downloaded = downloaded.saturating_add(u64::try_from(count).unwrap_or_default());
-        progress((downloaded as f64 / model.expected_bytes as f64).clamp(0.0, 1.0) as f32);
+        progress(progress_ratio(downloaded, model.expected_bytes));
     }
     output.sync_all().map_err(|error| error.to_string())?;
     drop(output);
@@ -263,4 +264,3 @@ fn download_whisper_model(
     fs::rename(&partial, destination).map_err(|error| error.to_string())?;
     Ok(())
 }
-

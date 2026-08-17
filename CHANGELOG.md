@@ -5,6 +5,11 @@ All notable changes to FluidVoice Linux are documented here. The project uses
 
 ## 0.4.0 - 2026-08-16
 
+- Made the full Rust workspace Clippy-clean under `-D warnings`: removed
+  redundant clones and conditions, completed HTTP test reads, centralized
+  bounded UI/sample numeric conversions, tightened path APIs, and documented
+  the few exact Qt/config/catalog boundaries where pedantic shape lints are
+  intentional. CI now rejects every newly introduced Rust warning.
 - Decomposed the oversized Qt controller into dedicated settings/profile,
   storage, dictionary, history, meeting, model-catalog, update, speech-runtime,
   and Whisper-cache source boundaries. The extraction preserves the existing

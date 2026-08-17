@@ -1,3 +1,6 @@
+// Persisted feature switches are independent user choices rather than one
+// state machine, so explicit booleans make migrations and defaults auditable.
+#[allow(clippy::struct_excessive_bools)]
 struct Preferences {
     onboarding_completed: bool,
     language: String,
@@ -151,20 +154,22 @@ impl Preferences {
         let Ok(contents) = fs::read_to_string(preferences_path()) else {
             return Self::default();
         };
-        let mut preferences = Self::default();
+        let mut preferences = Self {
+            onboarding_completed: true,
+            ..Self::default()
+        };
         // Existing installations predate onboarding and must not be interrupted
         // by a first-run dialog after upgrading. An explicit saved false value
         // still allows users to reopen the guide from Getting Started.
-        preferences.onboarding_completed = true;
         for line in contents.lines() {
             if let Some(value) = line.strip_prefix("language=") {
-                preferences.language = value.to_owned();
+                value.clone_into(&mut preferences.language);
             } else if let Some(value) = line.strip_prefix("model=") {
                 preferences.model = PathBuf::from(value);
             } else if let Some(value) = line.strip_prefix("shortcut=") {
-                preferences.shortcut = value.to_owned();
+                value.clone_into(&mut preferences.shortcut);
             } else if let Some(value) = line.strip_prefix("input=") {
-                preferences.input = value.to_owned();
+                value.clone_into(&mut preferences.input);
             } else if let Some(value) = line.strip_prefix("gain_db=") {
                 preferences.gain_db = value.parse().unwrap_or(0.0);
             } else if let Some(value) = line.strip_prefix("overlay_enabled=") {
@@ -268,4 +273,3 @@ impl Preferences {
         atomic_write_private(&path, contents.as_bytes())
     }
 }
-

@@ -144,15 +144,14 @@ fn decode_file_url(value: &str) -> String {
     let mut result = Vec::with_capacity(bytes.len());
     let mut index = 0;
     while index < bytes.len() {
-        if bytes[index] == b'%' && index + 2 < bytes.len() {
-            if let (Some(high), Some(low)) =
+        if bytes[index] == b'%' && index + 2 < bytes.len()
+            && let (Some(high), Some(low)) =
                 (hex_digit(bytes[index + 1]), hex_digit(bytes[index + 2]))
-            {
+        {
                 let decoded = high * 16 + low;
                 result.push(decoded);
                 index += 3;
                 continue;
-            }
         }
         result.push(bytes[index]);
         index += 1;
