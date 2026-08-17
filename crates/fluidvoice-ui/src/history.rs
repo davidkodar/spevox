@@ -1,7 +1,10 @@
 use super::{
-    AiConfig, HISTORY_IO_LOCK, LifetimeStats, PathBuf, fs, history_path, load_lines, save_lines,
-    spreadsheet_safe,
+    AiConfig, HISTORY_IO_LOCK, LifetimeStats, PathBuf, append_private_line, fs, history_path,
+    load_lines, save_lines, spreadsheet_safe,
 };
+
+pub(super) const HISTORY_VISIBLE_LIMIT: usize = 500;
+const HISTORY_COMPACTION_THRESHOLD: usize = 600;
 
 pub(super) struct HistoryContext<'a> {
     pub(super) raw_text: &'a str,
@@ -25,8 +28,8 @@ pub(super) fn record_history(text: &str, context: &HistoryContext<'_>) -> Histor
         .duration_since(UNIX_EPOCH)
         .map_or(0, |duration| duration.as_secs());
     let _history_guard = HISTORY_IO_LOCK.lock().ok();
-    let mut history = load_lines(&history_path());
-    history.push(format!(
+    let path = history_path();
+    let entry = format!(
         "{timestamp}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
         history_value(text),
         history_value(context.raw_text),
@@ -36,11 +39,18 @@ pub(super) fn record_history(text: &str, context: &HistoryContext<'_>) -> Histor
         context.ai_duration_ms,
         history_value(context.source),
         history_value(context.audio_path)
-    ));
-    if history.len() > 500 {
-        history.drain(..history.len() - 500);
+    );
+    let appended = append_private_line(&path, &entry).is_ok();
+    let mut history = load_lines(&path);
+    if !appended {
+        history.push(entry);
+        save_lines(&path, &history).ok();
+    } else if history.is_empty() {
+        history.push(entry);
     }
-    save_lines(&history_path(), &history).ok();
+    if compact_history(&mut history) {
+        save_lines(&path, &history).ok();
+    }
     let mut lifetime_stats = LifetimeStats::load_or_migrate(&history[..history.len() - 1]);
     if context.source != "file" {
         lifetime_stats.transcript_count = lifetime_stats.transcript_count.saturating_add(1);
@@ -50,10 +60,22 @@ pub(super) fn record_history(text: &str, context: &HistoryContext<'_>) -> Histor
         lifetime_stats.save().ok();
     }
     HistoryUpdate {
-        entries: history.into_iter().rev().collect(),
+        entries: history
+            .into_iter()
+            .rev()
+            .take(HISTORY_VISIBLE_LIMIT)
+            .collect(),
         transcript_count: lifetime_stats.transcript_count_i32(),
         dictated_word_count: lifetime_stats.dictated_word_count_i32(),
     }
+}
+
+fn compact_history(history: &mut Vec<String>) -> bool {
+    if history.len() <= HISTORY_COMPACTION_THRESHOLD {
+        return false;
+    }
+    history.drain(..history.len() - HISTORY_VISIBLE_LIMIT);
+    true
 }
 
 pub(super) fn history_value(value: &str) -> String {
@@ -173,5 +195,22 @@ const fn hex_digit(byte: u8) -> Option<u8> {
         b'a'..=b'f' => Some(byte - b'a' + 10),
         b'A'..=b'F' => Some(byte - b'A' + 10),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{HISTORY_COMPACTION_THRESHOLD, HISTORY_VISIBLE_LIMIT, compact_history};
+
+    #[test]
+    fn history_compacts_periodically_to_the_visible_window() {
+        let mut history = (0..=HISTORY_COMPACTION_THRESHOLD)
+            .map(|index| index.to_string())
+            .collect::<Vec<_>>();
+        assert!(compact_history(&mut history));
+        assert_eq!(history.len(), HISTORY_VISIBLE_LIMIT);
+        assert_eq!(history.last().map(String::as_str), Some("600"));
+        assert_eq!(history.first().map(String::as_str), Some("101"));
+        assert!(!compact_history(&mut history));
     }
 }

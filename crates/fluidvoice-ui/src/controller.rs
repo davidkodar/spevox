@@ -670,9 +670,15 @@ fn apply_startup_snapshot(
             .map(|line| QString::from(&dictionary_display(line)))
             .collect(),
     );
-    controller
-        .as_mut()
-        .set_history_entries(snapshot.history.iter().rev().map(QString::from).collect());
+    controller.as_mut().set_history_entries(
+        snapshot
+            .history
+            .iter()
+            .rev()
+            .take(HISTORY_VISIBLE_LIMIT)
+            .map(QString::from)
+            .collect(),
+    );
     controller.as_mut().set_command_history(
         snapshot
             .command_history
@@ -4025,10 +4031,11 @@ fn preferences_path() -> PathBuf {
 #[path = "storage.rs"]
 mod storage;
 use storage::{
-    LifetimeStats, ai_profiles_path, append_command_history, atomic_write_private,
-    audio_history_directory, audio_history_summary, clear_missing_audio_history_references,
-    command_history_path, data_directory, dictionary_path, history_path, load_lines,
-    prune_audio_history, save_audio_history, save_lines, write_audio_history_zip,
+    LifetimeStats, ai_profiles_path, append_command_history, append_private_line,
+    atomic_write_private, audio_history_directory, audio_history_summary,
+    clear_missing_audio_history_references, command_history_path, data_directory, dictionary_path,
+    history_path, load_lines, prune_audio_history, save_audio_history, save_lines,
+    write_audio_history_zip,
 };
 #[path = "dictionary.rs"]
 mod dictionary;
@@ -4040,8 +4047,8 @@ use dictionary::{
 #[path = "history.rs"]
 mod history;
 use history::{
-    HistoryContext, HistoryUpdate, ai_provider_name, decode_file_url, history_clipboard_text,
-    history_field, history_value, record_history, write_history_export,
+    HISTORY_VISIBLE_LIMIT, HistoryContext, HistoryUpdate, ai_provider_name, decode_file_url,
+    history_clipboard_text, history_field, history_value, record_history, write_history_export,
 };
 #[path = "meeting.rs"]
 mod meeting;

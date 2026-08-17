@@ -286,6 +286,26 @@ pub(super) fn save_lines(path: &std::path::Path, lines: &[String]) -> Result<(),
     atomic_write_private(path, contents.as_bytes())
 }
 
+pub(super) fn append_private_line(path: &std::path::Path, line: &str) -> Result<(), String> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| "storage path has no parent".to_owned())?;
+    fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    fs::set_permissions(parent, fs::Permissions::from_mode(0o700))
+        .map_err(|error| error.to_string())?;
+    let mut file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .mode(0o600)
+        .open(path)
+        .map_err(|error| error.to_string())?;
+    file.set_permissions(fs::Permissions::from_mode(0o600))
+        .map_err(|error| error.to_string())?;
+    file.write_all(line.as_bytes())
+        .and_then(|()| file.write_all(b"\n"))
+        .map_err(|error| error.to_string())
+}
+
 pub(super) fn atomic_write_private(path: &std::path::Path, contents: &[u8]) -> Result<(), String> {
     use std::time::{SystemTime, UNIX_EPOCH};
     let parent = path

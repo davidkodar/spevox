@@ -20,6 +20,9 @@ All notable changes to FluidVoice Linux are documented here. The project uses
 - Deferred history, lifetime-stat migration, dictionary, command history, AI
   profiles, retained-audio scanning, and Whisper model-state probing until the
   desktop-runtime worker, keeping controller construction free of those scans.
+- Replaced per-dictation history rewrites with private append-first persistence;
+  storage periodically compacts from 601 entries to the newest 500 while the UI
+  consistently exposes the same 500-entry window.
 - Closed follow-up audit regressions in meeting-file retry, local AI proxy
   isolation, IPv6 loopback ASR, Write Mode retry semantics, cancellable Whisper
   previews, model integrity checks, local API lifecycle handling, and native
