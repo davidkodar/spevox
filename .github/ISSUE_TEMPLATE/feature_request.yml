@@ -1,0 +1,33 @@
+name: Feature request
+description: Suggest a focused improvement to FluidVoice Linux
+title: "[Feature]: "
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: Explain the user problem before proposing an implementation. Please do not request proprietary upstream code or assets.
+  - type: textarea
+    attributes:
+      label: User problem
+      description: What task is difficult or impossible today, and who benefits?
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Proposed behavior
+      description: Describe the desired user-visible result.
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Alternatives considered
+      description: List existing workarounds or simpler alternatives.
+  - type: checkboxes
+    attributes:
+      label: Privacy and platform fit
+      options:
+        - label: I considered whether this can remain local-first and explicit about network use.
+          required: true
+        - label: This request targets the Linux/KDE application rather than support for the macOS product.
+          required: true
+

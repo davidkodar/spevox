@@ -1,0 +1,61 @@
+name: Bug report
+description: Report reproducible incorrect behavior in FluidVoice Linux
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for helping improve FluidVoice Linux. Do not include recordings, transcripts, API keys, or other private data.
+  - type: checkboxes
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues for this problem.
+          required: true
+        - label: I removed secrets and private dictated content from logs and screenshots.
+          required: true
+  - type: input
+    attributes:
+      label: FluidVoice version
+      description: Release version or commit hash.
+      placeholder: 0.5.0 or 44a2b74
+    validations:
+      required: true
+  - type: input
+    attributes:
+      label: Linux environment
+      description: Distribution, Plasma version, Wayland compositor, and kernel.
+      placeholder: Arch Linux, Plasma 6.x, KWin Wayland, Linux 6.x
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: What happened?
+      description: Describe the observed behavior and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Reproduction steps
+      placeholder: |
+        1. Open…
+        2. Select…
+        3. Press…
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Relevant diagnostics
+      description: Paste only sanitized logs or diagnostic output. Use a code block for text.
+      render: shell
+  - type: dropdown
+    attributes:
+      label: Regression?
+      description: Did this work in an earlier version?
+      options:
+        - Unknown
+        - No
+        - Yes
+    validations:
+      required: true
+
