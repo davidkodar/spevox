@@ -42,7 +42,7 @@ ApplicationWindow {
         qsTr("Learn the essentials and complete initial setup."),
         qsTr("See what changed in recent versions."),
         qsTr("Share feedback about this unofficial Linux port."),
-        qsTr("View authorship, upstream credit, warranty, and license information.")
+        qsTr("Version, credits, and license.")
     ]
 
     function showSettingsSection(index) {
@@ -2472,13 +2472,14 @@ ApplicationWindow {
                         ColumnLayout {
                             id: legalContent; anchors.fill: parent; anchors.margins: 20; spacing: 12
                             Text { text: qsTr("SPEVOX %1").arg(controller.appVersion); color: root.tertiaryText; font.pixelSize: 11; font.weight: Font.Medium }
-                            Text { Layout.fillWidth: true; text: qsTr("Copyright © 2026 David Bolin. Licensed under the GNU General Public License, version 3 only."); color: root.primaryText; font.pixelSize: 14; wrapMode: Text.Wrap }
-                            Text { Layout.fillWidth: true; text: qsTr("This program comes with absolutely no warranty. You may copy, modify, and redistribute it under GPLv3. The complete license and corresponding source are available from the project repository."); color: root.secondaryText; font.pixelSize: 13; lineHeight: 1.2; wrapMode: Text.Wrap }
+                            Text { Layout.fillWidth: true; text: qsTr("Voice dictation for KDE Plasma on Wayland."); color: root.primaryText; font.pixelSize: 14; wrapMode: Text.Wrap }
+                            Text { Layout.fillWidth: true; text: qsTr("Created by David Bolin."); color: root.secondaryText; font.pixelSize: 13; wrapMode: Text.Wrap }
+                            Text { Layout.fillWidth: true; text: qsTr("Free software licensed under GPLv3."); color: root.secondaryText; font.pixelSize: 13; wrapMode: Text.Wrap }
                             Rectangle { Layout.fillWidth: true; height: 1; color: root.hairline }
-                            Text { Layout.fillWidth: true; text: qsTr("Spevox is an independent Linux dictation application inspired by the GPLv3 FluidVoice project for macOS by Altic and the upstream contributors. It is not sponsored or endorsed by them. Spevox uses original branding; historical upstream artwork provenance remains recorded in THIRD_PARTY_NOTICES.md."); color: root.secondaryText; font.pixelSize: 13; lineHeight: 1.2; wrapMode: Text.Wrap }
+                            Text { Layout.fillWidth: true; text: qsTr("Spevox was inspired by FluidVoice for macOS. Thanks to Altic and the FluidVoice contributors for the original project."); color: root.secondaryText; font.pixelSize: 13; lineHeight: 1.2; wrapMode: Text.Wrap }
                             RowLayout {
-                                Button { text: qsTr("Project source & GPLv3"); onClicked: Qt.openUrlExternally("https://github.com/davidkodar/spevox") }
-                                Button { text: qsTr("Upstream FluidVoice"); onClicked: Qt.openUrlExternally("https://github.com/altic-dev/FluidVoice") }
+                                Button { text: qsTr("Source code"); onClicked: Qt.openUrlExternally("https://github.com/davidkodar/spevox") }
+                                Button { text: qsTr("FluidVoice project"); onClicked: Qt.openUrlExternally("https://github.com/altic-dev/FluidVoice") }
                             }
                         }
                     }
