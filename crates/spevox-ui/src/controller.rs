@@ -4395,8 +4395,14 @@ mod tests {
         assert!(!native_model_supports_language(parakeet::NEMOTRON_35, "mt"));
 
         // Region-qualified codes resolve to their base language.
-        assert!(native_model_supports_language(parakeet::PARAKEET_V3, "pt-BR"));
-        assert!(native_model_supports_language(parakeet::NEMOTRON_EN, "en-GB"));
+        assert!(native_model_supports_language(
+            parakeet::PARAKEET_V3,
+            "pt-BR"
+        ));
+        assert!(native_model_supports_language(
+            parakeet::NEMOTRON_EN,
+            "en-GB"
+        ));
     }
 
     #[test]
