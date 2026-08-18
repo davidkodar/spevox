@@ -2,16 +2,52 @@
   <img src="data/branding/spevox-logo.png" alt="Spevox" width="360">
 </p>
 
-Native, local-first voice dictation for KDE Plasma on Wayland.
+<p align="center">
+  <b>Local, private dictation for KDE Plasma on Wayland.</b><br>
+  Hold a key, speak, release. The text appears in the application you are using.
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/demo.gif" width="720" alt="Holding Ctrl+Alt+D and dictating a sentence into Kate; the text is inserted on release"><br>
+  <sub><a href="docs/screenshots/demo.webm">Video version</a></sub>
+</p>
+
+<p align="center">
+  Wayland and Plasma native&nbsp;&nbsp;·&nbsp;&nbsp;Speech recognition runs on your computer&nbsp;&nbsp;·&nbsp;&nbsp;Vulkan GPU acceleration with CPU fallback
+</p>
 
 > [!IMPORTANT]
 > Spevox brings the ideas behind
 > [FluidVoice for macOS](https://github.com/altic-dev/FluidVoice) to Linux. It
 > is an independent project by David Bolin and is still under development.
 
-Spevox records from PipeWire, transcribes speech locally with Whisper, and
-pastes the result into the app you are using. AI cleanup is optional and can
-run locally or through a service you choose.
+Spevox records from PipeWire, transcribes speech locally with Whisper or NVIDIA
+speech models, and pastes the result into the app you are using. Text cleanup is
+optional and can run locally (Ollama, LM Studio); a cloud provider is used only
+if you explicitly choose one.
+
+## How it works
+
+1. Place the cursor in any text field.
+2. Hold `Ctrl+Alt+D` (the shortcut can be changed).
+3. Speak.
+4. Release the keys. The transcript is inserted, and always kept on the clipboard.
+
+## Screenshots
+
+| Voice engine | Settings | Native engines |
+| --- | --- | --- |
+| [![Microphone, model, and language](docs/screenshots/voice-engine.png)](docs/screenshots/voice-engine.png) | [![Background operation, text delivery, local API](docs/screenshots/settings.png)](docs/screenshots/settings.png) | [![Parakeet setup and latest transcript](docs/screenshots/native-engine.png)](docs/screenshots/native-engine.png) |
+| Microphone, model, and language | Delivery, tray, and local API | Managed NVIDIA models and diagnostics |
+
+Spevox lives in the Plasma system tray while running:
+
+<img src="docs/screenshots/tray.png" alt="Spevox icon in the Plasma system tray" width="180">
+
+## Requirements
+
+KDE Plasma 6 on Wayland, PipeWire, and x86_64. Vulkan is optional. Tested on
+Arch Linux; other distributions build from source (see below).
 
 ## Current features
 

@@ -6,6 +6,20 @@
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>GPL-3.0-only</project_license>
   <developer id="github.com/davidkodar"><name>David Bolin</name></developer>
+  <screenshots>
+    <screenshot type="default">
+      <caption>Microphone, speech model, and language settings</caption>
+      <image>https://raw.githubusercontent.com/davidkodar/spevox/main/docs/screenshots/voice-engine.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Application settings with text delivery and local API</caption>
+      <image>https://raw.githubusercontent.com/davidkodar/spevox/main/docs/screenshots/settings.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Managed native speech engines</caption>
+      <image>https://raw.githubusercontent.com/davidkodar/spevox/main/docs/screenshots/native-engine.png</image>
+    </screenshot>
+  </screenshots>
   <url type="homepage">https://github.com/davidkodar/spevox</url>
   <url type="bugtracker">https://github.com/davidkodar/spevox/issues</url>
   <description>
