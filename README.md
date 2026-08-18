@@ -152,10 +152,10 @@ developer preview and is not published as a release artifact: host KWin
 integration, keyring access, native-runtime setup, and desktop actions still
 need portal-native implementations before the sandboxed package is supported.
 
-Initial packages are distributed through GitHub Releases rather than the AUR.
-The prebuilt x86_64 archive targets Arch-family systems. Fedora, Ubuntu, Debian,
-and other distributions should build from source for now. Each release also
-ships a rendered `PKGBUILD` for clean Arch builds. To install a release archive:
+Packages are distributed through GitHub Releases rather than the AUR. The
+prebuilt x86_64 archive targets Arch-family systems. Fedora, Ubuntu, Debian, and
+other distributions should build from source for now. To install a release
+archive:
 
 ```bash
 tar xzf spevox-<version>-x86_64.tar.gz
@@ -164,6 +164,16 @@ cd spevox-<version>
 ```
 
 The archive installer checks its required libraries before installing anything.
+
+On Arch Linux you can instead build a native package from the `PKGBUILD` that
+accompanies each release. It builds from the checksummed source archive:
+
+```bash
+curl -LO https://github.com/davidkodar/spevox/releases/download/v<version>/PKGBUILD
+makepkg -si
+```
+
+Spevox is not in the AUR yet.
 
 ### 3. Configure dictation
 
