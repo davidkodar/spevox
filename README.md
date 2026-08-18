@@ -232,6 +232,25 @@ One multilingual Whisper model works for every exposed language. Managed model
 downloads come from the official
 [`ggml-org/whisper.cpp`](https://github.com/ggml-org/whisper.cpp) artifacts.
 
+### Language support by engine
+
+The language list in Settings always offers Whisper's full range. When a native
+engine cannot handle the language you fixed, Spevox transcribes with your
+selected Whisper model instead and says so in the status line.
+
+| Engine | Languages |
+| --- | --- |
+| Whisper (all sizes) | 99 |
+| Parakeet TDT v3 | 25 European: `bg` `cs` `da` `de` `el` `en` `es` `et` `fi` `fr` `hr` `hu` `it` `lt` `lv` `mt` `nl` `pl` `pt` `ro` `ru` `sk` `sl` `sv` `uk` |
+| Nemotron 3.5 Multilingual | 38: `ar` `bg` `ca` `cs` `da` `de` `el` `en` `es` `et` `fa` `fi` `fr` `he` `hi` `hr` `hu` `id` `it` `ja` `ko` `lt` `lv` `ms` `nl` `no` `pl` `pt` `ro` `ru` `sk` `sl` `sv` `th` `tr` `uk` `vi` `zh` |
+| Nemotron Streaming English | English |
+| Parakeet CTC 1.1B | English |
+
+Parakeet TDT v3 detects the language itself, so a fixed language is a hint
+rather than a constraint; short phrases are occasionally recognised as another
+language it knows. Whisper honours a fixed language directly, which makes it
+the more reliable choice for short dictation in a specific language.
+
 Built-in Whisper is the supported default. **Local speech server
 (experimental)** accepts an OpenAI-compatible `/v1/audio/transcriptions`
 service at HTTP loopback only. Spevox encodes the captured mono signal as
