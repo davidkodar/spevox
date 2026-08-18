@@ -240,35 +240,26 @@ external process receives audio only after recording stops. This lets you
 update the speech server separately from Spevox. The app does not currently
 bundle [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx).
 
-**Native NVIDIA speech engines (beta)** are managed by the application without
-Python, PyTorch, or a CUDA-only dependency chain. The catalog contains Parakeet
-TDT v3, Nemotron 3.5 Multilingual, Nemotron Streaming English, and Parakeet CTC
-1.1B. One click builds or reuses a pinned NVIDIA NeMo-Speech.cpp runtime,
-downloads the chosen official quantized model, and verifies its exact size and
-SHA-256 digest before activation. Nemotron 3.5 receives model-native locale
-codes such as `sv-SE`; the two English-only engines deliberately force English.
-“NVIDIA” identifies the runtime and model publisher, not a hardware requirement:
-GPU acceleration uses cross-vendor Vulkan on supported AMD, Intel, and NVIDIA
-drivers, requires no CUDA installation, and retains a CPU fallback.
-The helper listens only on `127.0.0.1`, starts on first use, and is supervised
-by Spevox. If setup, startup, or transcription fails, the captured audio is
-sent through the selected local Whisper model instead of being lost. Installing
-the runtime from source requires Git, CMake 3.26+, Ninja, and a C++17 compiler.
-Its pinned private SentencePiece dependency is built automatically. Automatic
-compute tries Vulkan first and installs CPU instead when the Vulkan development
-packages are incomplete; “Vulkan only” remains available for strict GPU use.
-During capture, streaming-capable native engines receive every audio chunk
-through the managed loopback WebSocket and publish model-native partial text in the overlay. Cold
-starts queue audio without blocking PipeWire, chunks are sent in NeMo's native
-160 ms cadence, and release cancels the preview before the single authoritative
-final transcription. Parakeet TDT v3 is explicitly full-utterance-only in the
-pinned runtime, so it retains the periodic Whisper preview instead of opening
-an unsupported stream. Whisper fallback remains available if the final fails.
-With the currently pinned runtime, native realtime is enabled on CPU only: its
-Vulkan streaming path can crash on real Nemotron audio in upstream GGML code.
-Vulkan remains enabled for fast full-utterance final inference, while the live
-overlay safely uses Whisper. Any native-engine failure is reported explicitly
-before Spevox runs the slower Whisper recovery path.
+**Native NVIDIA speech engines (beta)** — Parakeet TDT v3, Nemotron 3.5
+Multilingual, Nemotron Streaming English, and Parakeet CTC 1.1B — are managed by
+Spevox without Python, PyTorch, or CUDA. One click builds or reuses a pinned
+NeMo-Speech.cpp runtime and downloads the chosen official quantized model,
+verifying its size and SHA-256 digest before activation. Building the runtime
+from source needs Git, CMake 3.26+, Ninja, and a C++17 compiler.
+
+"NVIDIA" names the runtime and model publisher, not a hardware requirement. GPU
+acceleration uses cross-vendor Vulkan on supported AMD, Intel, and NVIDIA
+drivers and keeps a CPU fallback; automatic compute installs the CPU runtime
+when the Vulkan development packages are incomplete.
+
+The helper listens only on `127.0.0.1` and is supervised by Spevox. Any failure
+during setup, startup, or transcription is reported, and the recording is
+transcribed with your selected Whisper model rather than lost.
+
+Live partial text currently runs on CPU only, because the pinned runtime's
+Vulkan streaming path can crash on Nemotron audio; Vulkan still handles the
+final transcription. Parakeet TDT v3 is full-utterance-only, so it shows the
+periodic Whisper preview instead.
 
 **Speaker diarization (experimental)** is an optional file-transcription mode,
 not part of the normal dictation hot path. One-click setup reuses the pinned
@@ -356,7 +347,8 @@ rotating it immediately revokes existing clients.
 
 **Automatic (Vulkan)** is the default compute mode. whisper.cpp uses a compatible
 GPU when one is available and falls back to CPU otherwise. **CPU** disables GPU
-initialization explicitly.
+initialization explicitly. **Vulkan only** requires GPU acceleration instead of
+falling back.
 
 Successful GPU initialization includes output similar to:
 
