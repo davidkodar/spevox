@@ -152,8 +152,12 @@ impl PreviewSession {
         let publish = Arc::new(publish);
         let (preview_sender, preview_receiver) = mpsc::sync_channel::<AudioBuffer>(1);
         let stop = Arc::new(AtomicBool::new(false));
+        // A model that cannot handle the fixed language must not drive the live
+        // preview either; the Whisper preview below covers that case.
         let native_realtime = config.native_backend == ParakeetBackend::Cpu
-            && config.native_model.is_some_and(|model| model.realtime);
+            && config.native_model.is_some_and(|model| {
+                model.realtime && native_model_supports_language(model, &config.language)
+            });
         let mut workers = Vec::with_capacity(2);
 
         let stream_sender =
@@ -386,8 +390,9 @@ pub(super) fn transcribe_final(
         return FinalAsrResult {
             transcription: whisper_transcription(),
             native_fallback_error: Some(format!(
-                "{} is English-only; used multilingual Whisper for fixed language {}",
-                native_model.name, request.language
+                "{} does not support {}; used multilingual Whisper instead",
+                native_model.name,
+                language_display_name(request.language).unwrap_or(request.language)
             )),
         };
     }

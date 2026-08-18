@@ -118,12 +118,31 @@ pub(super) fn native_language_for_model(model: parakeet::Model, language: &str) 
     locale.to_owned()
 }
 
+/// The 25 European languages published for Parakeet TDT v3.
+const PARAKEET_V3_LANGUAGES: [&str; 25] = [
+    "bg", "cs", "da", "de", "el", "en", "es", "et", "fi", "fr", "hr", "hu", "it", "lt", "lv", "mt",
+    "nl", "pl", "pt", "ro", "ru", "sk", "sl", "sv", "uk",
+];
+
 pub(super) fn native_model_supports_language(model: parakeet::Model, language: &str) -> bool {
-    let language = language.trim();
-    language.is_empty()
-        || (model != parakeet::NEMOTRON_EN && model != parakeet::PARAKEET_CTC)
-        || language.eq_ignore_ascii_case("en")
-        || language.to_ascii_lowercase().starts_with("en-")
+    let language = language.trim().to_ascii_lowercase();
+    if language.is_empty() {
+        // Automatic detection is every model's own responsibility.
+        return true;
+    }
+    let base = language.split(['-', '_']).next().unwrap_or(&language);
+    if model == parakeet::NEMOTRON_EN || model == parakeet::PARAKEET_CTC {
+        return base == "en";
+    }
+    if model == parakeet::PARAKEET_V3 {
+        return PARAKEET_V3_LANGUAGES.contains(&base);
+    }
+    if model == parakeet::NEMOTRON_35 {
+        // The locale table is the model's published coverage; anything missing
+        // would otherwise be sent with no language and silently auto-detected.
+        return !native_language_for_model(model, base).is_empty();
+    }
+    true
 }
 
 pub(super) fn effective_parakeet_backend(compute_backend: i32) -> ParakeetBackend {

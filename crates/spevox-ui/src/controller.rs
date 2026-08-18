@@ -4382,6 +4382,21 @@ mod tests {
         ));
         assert!(native_model_supports_language(parakeet::NEMOTRON_EN, "en"));
         assert!(native_model_supports_language(parakeet::NEMOTRON_EN, ""));
+
+        // Parakeet TDT v3 publishes 25 European languages; anything else has to
+        // fall back to Whisper rather than be transcribed by the wrong model.
+        assert!(native_model_supports_language(parakeet::PARAKEET_V3, "sv"));
+        assert!(native_model_supports_language(parakeet::PARAKEET_V3, "uk"));
+        assert!(!native_model_supports_language(parakeet::PARAKEET_V3, "ja"));
+        assert!(!native_model_supports_language(parakeet::PARAKEET_V3, "ar"));
+
+        // Nemotron 3.5 covers exactly the locales it can map.
+        assert!(native_model_supports_language(parakeet::NEMOTRON_35, "ja"));
+        assert!(!native_model_supports_language(parakeet::NEMOTRON_35, "mt"));
+
+        // Region-qualified codes resolve to their base language.
+        assert!(native_model_supports_language(parakeet::PARAKEET_V3, "pt-BR"));
+        assert!(native_model_supports_language(parakeet::NEMOTRON_EN, "en-GB"));
     }
 
     #[test]
