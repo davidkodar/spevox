@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/demo.gif" width="720" alt="Holding Ctrl+Alt+D and dictating a sentence into Kate; the text is inserted on release"><br>
+  <img src="docs/screenshots/demo.gif" width="600" height="531" alt="Holding Ctrl+Alt+D and dictating a sentence into Kate; the text is inserted on release"><br>
   <sub><a href="docs/screenshots/demo.webm">Video version</a></sub>
 </p>
 
