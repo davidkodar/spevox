@@ -806,7 +806,7 @@ ApplicationWindow {
 
                 Text {
                     Layout.alignment: Qt.AlignHCenter
-                    text: qsTr("Private preview · %1").arg(controller.appVersion)
+                    text: qsTr("Preview · %1").arg(controller.appVersion)
                     color: root.tertiaryText
                     font.pixelSize: 11
                 }
