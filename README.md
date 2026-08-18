@@ -206,10 +206,10 @@ application for Linux: it also does text-to-speech and machine translation,
 supports more engines and desktops, and is on Flathub. Spevox does one thing —
 hold-to-dictate on Plasma Wayland, with optional local or cloud text cleanup.
 
-## Models, languages, and storage
+## Speech engines and languages
 
-One multilingual Whisper model works for every exposed language. Managed model
-downloads come from the official
+Built-in Whisper is the default and the one that gets support. One multilingual
+model covers every language in the list, and downloads come from the official
 [`ggml-org/whisper.cpp`](https://github.com/ggml-org/whisper.cpp) artifacts.
 
 ### Language support by engine
@@ -231,21 +231,24 @@ rather than a constraint; short phrases are occasionally recognised as another
 language it knows. Whisper honours a fixed language directly, which makes it
 the more reliable choice for short dictation in a specific language.
 
-Built-in Whisper is the supported default. **Local speech server
-(experimental)** accepts an OpenAI-compatible `/v1/audio/transcriptions`
-service at HTTP loopback only. Spevox encodes the captured mono signal as
-PCM WAV and will reject remote hosts, HTTPS URLs, recordings longer than two
-minutes, or responses above 1 MiB. Live preview is unavailable because the
-external process receives audio only after recording stops. This lets you
-update the speech server separately from Spevox. The app does not currently
-bundle [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx).
+### Using your own speech server (experimental)
 
-**Native NVIDIA speech engines (beta)** — Parakeet TDT v3, Nemotron 3.5
-Multilingual, Nemotron Streaming English, and Parakeet CTC 1.1B — are managed by
-Spevox without Python, PyTorch, or CUDA. One click builds or reuses a pinned
-NeMo-Speech.cpp runtime and downloads the chosen official quantized model,
-verifying its size and SHA-256 digest before activation. Building the runtime
-from source needs Git, CMake 3.26+, Ninja, and a C++17 compiler.
+Spevox can talk to an OpenAI-compatible `/v1/audio/transcriptions` service, over
+HTTP on loopback only. Spevox encodes the captured mono signal as PCM WAV and
+will reject remote hosts, HTTPS URLs, recordings longer than two minutes, or
+responses above 1 MiB. Live preview is unavailable because the external process
+receives audio only after recording stops. This lets you update the speech
+server separately from Spevox. The app does not currently bundle
+[sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx).
+
+### Native NVIDIA engines (beta)
+
+Parakeet TDT v3, Nemotron 3.5 Multilingual, Nemotron Streaming English, and
+Parakeet CTC 1.1B are managed by Spevox without Python, PyTorch, or CUDA. One
+click builds or reuses a pinned NeMo-Speech.cpp runtime and downloads the chosen
+official quantized model, verifying its size and SHA-256 digest before
+activation. Building the runtime from source needs Git, CMake 3.26+, Ninja, and
+a C++17 compiler.
 
 "NVIDIA" names the runtime and model publisher, not a hardware requirement. GPU
 acceleration uses cross-vendor Vulkan on supported AMD, Intel, and NVIDIA
@@ -261,10 +264,12 @@ Vulkan streaming path can crash on Nemotron audio; Vulkan still handles the
 final transcription. Parakeet TDT v3 is full-utterance-only, so it shows the
 periodic Whisper preview instead.
 
-**Speaker diarization (experimental)** is an optional file-transcription mode,
-not part of the normal dictation hot path. One-click setup reuses the pinned
-NeMo-Speech.cpp runtime and downloads a revision-pinned, SHA-256-verified GGUF
-conversion of NVIDIA's Sortformer 4-speaker v2 checkpoint. It runs locally on
+### Speaker diarization (experimental)
+
+Diarization is an optional file-transcription mode, not part of the normal
+dictation hot path. One-click setup reuses the pinned NeMo-Speech.cpp runtime
+and downloads a revision-pinned, SHA-256-verified GGUF conversion of NVIDIA's
+Sortformer 4-speaker v2 checkpoint. It runs locally on
 CPU or cross-vendor Vulkan, assigns each timestamped Whisper segment to the
 speaker with the greatest time overlap, and carries those labels into History
 and every meeting export format. If the model, runtime, or inference fails,
@@ -281,6 +286,10 @@ checkpoint and NeMo-Speech.cpp converter revisions, uses a temporary CPU-only
 Python environment, verifies the source and output SHA-256 values, and leaves
 only `target/package/sortformer-v2-q8_0.gguf`. Python and PyTorch are build-time
 conversion tools only; neither is installed or invoked by Spevox.
+
+## Your data and privacy
+
+### Where things are stored
 
 User data follows XDG conventions:
 
@@ -300,11 +309,15 @@ keeps settings, downloaded models, history, dictionaries, retained audio, API
 tokens, and provider secrets available without copying or deleting user data.
 New installations use the `spevox` paths above.
 
+### Recordings
+
 Audio is processed locally and is saved only when Audio History is turned on.
 Saved recordings use
 `$XDG_DATA_HOME/spevox/audio-history`, are capped by the selected budget,
 and are removed when History is cleared. History and dictionary data can be
 cleared from the interface or removed from the paths above.
+
+### AI cleanup
 
 AI enhancement is off by default. Ollama and LM Studio keep cleanup on your
 computer, and Spevox can list the models installed in either one. The Ollama
@@ -317,9 +330,11 @@ transcript and cleanup instructions, never the microphone recording. API keys
 are stored with the desktop Secret Service, not in `settings.conf`. If cleanup
 fails, Spevox uses the original transcript.
 
-Automatic application profiles are also disabled by default. The installer
-ships `spevoxprofiles`, a small KWin script, but it is enabled only when the
-user turns on **Automatic KWin profile selection**. KWin then reports the active
+### Automatic application profiles
+
+These are disabled by default too. The installer ships `spevoxprofiles`, a small
+KWin script, but it is enabled only when the user turns on **Automatic KWin
+profile selection**. KWin then reports the active
 application class and window title to Spevox's session-local D-Bus endpoint.
 Profile rules use comma-separated, case-insensitive fragments; blank rules stay
 manual-only. Disabling the option disables the KWin script again.
