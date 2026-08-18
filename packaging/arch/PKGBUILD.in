@@ -31,10 +31,7 @@ build() {
   export CFLAGS="${CFLAGS} -ffile-prefix-map=${source_root}=. -ffile-prefix-map=${cargo_home}=/usr/src/cargo"
   export CXXFLAGS="${CXXFLAGS} -ffile-prefix-map=${source_root}=. -ffile-prefix-map=${cargo_home}=/usr/src/cargo"
   export RUSTFLAGS="${RUSTFLAGS} --remap-path-prefix=${source_root}=. --remap-path-prefix=${cargo_home}=/usr/src/cargo"
-  # Several native dependencies generate Bindgen macro-evaluation files with
-  # the same temporary name. Serialize this clean package build to avoid their
-  # upstream race; normal incremental developer builds remain parallel.
-  QMAKE=/usr/bin/qmake6 cargo build --frozen --release --jobs 1 -p spevox-ui
+  QMAKE=/usr/bin/qmake6 cargo build --frozen --release -p spevox-ui
 }
 
 check() {
