@@ -1,0 +1,39 @@
+name: Docs
+
+# Documentation-only changes skip the full build (see paths-ignore in ci.yml).
+# This job carries the same required-check name so such pull requests can merge.
+on:
+  push:
+    branches: [main]
+    paths: &docs_paths
+      - '**.md'
+      - 'docs/**'
+      - 'data/branding/**'
+      - 'LICENSE'
+      - '.github/ISSUE_TEMPLATE/**'
+      - '.github/PULL_REQUEST_TEMPLATE.md'
+  pull_request:
+    paths: *docs_paths
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Check Markdown links to files in the repository
+        run: |
+          set -euo pipefail
+          status=0
+          while IFS= read -r file; do
+            { grep -oE '\]\(([^)#: ]+)' "$file" || true; } | sed 's/^](//' | while IFS= read -r target; do
+              case "$target" in http*|mailto*) continue;; esac
+              if [ ! -e "$(dirname "$file")/$target" ] && [ ! -e "$target" ]; then
+                echo "$file: missing link target $target"; exit 1
+              fi
+            done || status=1
+          done < <(git ls-files '*.md')
+          exit $status
