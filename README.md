@@ -64,7 +64,14 @@ Arch Linux; other distributions build from source (see below).
 - Native Plasma system tray, single-instance activation, and correct desktop identity.
 - Persistent custom spellings and optional spoken formatting commands.
 - Local MP3, FLAC, Ogg/Opus, M4A/AAC, WebM, MP4, and WAV transcription through
-  FFmpeg, plus transcript history and usage statistics.
+  FFmpeg, with timestamped segments and TXT, Markdown, SRT, WebVTT, or JSON
+  export. Optional Sortformer diarization labels up to four speakers.
+- Write Mode (`Ctrl+Alt+W`) rewrites selected text or drafts new text from a
+  spoken instruction, with preview, retry, undo, and clipboard recovery.
+- Command Mode runs a fixed set of desktop actions — open System Settings,
+  Konsole, or Dolphin, or lock the screen. It never runs arbitrary commands.
+- Transcript history with search, raw/final diffs, copy and undo, optional
+  retained audio, and JSON, CSV, or ZIP export.
 - KDE system theme/accent defaults plus explicit Spevox dark, light, and accent options.
 - Optional AI cleanup through Ollama, LM Studio, supported cloud services, or a
   custom OpenAI-compatible endpoint. The original transcript is used if cleanup fails.
@@ -192,39 +199,12 @@ Spevox is not in the AUR yet.
 Plasma may ask you to approve or choose the shortcut the first time. Closing
 the settings window leaves Spevox running in the system tray.
 
-## Linux and macOS feature comparison
+## Alternatives
 
-The table below compares Spevox with FluidVoice for macOS. “Partial” means the
-feature works on Linux but does not yet offer everything found in the Mac app.
-
-| Capability | Spevox 0.6.0 | Current macOS FluidVoice | Notes |
-| --- | --- | --- | --- |
-| Global hold-to-dictate | Available | Available | Linux uses the XDG Global Shortcuts portal. |
-| Direct typing into applications | Partial | Available | Linux uses Wayland portal/clipboard delivery; application support can vary. |
-| Live transcript overlay | Available | Available | Linux provides compact/standard/expanded layouts, placement, opacity, text visibility, direct editor delivery with automatic dismissal, and an optional persistent result/recovery menu. Streaming-capable native engines use NeMo's realtime endpoint for true partial results; built-in Whisper and full-utterance-only Parakeet TDT v3 use bounded Whisper previews. |
-| Whisper models | Available | Available | Linux supports all six listed multilingual GGML sizes. |
-| Parakeet, Nemotron, Cohere, Apple Speech | Partial | Available | Linux provides one-click managed Parakeet TDT v3, Nemotron 3.5 multilingual, Nemotron Streaming English, and Parakeet CTC 1.1B engines through native NeMo-Speech.cpp, plus a custom loopback ASR bridge. CoreML-only Cohere/Parakeet Flash and Apple Speech are not Linux runtimes. |
-| Vulkan GPU acceleration | Available | Not applicable | Linux supports cross-vendor Vulkan with CPU fallback. |
-| Automatic/fixed language | Available | Available | All 99 Whisper languages are exposed. |
-| Model download and deletion | Available | Available | Downloads are SHA-256 verified, remain `.part` until complete, and retain an integrity marker for subsequent loads. |
-| Custom dictionary | Available | Available | Save preferred words and phrases, import CSV/TSV files, export CSV files, and choose how import conflicts are handled. |
-| Spoken formatting | Available | Available | Linux handles newline, paragraph, comma, period, question mark, and exclamation mark. |
-| Command Mode system actions | Partial | Available | Spevox can open System Settings, Konsole, and Dolphin, or lock the screen. It does not run arbitrary shell commands. |
-| Write/rewrite selected text | Available | Available | `Ctrl+Alt+W` opens Write Mode. It can replace selected text and provides preview, retry, undo, and clipboard recovery. |
-| AI Enhancement | Partial | Available | Spevox supports local and cloud AI services, live updates, saved profiles, and fallback to the original text. Fluid-1 is not available. |
-| Fluid Intelligence / Fluid-1 | Missing | Available | Fluid-1 weights, runtime, and training code are separately maintained and not available in the GPL repository. |
-| File and meeting transcription | Available | Available | Linux accepts MP3, FLAC, Ogg/Opus, M4A/AAC, WebM, MP4, and varied WAV through FFmpeg, then runs bounded timestamped Whisper segments with progress/cancellation and TXT, Markdown, SRT, WebVTT, or JSON export. Optional experimental Sortformer v2 diarization labels up to four speakers locally; detected speakers can be renamed consistently in the current result, History, and exports, and the last file can be retried after changing settings. |
-| Transcript history | Partial | Available | Linux provides search, timestamps, raw/final visual diffs, change counts, copy/undo actions, optional retained audio, AI metadata, word counts, and JSON/CSV/ZIP export; app/window metadata and feedback reports remain missing. |
-| Usage statistics | Available | Available | Includes daily and all-time totals, estimated time saved, streaks, charts, milestones, records, and AI activity. |
-| Per-application configuration | Available | Available | Linux provides persistent named prompt profiles and opt-in automatic matching through a packaged KWin script. Only application class and window title cross the local session bus; the reporting KWin script is disabled by default. |
-| Audio recording history | Available | Available | Optional and off by default; Linux retains local mono WAV recordings within a configurable budget, supports playback and deletion, and exports audio plus metadata as ZIP. |
-| Adaptive themes and accents | Available | Available | System/KDE defaults plus explicit Spevox themes and colors. |
-| Tray/menu-bar integration | Available | Available | Plasma tray is the Linux equivalent of the macOS menu bar item. |
-| Automatic updates / beta channel | Partial | Available | Spevox checks GitHub for releases, but does not install them automatically or provide a separate beta channel yet. |
-
-The macOS feature set changes quickly. This matrix reflects the upstream source
-and README reviewed during 0.5.0 development; it is not a promise of identical
-platform behavior.
+[Speech Note](https://github.com/mkiol/dsnote) is the broader offline speech
+application for Linux: it also does text-to-speech and machine translation,
+supports more engines and desktops, and is on Flathub. Spevox does one thing —
+hold-to-dictate on Plasma Wayland, with optional local or cloud text cleanup.
 
 ## Models, languages, and storage
 
