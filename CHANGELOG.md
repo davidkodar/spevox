@@ -3,6 +3,19 @@
 All notable changes to Spevox are documented here. The project uses
 [Semantic Versioning](https://semver.org/) while it remains a prerelease preview.
 
+## 0.6.1 - 2026-08-18
+
+- A native speech engine is no longer used for a language it does not support.
+  Selecting one of those languages now transcribes with the chosen Whisper
+  model and says so, instead of returning text from the wrong language model.
+  The live overlay follows the same rule.
+- Documented which languages each speech engine covers.
+- The Arch package builds in parallel again, which takes roughly four minutes
+  instead of sixteen, and pins the Rust toolchain so a rustup default cannot
+  select an unsupported compiler.
+- README: added screenshots and a dictation recording, documented the
+  `makepkg` install path, and reorganised the engine and privacy sections.
+
 ## 0.6.0 - 2026-08-17
 
 - Pre-publication review fixes: corrected the documented minimum Rust version
