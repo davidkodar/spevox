@@ -20,6 +20,7 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-24.04
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable
@@ -27,7 +28,12 @@ jobs:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - name: Install native dependencies
-        run: sudo apt-get update && sudo apt-get install -y build-essential clang cmake libpipewire-0.3-dev libvulkan-dev glslc python3-yaml qt6-base-dev qt6-declarative-dev qt6-tools-dev-tools
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          apt_opts=(-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30)
+          sudo apt-get "${apt_opts[@]}" update
+          sudo apt-get "${apt_opts[@]}" install -y --no-install-recommends build-essential clang cmake libpipewire-0.3-dev libvulkan-dev glslc python3-yaml qt6-base-dev qt6-declarative-dev qt6-tools-dev-tools appstream
       - name: Formatting
         run: cargo fmt --all --check
       - name: Clippy
@@ -43,7 +49,7 @@ jobs:
           QMAKE: /usr/bin/qmake6
         run: cargo build --release --locked -p spevox-ui
       - name: Validate AppStream metadata
-        run: sudo apt-get install -y appstream && appstreamcli validate --no-net data/io.github.davidkodar.Spevox.metainfo.xml
+        run: appstreamcli validate --no-net data/io.github.davidkodar.Spevox.metainfo.xml
       - name: Validate packaging scripts and manifests
         run: |
           bash -n packaging/*.sh
